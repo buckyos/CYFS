@@ -14,6 +14,9 @@ enum TransRequestType {
     GetContext,
     PutContext,
     QueryTasks,
+
+    ControlTaskGroup,
+    GetTaskGroupState,
 }
 
 pub(crate) struct TransRequestHandlerEndpoint {
@@ -45,6 +48,9 @@ impl TransRequestHandlerEndpoint {
             TransRequestType::GetContext => self.handler.process_get_context(req).await,
             TransRequestType::PutContext => self.handler.process_put_context(req).await,
             TransRequestType::QueryTasks => self.handler.process_query_tasks_context(req).await,
+
+            TransRequestType::ControlTaskGroup => self.handler.process_control_task_group(req).await,
+            TransRequestType::GetTaskGroupState => self.handler.process_get_task_group_state(req).await,
         }
     }
 
@@ -80,8 +86,19 @@ impl TransRequestHandlerEndpoint {
             .post(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::PublishFile, handler.clone()));
 
         server
-            .at("/trans/query")
+            .at("/trans/tasks")
             .post(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::QueryTasks, handler.clone()));
+
+
+        // task group
+        server
+            .at("/trans/task_group/state")
+            .post(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::GetTaskGroupState, handler.clone()));
+
+        server
+            .at("/trans/task_group")
+            .put(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::ControlTaskGroup, handler.clone()));
+
     }
 }
 

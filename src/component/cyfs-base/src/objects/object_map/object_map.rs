@@ -584,6 +584,7 @@ impl ObjectMapSimpleContent {
         cache: &ObjectMapOpEnvCacheRef,
         key: &str,
         auto_create: ObjectMapCreateStrategy,
+        access: Option<AccessString>,
     ) -> BuckyResult<Option<ObjectMapRef>> {
         let ret = self.get_by_key(key)?;
         match ret {
@@ -635,7 +636,7 @@ impl ObjectMapSimpleContent {
                 }
 
                 debug!("object map new sub: key={}, sub={}", key, sub_id);
-                let sub_map = cache.put_object_map(&sub_id, sub)?;
+                let sub_map = cache.put_object_map(&sub_id, sub, access)?;
                 Ok(Some(sub_map))
             }
         }
@@ -1083,6 +1084,7 @@ impl ObjectMapHubContent {
         cache: &ObjectMapOpEnvCacheRef,
         key: &str,
         auto_create: ObjectMapCreateStrategy,
+        access: Option<AccessString>,
     ) -> BuckyResult<Option<ObjectMapRef>> {
         let sub_auto_create = match auto_create {
             ObjectMapCreateStrategy::NotCreate => false,
@@ -1096,14 +1098,14 @@ impl ObjectMapHubContent {
             Some((solt, mut obj_map)) => {
                 // 复制后修改
                 let ret = obj_map
-                    .get_or_create_child_object_map(cache, key, builder.content_type(), auto_create)
+                    .get_or_create_child_object_map(cache, key, builder.content_type(), auto_create, access)
                     .await?;
                 let current_id = obj_map.cached_object_id();
                 let new_id = obj_map.flush_id();
 
                 // 只有objectmap的id改变了，才需要保存并更新
                 if current_id != Some(new_id) {
-                    cache.put_object_map(&new_id, obj_map)?;
+                    cache.put_object_map(&new_id, obj_map, None)?;
                     solt.id = new_id;
                     self.dirty = true;
                 }
@@ -1273,7 +1275,7 @@ impl ObjectMapHubContent {
 
                 let new_id = obj_map.flush_id();
                 // debug!("insert_with_key, sub objectmap updated: key={}, {:?} -> {}", key, obj_map.cached_object_id(), new_id);
-                cache.put_object_map(&new_id, obj_map)?;
+                cache.put_object_map(&new_id, obj_map, None)?;
                 solt.id = new_id;
                 self.dirty = true;
                 Ok(())
@@ -1305,7 +1307,7 @@ impl ObjectMapHubContent {
                 let current_id = obj_map.cached_object_id();
                 let new_id = obj_map.flush_id();
                 if current_id != Some(new_id) {
-                    cache.put_object_map(&new_id, obj_map)?;
+                    cache.put_object_map(&new_id, obj_map, None)?;
                     solt.id = new_id;
                     self.dirty = true;
                 }
@@ -1332,7 +1334,7 @@ impl ObjectMapHubContent {
                 if ret.is_some() {
                     if obj_map.count() > 0 {
                         let new_id = obj_map.flush_id();
-                        cache.put_object_map(&new_id, obj_map)?;
+                        cache.put_object_map(&new_id, obj_map, None)?;
                         solt.id = new_id;
                     } else {
                         debug!(
@@ -1390,7 +1392,7 @@ impl ObjectMapHubContent {
 
                 let new_id = obj_map.flush_id();
                 // debug!("insert_with_key, sub objectmap updated: key={}, {:?} -> {}", key, obj_map.cached_object_id(), new_id);
-                cache.put_object_map(&new_id, obj_map)?;
+                cache.put_object_map(&new_id, obj_map, None)?;
                 solt.id = new_id;
                 self.dirty = true;
                 Ok(())
@@ -1422,7 +1424,7 @@ impl ObjectMapHubContent {
                 let current_id = obj_map.cached_object_id();
                 let new_id = obj_map.flush_id();
                 if current_id != Some(new_id) {
-                    cache.put_object_map(&new_id, obj_map)?;
+                    cache.put_object_map(&new_id, obj_map, None)?;
                     solt.id = new_id;
                     self.dirty = true;
                 }
@@ -1449,7 +1451,7 @@ impl ObjectMapHubContent {
                 if ret.is_some() {
                     if obj_map.count() > 0 {
                         let new_id = obj_map.flush_id();
-                        cache.put_object_map(&new_id, obj_map)?;
+                        cache.put_object_map(&new_id, obj_map, None)?;
                         solt.id = new_id;
                     } else {
                         debug!(
@@ -1505,7 +1507,7 @@ impl ObjectMapHubContent {
                 let ret = obj_map.insert(cache, object_id).await?;
                 if ret {
                     let new_id = obj_map.flush_id();
-                    cache.put_object_map(&new_id, obj_map)?;
+                    cache.put_object_map(&new_id, obj_map, None)?;
                     solt.id = new_id;
                     self.dirty = true;
                 }
@@ -1533,7 +1535,7 @@ impl ObjectMapHubContent {
                 if ret {
                     if obj_map.count() > 0 {
                         let new_id = obj_map.flush_id();
-                        cache.put_object_map(&new_id, obj_map)?;
+                        cache.put_object_map(&new_id, obj_map, None)?;
                         solt.id = new_id;
                     } else {
                         debug!(
@@ -1594,7 +1596,7 @@ impl ObjectMapHubContent {
                 let ret = obj_map.diff_insert(cache, object_id).await?;
                 if ret {
                     let new_id = obj_map.flush_id();
-                    cache.put_object_map(&new_id, obj_map)?;
+                    cache.put_object_map(&new_id, obj_map, None)?;
                     solt.id = new_id;
                     self.dirty = true;
                 }
@@ -1622,7 +1624,7 @@ impl ObjectMapHubContent {
                 if ret {
                     if obj_map.count() > 0 {
                         let new_id = obj_map.flush_id();
-                        cache.put_object_map(&new_id, obj_map)?;
+                        cache.put_object_map(&new_id, obj_map, None)?;
                         solt.id = new_id;
                     } else {
                         debug!(
@@ -2244,18 +2246,19 @@ impl ObjectMapDescContent {
         cache: &ObjectMapOpEnvCacheRef,
         key: &str,
         auto_create: ObjectMapCreateStrategy,
+        access: Option<AccessString>,
     ) -> BuckyResult<Option<ObjectMapRef>> {
         assert!(!self.content.is_dirty());
 
         let ret = match &mut self.content {
             ObjectMapContent::Simple(content) => {
                 content
-                    .get_or_create_child_object_map(builder, cache, key, auto_create)
+                    .get_or_create_child_object_map(builder, cache, key, auto_create, access)
                     .await
             }
             ObjectMapContent::Hub(content) => {
                 content
-                    .get_or_create_child_object_map(builder, cache, key, auto_create)
+                    .get_or_create_child_object_map(builder, cache, key, auto_create, access)
                     .await
             }
         }?;
@@ -2957,11 +2960,12 @@ impl ObjectMap {
         key: &str,
         content_type: ObjectMapSimpleContentType,
         auto_create: ObjectMapCreateStrategy,
+        access: Option<AccessString>,
     ) -> BuckyResult<Option<ObjectMapRef>> {
         let builder = self.new_sub_builder(Some(content_type))?;
         self.desc_mut()
             .content_mut()
-            .get_or_create_child_object_map(&builder, cache, key, auto_create)
+            .get_or_create_child_object_map(&builder, cache, key, auto_create, access)
             .await
     }
 

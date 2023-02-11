@@ -260,6 +260,10 @@ mod test {
         let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
+        root.dec_id = Some(ObjectId::default());
+        let s = root.format_string();
+        println!("{}", s);
+        
         root.global_state_category = Some(GlobalStateCategory::RootState);
         let s = root.format_string();
         println!("{}", s);

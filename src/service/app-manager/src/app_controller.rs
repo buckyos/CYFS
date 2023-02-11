@@ -31,7 +31,8 @@ pub struct AppController {
     docker_api: DockerApi,
     named_cache_client: OnceCell<NamedCacheClient>,
     sn_hash: RwLock<HashValue>,
-    config: AppManagerConfig
+    config: AppManagerConfig,
+    dapp_instance: RwLock<HashMap<DecAppId, DApp>>,
 }
 
 async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
@@ -56,6 +57,7 @@ impl AppController {
             sn_hash: RwLock::new(HashValue::default()),
             docker_api: DockerApi::new(),
             config,
+            dapp_instance: RwLock::new(HashMap::new())
         }
     }
 
@@ -160,7 +162,7 @@ impl AppController {
                 .get()
                 .unwrap()
                 .trans()
-                .publish_file(&TransPublishFileOutputRequest {
+                .publish_file(TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
                         req_path: None,
                         dec_id: Some(cyfs_core::get_system_dec_app().clone()),
@@ -174,6 +176,7 @@ impl AppController {
                     chunk_size: 1024 * 1024,
                     file_id: None,
                     dirs: None,
+                    access: None,
                 })
                 .await
                 .map_err(|e| {
@@ -285,14 +288,14 @@ impl AppController {
     pub async fn start_app(&self, app_id: &DecAppId, config: RunConfig) -> AppActionResult<()> {
         info!("try to start app:{}", app_id);
         let id = app_id.to_string();
-        let mut dapp = DApp::load_from_app_id(&id).map_err(|e| {
-            warn!("load app failed, appId: {}, err:{}", id, e);
-            SubErrorCode::LoadFailed
-        })?;
 
         let use_docker = self.config.app_use_docker(app_id);
         info!("app {} use docker start: {}", app_id, use_docker);
         if use_docker {
+            let dapp = DApp::load_from_app_id(&id).map_err(|e| {
+                warn!("load app failed, appId: {}, err:{}", id, e);
+                SubErrorCode::LoadFailed
+            })?;
             let cmd = dapp.get_start_cmd().unwrap();
             let cmd_param = Some(vec![cmd.to_string()]);
             info!("service cmd: {}", cmd);
@@ -306,10 +309,17 @@ impl AppController {
         } else {
             // 应用在主机直接运行
             info!("run app simple:{}", app_id);
+            let dapp = DApp::load_from_app_id(&app_id.to_string()).map_err(|e| {
+                warn!("load app failed, appId: {}, err:{}", app_id, e);
+                SubErrorCode::LoadFailed
+            })?;
+
             dapp.start().map_err(|e| {
                 warn!("start app directly failed, appId: {}, {}", app_id, e);
                 SubErrorCode::CommondFailed
             })?;
+
+            self.dapp_instance.write().unwrap().insert(app_id.clone(), dapp);
         }
         Ok(())
     }
@@ -329,15 +339,25 @@ impl AppController {
                 }
             }
         } else {
-            let mut dapp = DApp::load_from_app_id(&id).map_err(|e| {
-                warn!("load app failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::LoadFailed
-            })?;
-            let result = dapp.stop().map_err(|e| {
-                warn!("stop app directly failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::CommondFailed
-            })?;
-            info!("stop dapp instance:{}", result);
+            let reader = self.dapp_instance.read().unwrap();
+            if let Some(dapp) = reader.get(app_id) {
+                let result = dapp.stop().map_err(|e| {
+                    warn!("stop app directly failed, app:{}, err:{}", app_id, e);
+                    SubErrorCode::CommondFailed
+                })?;
+                info!("stop dapp instance:{}", result);
+            } else {
+                let dapp = DApp::load_from_app_id(&app_id.to_string()).map_err(|e| {
+                    warn!("load app failed, appId: {}, err:{}", app_id, e);
+                    SubErrorCode::LoadFailed
+                })?;
+
+                let result = dapp.stop().map_err(|e| {
+                    warn!("stop app directly failed, app:{}, err:{}", app_id, e);
+                    SubErrorCode::CommondFailed
+                })?;
+                info!("stop dapp instance:{}", result);
+            };
         }
 
         Ok(())
@@ -349,12 +369,14 @@ impl AppController {
         let use_docker = self.config.app_use_docker(app_id);
         info!("app {} use docker status: {}", app_id, use_docker);
         if use_docker {
-            let result = self.docker_api.is_running(&id).await?;
-            Ok(result)
+            self.docker_api.is_running(&id).await
         } else {
-            let mut dapp = DApp::load_from_app_id(&id)?;
-            let result = dapp.status()?;
-            Ok(result)
+            if let Some(dapp) = self.dapp_instance.read().unwrap().get(app_id) {
+                dapp.status()
+            } else {
+                let dapp = DApp::load_from_app_id(&app_id.to_string())?;
+                dapp.status()
+            }
         }
     }
 

@@ -4,9 +4,11 @@ use std::task::{Context, Poll};
 use cyfs_base::*;
 use crate::protocol::{*, v0::*};
 use super::container::StreamContainer;
+use crate::IncreaseId;
 
 #[async_trait]
 pub trait StreamProvider: std::fmt::Display + Send + Sync {
+    fn remote_id(&self) -> IncreaseId;
     fn local_ep(&self) -> &Endpoint;
     fn remote_ep(&self) -> &Endpoint;
     fn start(&self, owner: &StreamContainer);

@@ -85,7 +85,7 @@ impl ProtobufTransform<&ChunkId> for Vec<u8> {
 
 impl ProtobufTransform<Vec<u8>> for ChunkId {
     fn transform(value: Vec<u8>) -> BuckyResult<Self> {
-        if value.len() != 32 {
+        if value.len() != U32::to_usize() {
             return Err(BuckyError::new(
                 BuckyErrorCode::InvalidParam,
                 format!(
@@ -151,7 +151,7 @@ impl ChunkId {
     }
 
     pub fn object_id(&self) -> ObjectId {
-        ObjectId::clone_from_slice(self.as_slice())
+        ObjectId::clone_from_slice(self.as_slice()).unwrap()
     }
 
     pub fn as_object_id(&self) -> &ObjectId {
@@ -177,7 +177,7 @@ impl ChunkId {
             BuckyError::new(BuckyErrorCode::ParseError, msg)
         })?;
 
-        if buf.len() != 32 {
+        if buf.len() != U32::to_usize() {
             let msg = format!(
                 "convert base58 str to chunk id failed, str's len not matched:{}, len:{}",
                 s,
@@ -196,7 +196,7 @@ impl ChunkId {
             BuckyError::new(BuckyErrorCode::ParseError, msg)
         })?;
 
-        if buf.len() != 32 {
+        if buf.len() != U32::to_usize() {
             let msg = format!(
                 "convert base36 str to chunk id failed, str's len not matched:{}, len:{}",
                 s,
@@ -415,6 +415,7 @@ mod test {
 
     use std::convert::TryFrom;
     use std::str::FromStr;
+    use generic_array::typenum::{marker_traits::Unsigned, U32};
 
     #[test]
     fn chunk() {
@@ -438,5 +439,7 @@ mod test {
             let new_chunk_id = ChunkId::try_from(&obj_id).unwrap();
             assert_eq!(new_chunk_id, chunk_id);
         }
+
+        assert_eq!(U32::to_usize(), 32);
     }
 }

@@ -1,20 +1,20 @@
+use async_std::sync::Mutex as AsyncMutex;
 use cyfs_lib::ZoneRole;
 use futures::future::join_all;
 use lazy_static::lazy_static;
 use std::fmt;
 use std::fmt::Formatter;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
-use async_std::sync::Mutex as AsyncMutex;
 
 use super::service::Service;
 use crate::config::*;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use crate::daemon::GATEWAY_MONITOR;
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use cyfs_debug::Mutex;
 
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServiceItem {
     pub config: ServiceConfig,
     pub service: Option<Arc<Service>>,
@@ -23,21 +23,13 @@ pub struct ServiceItem {
 impl ServiceItem {
     pub fn target_state(&self) -> ServiceState {
         match self.config.enable {
-            true => {
-                match GATEWAY_MONITOR.zone_role() {
-                    ZoneRole::ActiveOOD => {
-                        self.config.target_state
-                    }
-                    _  => {
-                        match self.config.name.as_str() {
-                            GATEWAY_SERVICE => {
-                                ServiceState::RUN
-                            }
-                            _ => ServiceState::STOP,
-                        }
-                    }
-                }
-            }
+            true => match GATEWAY_MONITOR.zone_role() {
+                ZoneRole::ActiveOOD => self.config.target_state,
+                _ => match self.config.name.as_str() {
+                    GATEWAY_SERVICE => ServiceState::RUN,
+                    _ => ServiceState::STOP,
+                },
+            },
             false => ServiceState::STOP,
         }
     }
@@ -90,7 +82,7 @@ impl FromStr for ServiceMode {
 
 pub struct ServiceManager {
     mode: Arc<Mutex<ServiceMode>>,
-    
+
     // 是否开启旧安装gc
     enable_gc: Arc<Mutex<bool>>,
 
@@ -101,7 +93,7 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             mode: Arc::new(Mutex::new(ServiceMode::Daemon)),
             enable_gc: Arc::new(Mutex::new(true)),
@@ -146,7 +138,6 @@ impl ServiceManager {
     }
 
     pub async fn load(&self, list: Vec<ServiceConfig>) -> BuckyResult<()> {
-
         // 根据当前servicemode，来确定操作类型
         match self.get_mode() {
             ServiceMode::Daemon => {
@@ -160,9 +151,10 @@ impl ServiceManager {
                 let list: Vec<ServiceConfig> = list
                     .into_iter()
                     .filter_map(|v| {
-                        if v.name == OOD_DAEMON_SERVICE ||
-                            v.name == "chunk-manager" ||
-                            v.name == "file-manager" {
+                        if v.name == OOD_DAEMON_SERVICE
+                            || v.name == "chunk-manager"
+                            || v.name == "file-manager"
+                        {
                             None
                         } else {
                             Some(v)
@@ -185,9 +177,7 @@ impl ServiceManager {
                     self.sync_service_list(vec![ood_daemon_service.unwrap()])
                         .await?;
                 } else {
-                    let msg = format!(
-                        "ood-daemon not found in device_config!"
-                    );
+                    let msg = format!("ood-daemon not found in device_config!");
                     error!("{}", msg);
 
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -321,7 +311,6 @@ impl ServiceManager {
         if self.is_enable_gc() {
             let fid = service.fid().to_owned();
             async_std::task::spawn(async move {
-
                 // 避免删除正在运行的服务目录，导致调用stop命令出错，这里延迟一会再删除
                 async_std::task::sleep(std::time::Duration::from_secs(60 * 1)).await;
 
@@ -503,9 +492,7 @@ impl ServiceManager {
 
                 Ok(())
             }
-            Err(e) => {
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 

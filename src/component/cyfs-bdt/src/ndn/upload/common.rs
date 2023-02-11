@@ -5,9 +5,9 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub enum UploadTaskPriority {
-    Backgroud = 1, 
-    Normal = 2, 
-    Realtime = 4,
+    Backgroud, 
+    Normal, 
+    Realtime(u32/*min speed*/),
 }
 
 impl Default for UploadTaskPriority {
@@ -20,10 +20,9 @@ impl Default for UploadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug)]
 pub enum UploadTaskState {
-    Pending, 
     Uploading(u32/*速度*/),
     Paused,
-    Error(BuckyErrorCode/*被cancel的原因*/), 
+    Error(BuckyError/*被cancel的原因*/), 
     Finished
 }
 
@@ -35,14 +34,27 @@ pub enum UploadTaskControlState {
 }
 
 
+#[async_trait::async_trait]
 pub trait UploadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn UploadTask>;
     fn state(&self) -> UploadTaskState;
+    async fn wait_finish(&self) -> UploadTaskState;
     fn control_state(&self) -> UploadTaskControlState;
 
-    fn priority_score(&self) -> u8 {
-        UploadTaskPriority::Normal as u8
+    fn resume(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
     }
+    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
+    }
+    
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
+
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }

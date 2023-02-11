@@ -2,6 +2,7 @@ use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
@@ -42,6 +43,12 @@ impl FileBlobStorage {
         let second = match second {
             "con" | "aux" | "nul" | "prn" => tmp.split_at(tmp.len() - (len + 1)).1,
             _ => second,
+        };
+
+        #[cfg(target_os = "windows")]
+        let first = match first {
+            "con" | "aux" | "nul" | "prn" => Cow::Owned(format!("{}_", first)),
+            _ => Cow::Borrowed(first),
         };
 
         let path = self.root.join(format!("{}/{}", first, second));
@@ -104,8 +111,9 @@ impl BlobStorage for FileBlobStorage {
 
         Self::write(&path, &data.object_raw).await.map_err(|e| {
             let msg = format!(
-                "save object blob to file error! path={}, {}",
+                "save object blob to file error! path={}, size={}bytes, {}",
                 path.display(),
+                data.object_raw.len(),
                 e
             );
             error!("{}", msg);
@@ -113,8 +121,9 @@ impl BlobStorage for FileBlobStorage {
         })?;
 
         info!(
-            "save object blob to file success! object={}",
-            data.object_id
+            "save object blob to file success! object={}, size={}bytes",
+            data.object_id,
+            data.object_raw.len(),
         );
         Ok(())
     }
@@ -199,5 +208,35 @@ impl BlobStorage for FileBlobStorage {
         };
 
         Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cyfs_core::*;
+    use cyfs_util::get_cyfs_root_path;
+
+    async fn test_dir() {
+        let root = get_cyfs_root_path().join("tmp").join("test_blob_storage");
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = FileBlobStorage::new(root);
+
+        let count: usize = 1024 * 1024;
+        for i in 0..count {
+            let obj = Text::create(&format!("test{}", i), "", "");
+            let id = obj.desc().calculate_id();
+            storage.get_full_path(&id, true).await.unwrap();
+            if i % 1024 == 0 {
+                println!("gen dir index: {}", i);
+            }
+        }
+    }
+
+    #[test]
+    fn main() {
+        async_std::task::block_on(async move {
+            test_dir().await;
+        });
     }
 }

@@ -304,6 +304,7 @@ impl UtilLocalService {
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
+                access: req.access.map(|v| v.value()),
             };
             let task_id = self
                 .task_manager
@@ -338,6 +339,7 @@ impl UtilLocalService {
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
+                access: req.access.map(|v|v.value()),
                 device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };
             let task_id = self

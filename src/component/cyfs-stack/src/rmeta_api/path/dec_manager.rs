@@ -13,6 +13,7 @@ struct GlobalStateDecPathMetaHolder {
     dec_id: Option<ObjectId>,
     meta: Arc<OnceCell<BuckyResult<GlobalStatePathMetaSyncCollection>>>,
     noc: NamedObjectCacheRef,
+    device_id: DeviceId,
 
     storage: Arc<GlobalStatePathMetaStorage>,
 
@@ -26,6 +27,7 @@ impl GlobalStateDecPathMetaHolder {
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
         noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
         let storage = GlobalStatePathMetaStorage::new(isolate, &dec_id);
 
@@ -35,6 +37,7 @@ impl GlobalStateDecPathMetaHolder {
             dec_id,
             meta: Arc::new(OnceCell::new()),
             noc,
+            device_id,
             storage: Arc::new(storage),
             load_reenter_manager: ReenterCallManager::new(),
         }
@@ -58,10 +61,11 @@ impl GlobalStateDecPathMetaHolder {
         let noc = self.noc.clone();
         let meta = self.meta.clone();
         let storage = self.storage.clone();
+        let device_id = self.device_id.clone();
 
         self.load_reenter_manager
             .call(&(), async move {
-                let ret = Self::load(root_state, category, dec_id, noc, storage).await;
+                let ret = Self::load(root_state, category, dec_id, noc, storage, device_id).await;
                 if let Err(_) = meta.set(ret) {
                     unreachable!();
                 }
@@ -79,6 +83,7 @@ impl GlobalStateDecPathMetaHolder {
         dec_id: Option<ObjectId>,
         noc: NamedObjectCacheRef,
         storage: Arc<GlobalStatePathMetaStorage>,
+        device_id: DeviceId,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
         let meta_path = format!("{}/{}", CYFS_GLOBAL_STATE_META_PATH, category.as_str());
 
@@ -113,7 +118,7 @@ impl GlobalStateDecPathMetaHolder {
             serde_json::to_string(&data.coll().read().unwrap() as &GlobalStatePathMeta).unwrap(),
         );
 
-        let ret = GlobalStatePathMetaSyncCollection::new(storage, data);
+        let ret = GlobalStatePathMetaSyncCollection::new(device_id, storage, data);
         Ok(ret)
     }
 }
@@ -130,6 +135,7 @@ impl GlobalStateDecPathMetaManager {
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
         noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
         let meta = GlobalStateDecPathMetaHolder::new(
             isolate,
@@ -137,6 +143,7 @@ impl GlobalStateDecPathMetaManager {
             category,
             dec_id.clone(),
             noc.clone(),
+            device_id,
         );
 
         Self { dec_id, meta }

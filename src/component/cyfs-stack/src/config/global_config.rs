@@ -1,4 +1,5 @@
-use crate::stack::{CyfsStackParams, BdtStackParams};
+use crate::stack::CyfsStackParams;
+use cyfs_bdt_ext::BdtStackParams;
 use cyfs_lib::*;
 
 use crossbeam::atomic::AtomicCell;
@@ -15,7 +16,7 @@ pub struct StackGlobalConfigInner {
 }
 
 impl StackGlobalConfigInner {
-    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams,) -> Self {
+    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams) -> Self {
         Self {
             stack_params,
             bdt_params,
@@ -66,8 +67,11 @@ impl StackGlobalConfigInner {
 pub struct StackGlobalConfig(Arc<StackGlobalConfigInner>);
 
 impl StackGlobalConfig {
-    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams,) -> Self {
-        Self(Arc::new(StackGlobalConfigInner::new(stack_params, bdt_params)))
+    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams) -> Self {
+        Self(Arc::new(StackGlobalConfigInner::new(
+            stack_params,
+            bdt_params,
+        )))
     }
 }
 

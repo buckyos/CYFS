@@ -1,9 +1,8 @@
-use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_lib::BrowserSanboxMode;
+use cyfs_util::{LOCAL_DEVICE_MANAGER, DeviceInfo};
 
 use std::str::FromStr;
-
 
 pub const BDT_ENDPOINTS: &str = r#"
 [[stack.bdt.endpoint]]
@@ -185,7 +184,10 @@ impl CyfsServiceLoaderConfig {
     pub fn new_from_config(node: toml::Value) -> BuckyResult<Self> {
         Self::check_config_node(&node)?;
 
-        info!("will use config: \n{}", toml::to_string_pretty(&node).unwrap_or("".to_owned()));
+        info!(
+            "will use config: \n{}",
+            toml::to_string_pretty(&node).unwrap_or("".to_owned())
+        );
 
         Ok(Self { node })
     }
@@ -200,7 +202,7 @@ impl CyfsServiceLoaderConfig {
     pub fn node(&self) -> &toml::Value {
         &self.node
     }
-    
+
     pub fn gen_bdt_endpoints(param: &BdtEndPointParams) -> String {
         let mut ret = BDT_ENDPOINTS
             .replace("${bdt_port}", &param.bdt_port.to_string())
@@ -293,10 +295,7 @@ impl CyfsServiceLoaderConfig {
         match &node {
             toml::Value::Table(_) => Ok(()),
             _ => {
-                let msg = format!(
-                    "stack config root node invalid format! config={:?}",
-                    node
-                );
+                let msg = format!("stack config root node invalid format! config={:?}", node);
                 error!("{}", msg);
                 Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)))
             }

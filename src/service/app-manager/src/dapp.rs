@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
+use std::sync::Mutex;
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
@@ -30,7 +31,7 @@ pub struct DApp {
     dec_id: String,
     info: DAppInfo,
     work_dir: PathBuf,
-    process: Option<Child>,
+    process: Mutex<Option<Child>>,
 }
 
 fn get_str(value: &Value, key: &str) -> BuckyResult<String> {
@@ -96,11 +97,23 @@ impl DApp {
 
         // 解析packge.cfg完成，提取关键字段
         let app_info = DApp::parse_info(app_info_root)?;
+        if app_info.start.is_empty() {
+            let msg = format!("app {} has no start script!", &dec_id);
+            warn!("{}", &msg);
+        }
+        if app_info.status.is_empty() {
+            let msg = format!("app {} has no status script!", &dec_id);
+            warn!("{}", &msg);
+        }
+        if app_info.stop.is_empty() {
+            let msg = format!("app {} has no stop script!", &dec_id);
+            warn!("{}", &msg);
+        }
         Ok(DApp {
-            dec_id: dec_id,
+            dec_id,
             info: app_info,
             work_dir: path.clone(),
-            process: None,
+            process: Mutex::new(None),
         })
     }
 
@@ -160,6 +173,7 @@ impl DApp {
     fn run(cmd: &str, dir: &Path, detach: bool, stdout: Option<File>) -> BuckyResult<Child> {
         let args: Vec<&str> = ProcessUtil::parse_cmd(cmd);
         if args.len() == 0 {
+            error!("parse cmd {} failed, cmd empty?", cmd);
             return Err(BuckyError::from(BuckyErrorCode::InvalidData));
         }
         info!("run cmd {} in {}", cmd, dir.display());
@@ -194,7 +208,7 @@ impl DApp {
         }
     }
 
-    pub fn get_start_cmd(&mut self) -> BuckyResult<&str> {
+    pub fn get_start_cmd(&self) -> BuckyResult<&str> {
         Ok(&self.info.start)
     }
 
@@ -218,7 +232,7 @@ impl DApp {
         Ok(result)
     }
 
-    pub fn start(&mut self) -> BuckyResult<bool> {
+    pub fn start(&self) -> BuckyResult<bool> {
         if !self.status()? {
             let child = DApp::run(&self.info.start, &self.work_dir, true, None)?;
 
@@ -238,7 +252,7 @@ impl DApp {
                 self.dec_id, self.info.id, id
             );
 
-            self.process = Some(child);
+            *self.process.lock().unwrap() = Some(child);
 
             return Ok(true);
         }
@@ -319,18 +333,19 @@ impl DApp {
         Ok(exit_code != 0)
     }
 
-    pub fn status(&mut self) -> BuckyResult<bool> {
-        if self.process.is_none() {
+    pub fn status(&self) -> BuckyResult<bool> {
+        let mut proc = self.process.lock().unwrap();
+        if proc.is_none() {
             info!("process obj not exist, check by cmd");
             self.status_by_cmd()
         } else {
             // app是这个进程起的，通过Child对象来判断状态，也能阻止僵尸进程
             info!("process obj exist, try wait");
-            match self.process.as_mut().unwrap().try_wait() {
+            match proc.as_mut().unwrap().try_wait() {
                 Ok(Some(status)) => {
                     info!("app exited, name={}, status={}", self.info.id, status);
 
-                    let mut process = std::mem::replace(&mut self.process, None).unwrap();
+                    let mut process = proc.take().unwrap();
                     match process.wait() {
                         Ok(_) => {
                             info!("wait app process complete! name={}", self.info.id);
@@ -355,7 +370,7 @@ impl DApp {
         }
     }
 
-    pub fn stop(&mut self) -> BuckyResult<bool> {
+    pub fn stop(&self) -> BuckyResult<bool> {
         match self.status() {
             Err(e) => {
                 warn!("check app status failed, app:{}, err:{}", &self.info.id, e);
@@ -363,7 +378,7 @@ impl DApp {
             }
             Ok(is_running) => {
                 if is_running {
-                    let process = self.process.take();
+                    let process = self.process.lock().unwrap().take();
                     if process.is_some() {
                         let mut process = process.unwrap();
                         info!("stop app through child process");

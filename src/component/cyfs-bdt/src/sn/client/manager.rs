@@ -17,7 +17,7 @@ use crate::{
 };
 use super::{
     cache::*, 
-    ping::{PingConfig, PingClients}, 
+    ping::{PingConfig, PingClients, SnStatus}, 
     call::{CallConfig, CallManager}
 };
 
@@ -78,6 +78,37 @@ impl ClientManager {
 
     pub fn ping(&self) -> PingClients {
         self.0.ping.read().unwrap().clone()
+    }
+
+    pub fn reset(&self) -> Option<PingClients> {
+        let next = {
+            let mut ping = self.0.ping.write().unwrap();
+            if let Some(status) = ping.status() {
+                if SnStatus::Offline == status {
+                    let to_close = ping.clone();
+                    let to_start = PingClients::new(
+                        self.0.stack.clone(), 
+                        self.0.gen_seq.clone(), 
+                        to_close.net_listener().reset(None), 
+                        to_close.sn_list().clone(), 
+                        to_close.default_local()
+                    );
+                    *ping = to_start.clone();
+                    Some((to_start, to_close))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some((to_start, to_close)) = next {
+            to_close.stop();
+            Some(to_start)
+        } else {
+            None
+        }
     }
 
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {

@@ -17,4 +17,3 @@ cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
-thread_local = "1.1"

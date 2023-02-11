@@ -98,11 +98,11 @@ impl GlobalStateAccessorService {
             }
             _ => {
                 let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
-                    let obj = root_cache.get_object_map(&object_id).await?;
-                    match obj {
-                        Some(obj) => {
+                    let ret = root_cache.get_object_map(&object_id).await?;
+                    match ret {
+                        Some(object) => {
                             let object = {
-                                let object_map = obj.lock().await;
+                                let object_map = object.lock().await;
                                 object_map.clone()
                             };
 
@@ -192,8 +192,8 @@ impl GlobalStateAccessorService {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
         }
 
-        let obj = root_cache.get_object_map(&target).await?;
-        if obj.is_none() {
+        let ret = root_cache.get_object_map(&target).await?;
+        if ret.is_none() {
             let msg = format!(
                 "list but target object not found! {}, path={}, target={}",
                 req.common.source, req.inner_path, target,
@@ -201,7 +201,7 @@ impl GlobalStateAccessorService {
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
-        let obj = obj.unwrap();
+        let obj = ret.unwrap();
 
         let page_index = req.page_index.unwrap_or(0) as usize;
         let page_size = req.page_size.unwrap_or(1024) as usize;

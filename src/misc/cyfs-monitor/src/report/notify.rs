@@ -25,9 +25,16 @@ impl Notifier {
             dingtalk_url: dingtalk_url.to_owned(),
         }
     }
-    
+
     pub async fn report(&self, info: &MonitorErrorInfo) -> BuckyResult<()> {
-        let content = format!("CYFS Monitor report: \nchannel:{}\nservice:{}\ncode:{:?}\nmsg:{}", get_channel(), info.service, info.error.code(), info.error.msg());
+        let content = format!(r#"
+CYFS Monitor report:
+    channel: {}
+    service: {}
+    case: {}
+    code: {:?}
+    msg: {}
+"#, get_channel(), &info.service, &info.case, info.error.code(), info.error.msg());
 
         let msg = serde_json::json!({
             "msgtype": "text",
@@ -36,14 +43,11 @@ impl Notifier {
             },
             "at": {
                 "atMobiles": [],
-                "isAtAll": true,
+                "isAtAll": info.at_all,
             }
         });
 
-        let client = surf::client();
-        let req = surf::post(&self.dingtalk_url).body(msg);
-
-        let mut _res = client.send(req).await.map_err(|e|{
+        let _ = surf::post(&self.dingtalk_url).body(msg).await.map_err(|e|{
             let msg = format!("report to dingtalk error! {}", e);
             error!("{}", msg);
             BuckyError::from(msg)

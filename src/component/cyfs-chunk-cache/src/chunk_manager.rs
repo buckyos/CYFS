@@ -30,7 +30,12 @@ impl ChunkManager {
 
     pub async fn init(&self, isolate: &str) -> BuckyResult<()> {
         let chunk_cache: Arc<dyn ChunkCache> = Arc::new(LocalChunkCache::<SingleDiskChunkCache, CYFSDiskScanner>::new(isolate, CYFSDiskScanner).await?);
-        *self.chunk_cache.write().unwrap() = Some(chunk_cache);
+        {
+            let mut slot = self.chunk_cache.write().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(chunk_cache);
+        }
+        
         Ok(())
     }
 
@@ -58,7 +63,7 @@ impl ChunkManager {
         chunk_cache.delete_chunk(chunk_id).await
     }
 
-    pub async fn put_chunk(&self, chunk_id: &ChunkId, chunk: &dyn Chunk) -> BuckyResult<()> {
+    pub async fn put_chunk(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         let chunk_cache = {
             let chunk_cache = self.chunk_cache.read().unwrap();
             chunk_cache.as_ref().unwrap().clone()

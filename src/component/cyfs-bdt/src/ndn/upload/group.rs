@@ -13,15 +13,32 @@ use super::{
     common::*
 };
 
-struct StateImpl {
+enum ControlStateImpl {
+    Normal(StateWaiter), 
+    Canceled,
+}
+
+struct UploadingState {
     entries: HashMap<String, Box<dyn UploadTask>>, 
     running: Vec<Box<dyn UploadTask>>, 
+    closed: bool, 
     history_speed: HistorySpeed, 
-    control_state: UploadTaskControlState
+}
+
+
+enum TaskStateImpl {
+    Uploading(UploadingState), 
+    Finished, 
+    Error(BuckyError), 
+}
+
+struct StateImpl {
+    task_state: TaskStateImpl, 
+    control_state: ControlStateImpl
 }
 
 struct TaskImpl {
-    priority: UploadTaskPriority, 
+    history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
 
@@ -29,19 +46,27 @@ struct TaskImpl {
 pub struct UploadGroup(Arc<TaskImpl>);
 
 impl UploadGroup {
-    pub fn new(history_speed: HistorySpeedConfig, priority: Option<UploadTaskPriority>) -> Self {
+    pub fn new(history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(TaskImpl {
-            priority: priority.unwrap_or_default(), 
+            history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl { 
-                entries: Default::default(), 
-                running: Default::default(), 
-                history_speed: HistorySpeed::new(0, history_speed), 
-                control_state: UploadTaskControlState::Normal
+                task_state: TaskStateImpl::Uploading(UploadingState {
+                    entries: Default::default(), 
+                    running: Default::default(), 
+                    closed: false, 
+                    history_speed: HistorySpeed::new(0, history_speed), 
+                }), 
+                control_state: ControlStateImpl::Normal(StateWaiter::new())
             })
         }))
     }
+
+    pub fn history_config(&self) -> &HistorySpeedConfig {
+        &self.0.history_speed
+    }
 }
 
+#[async_trait::async_trait]
 impl UploadTask for UploadGroup {
     fn clone_as_task(&self) -> Box<dyn UploadTask> {
         Box::new(self.clone())
@@ -51,65 +76,155 @@ impl UploadTask for UploadGroup {
         UploadTaskState::Uploading(0)
     }
 
-    fn control_state(&self) -> UploadTaskControlState {
-        self.0.state.read().unwrap().control_state.clone()
+    async fn wait_finish(&self) -> UploadTaskState {
+        unimplemented!()
     }
 
-    fn priority_score(&self) -> u8 {
-        self.0.priority as u8
+    fn control_state(&self) -> UploadTaskControlState {
+        match &self.0.state.read().unwrap().control_state {
+            ControlStateImpl::Normal(_) => UploadTaskControlState::Normal, 
+            ControlStateImpl::Canceled => UploadTaskControlState::Canceled
+        }
+    }
+
+    
+    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
+        let (tasks, waiters) = {
+            let mut state = self.0.state.write().unwrap();
+            let waiters = match &mut state.control_state {
+                ControlStateImpl::Normal(waiters) => {
+                    let waiters = Some(waiters.transfer());
+                    state.control_state = ControlStateImpl::Canceled;
+                    waiters
+                }, 
+                _ => None
+            };
+
+            let tasks = match &mut state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
+                    let tasks: Vec<Box<dyn UploadTask>> = uploading.running.iter().map(|t| t.clone_as_task()).collect();
+                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    tasks
+                },
+                _ => vec![]
+            };
+
+            (tasks, waiters)
+        };
+
+        if let Some(waiters) = waiters {
+            waiters.wake();
+        }
+
+        for task in tasks {
+            let _ = task.cancel();
+        }
+        
+        Ok(UploadTaskControlState::Canceled)
     }
 
     fn add_task(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         let mut state = self.0.state.write().unwrap();
-        state.running.push(sub.clone_as_task());
-        if let Some(path) = path {
-            state.entries.insert(path, sub);
+        match &mut state.task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                if !uploading.closed {
+                    uploading.running.push(sub.clone_as_task());
+                    if let Some(path) = path {
+                        if let Some(exists) = uploading.entries.insert(path, sub) {
+                            let _ = exists.cancel();
+                        }
+                    }
+                    Ok(())
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
+                }
+            },
+            _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
         }
-        Ok(())
     }
 
     fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
-        let mut names = path.split("::");
-        let name = names.next().unwrap();
-
-        let mut sub = self.0.state.read().unwrap().entries.get(name).map(|t| t.clone_as_task());
-        if sub.is_none() {
-            sub 
+        if path.len() == 0 {
+            Some(self.clone_as_task())
         } else {
-            for name in names {
-                sub = sub.and_then(|t| t.sub_task(name));
-                if sub.is_none() {
-                    break;
-                }
+            let mut names = path.split("/");
+            let name = names.next().unwrap();
+    
+            let state = self.0.state.read().unwrap(); 
+            match &state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
+                    let mut sub = uploading.entries.get(name).map(|t| t.clone_as_task());
+                    if sub.is_none() {
+                        sub 
+                    } else {
+                        for name in names {
+                            sub = sub.and_then(|t| t.sub_task(name));
+                            if sub.is_none() {
+                                break;
+                            }
+                        }
+                        sub
+                    }
+                },
+                _ => None
             }
-            
-            sub
         }
+    }
+
+    fn close(&self) -> BuckyResult<()> {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                uploading.closed = true;
+                if uploading.running.len() == 0 {
+                    state.task_state = TaskStateImpl::Finished;
+                }
+            },
+            _ => {}
+        }
+        Ok(())
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
         let mut state = self.0.state.write().unwrap();
         let mut running = vec![];
         let mut cur_speed = 0;
-        for sub in &state.running {
-            match sub.state() {
-                UploadTaskState::Finished | UploadTaskState::Error(_) => continue, 
-                _ => {
-                    cur_speed += sub.calc_speed(when);
-                    running.push(sub.clone_as_task());
+        match &mut state.task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                for sub in &uploading.running {
+                    match sub.state() {
+                        UploadTaskState::Finished | UploadTaskState::Error(_) => continue, 
+                        _ => {
+                            cur_speed += sub.calc_speed(when);
+                            running.push(sub.clone_as_task());
+                        }
+                    }  
                 }
-            }  
+                uploading.history_speed.update(Some(cur_speed), when);
+                if running.len() == 0 && uploading.closed {
+                    state.task_state = TaskStateImpl::Finished;
+                } else {
+                    uploading.running = running;
+                }
+                cur_speed
+            },
+            _ => 0
         }
-        state.history_speed.update(Some(cur_speed), when);
-        state.running = running;
-        cur_speed
     }
 
     fn cur_speed(&self) -> u32 {
-        self.0.state.read().unwrap().history_speed.latest()
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.history_speed.latest(),
+            _ => 0
+        }
     }
 
     fn history_speed(&self) -> u32 {
-        self.0.state.read().unwrap().history_speed.average()
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.history_speed.average(),
+            _ => 0
+        }
     }
 }

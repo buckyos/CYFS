@@ -110,7 +110,7 @@ impl FrontService {
         };
 
         let common = NONInputRequestCommon {
-            req_path: None,
+            req_path: req.req_path,
             source: req.source,
             level: NONAPILevel::Router,
             target,
@@ -154,6 +154,8 @@ impl FrontService {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: None,
+            context: req.context,
+            group: req.group,
         };
 
         self.ndn.get_data(ndn_req).await
@@ -183,7 +185,7 @@ impl FrontService {
         };
 
         let common = NDNInputRequestCommon {
-            req_path: None,
+            req_path: req.req_path,
             source: req.source,
             level: NDNAPILevel::Router,
             referer_object: vec![],
@@ -198,6 +200,8 @@ impl FrontService {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: None,
+            context: req.context,
+            group: req.group.clone(),
         };
 
         self.ndn.get_data(req).await
@@ -347,7 +351,7 @@ impl FrontService {
                         assert_eq!(mode, FrontRequestGetMode::Data);
 
                         let ndn_req =
-                            FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+                            FrontNDNRequest::new_r_resp(req, &state_resp);
                         let resp = self.process_get_chunk(ndn_req).await?;
 
                         FrontRResponse {
@@ -374,7 +378,7 @@ impl FrontService {
                             FrontRequestGetMode::Data => {
                                 let ndn_req = FrontNDNRequest::new_r_resp(
                                     req,
-                                    state_resp.object.object.clone(),
+                                    &state_resp
                                 );
                                 let ndn_resp = self.process_get_file(ndn_req).await?;
 
@@ -463,6 +467,7 @@ impl FrontService {
                     AppInstallStatus::Installed((_dec_id, dir_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
+                            req_path: None,
                             target,
 
                             object_id: dir_id,
@@ -473,6 +478,8 @@ impl FrontService {
                             format: req.format,
 
                             referer_objects: req.referer_objects,
+                            context: req.context,
+                            group: req.group,
 
                             flags: req.flags,
                         };
@@ -502,6 +509,7 @@ impl FrontService {
                     AppInstallStatus::Installed((_dec_id, local_status_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
+                            req_path: None,
                             target,
 
                             object_id: local_status_id,
@@ -512,6 +520,8 @@ impl FrontService {
                             format: req.format,
 
                             referer_objects: req.referer_objects,
+                            context: req.context,
+                            group: req.group,
                             
                             flags: req.flags,
                         };

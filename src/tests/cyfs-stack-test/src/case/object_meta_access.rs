@@ -4,7 +4,7 @@ use zone_simulator::*;
 
 pub async fn test() {
 
-    let (stack, file_id, owner_id) =  add_file().await;
+    let (stack, file_id, _owner_id) =  add_file().await;
 
     let item = GlobalStateObjectMetaItem {
         selector: format!("obj_type == {}", ObjectTypeCode::File.to_u16()),
