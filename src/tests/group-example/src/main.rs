@@ -436,7 +436,7 @@ mod GroupDecService {
                  * pre_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
                  */
                 let pre_value = pre_state_id.map_or(0, |pre_state_id| {
-                    let buf = pre_state_id.get_slice_value();
+                    let buf = pre_state_id.data();
                     let mut pre_value = [0u8; 8];
                     pre_value.copy_from_slice(&buf[..8]);
                     u64::from_be_bytes(pre_value)
@@ -448,7 +448,10 @@ mod GroupDecService {
                 let delta = u64::from_be_bytes(delta);
 
                 let value = pre_value + delta;
-                ObjectId::from_slice_value(&value.to_be_bytes())
+                ObjectIdDataBuilder::new()
+                    .data(&value.to_be_bytes())
+                    .build()
+                    .unwrap()
             };
 
             let receipt = {
@@ -529,14 +532,14 @@ mod GroupDecService {
             let delta = u64::from_be_bytes(delta);
 
             let pre_value = pre_state_id.map_or(0, |pre_state_id| {
-                let buf = pre_state_id.get_slice_value();
+                let buf = pre_state_id.data();
                 let mut pre_value = [0u8; 8];
                 pre_value.copy_from_slice(&buf[..8]);
                 u64::from_be_bytes(pre_value)
             });
 
             let result_value = execute_result.result_state_id.map_or(0, |result_id| {
-                let buf = result_id.get_slice_value();
+                let buf = result_id.data();
                 let mut result_value = [0u8; 8];
                 result_value.copy_from_slice(&buf[..8]);
                 u64::from_be_bytes(result_value)
@@ -670,7 +673,7 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 1 == 0 {
+        if i % 4 == 0 {
             async_std::task::sleep(Duration::from_millis(1000)).await;
         }
     }

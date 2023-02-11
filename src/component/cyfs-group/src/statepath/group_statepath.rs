@@ -1,4 +1,4 @@
-use cyfs_base::{CustomObjectId, ObjectId};
+use cyfs_base::{ObjectId, ObjectIdDataBuilder};
 
 pub const STATEPATH_SEPARATOR: &str = "/";
 
@@ -19,7 +19,7 @@ pub const STATEPATH_GROUP_DEC_RPATH: &str = ".update";
 pub const STATEPATH_GROUP_DEC_LATEST_VERSION: &str = "latest-version";
 
 lazy_static::lazy_static! {
-    pub static ref STATEPATH_GROUP_DEC_ID: ObjectId = ObjectId::from_slice_value(".group".as_bytes());
+    pub static ref STATEPATH_GROUP_DEC_ID: ObjectId = ObjectIdDataBuilder::new().data(".group".as_bytes()).build().unwrap();
     pub static ref STATEPATH_GROUP_DEC_ID_STR: String = STATEPATH_GROUP_DEC_ID.to_string();
 }
 
