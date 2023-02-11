@@ -16,12 +16,18 @@ evm-runtime = { version = "0.26", path = "runtime", default-features = false }
 sha3 = { version = "0.8", default-features = false }
 rlp = { version = "0.5", default-features = false }
 rlp-derive = "0.1"
-primitive-types = { version = "0.9", default-features = false, features = ["rlp"] }
-serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
-codec = { package = "parity-scale-codec", version = "2.0", default-features = false, features = ["derive"], optional = true }
+primitive-types = { version = "0.9", default-features = false, features = [
+    "rlp",
+] }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+], optional = true }
+codec = { package = "parity-scale-codec", version = "2.0", default-features = false, features = [
+    "derive",
+], optional = true }
 ethereum = { version = "0.7", default-features = false }
-cyfs-base = {path="../../component/cyfs-base"}
-cyfs-base-meta = {path="../../component/cyfs-base-meta"}
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 
 [dev-dependencies]
 criterion = "0.3"
@@ -33,6 +39,26 @@ harness = false
 
 [features]
 default = ["std"]
-with-codec = ["codec", "evm-core/with-codec", "primitive-types/codec", "ethereum/with-codec"]
-with-serde = ["serde", "evm-core/with-serde", "primitive-types/serde", "ethereum/with-serde"]
-std = ["evm-core/std", "evm-gasometer/std", "evm-runtime/std", "sha3/std", "primitive-types/std", "serde/std", "codec/std", "log/std", "ethereum/std"]
+with-codec = [
+    "codec",
+    "evm-core/with-codec",
+    "primitive-types/codec",
+    "ethereum/with-codec",
+]
+with-serde = [
+    "serde",
+    "evm-core/with-serde",
+    "primitive-types/serde",
+    "ethereum/with-serde",
+]
+std = [
+    "evm-core/std",
+    "evm-gasometer/std",
+    "evm-runtime/std",
+    "sha3/std",
+    "primitive-types/std",
+    "serde/std",
+    "codec/std",
+    "log/std",
+    "ethereum/std",
+]
