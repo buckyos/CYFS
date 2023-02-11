@@ -68,6 +68,10 @@ impl Service {
         &self.fid
     }
 
+    pub fn package_local_status(&self) -> ServicePackageLocalState {
+        self.info.lock().unwrap().state
+    }
+
     // bind成功后才可以调用
     pub fn current(&self) -> PathBuf {
         self.info.lock().unwrap().current()
@@ -108,7 +112,7 @@ impl Service {
                 );
 
                 error!("{}", msg);
-                Err(BuckyError::from(msg))
+                Err(BuckyError::new(e.code(), msg))
             } else {
                 info!("sync service package success! service={}", self.name);
 
@@ -538,6 +542,8 @@ impl Service {
             self.name, self.full_fid,
         );
 
+        self.info.lock().unwrap().state = ServicePackageLocalState::Downloading;
+
         let file = {
             REPO_MANAGER
                 .fetch_service(self.full_fid.as_str())
@@ -547,6 +553,8 @@ impl Service {
                         "download service package failed! service={}, fid={}, err={}",
                         self.name, self.full_fid, e
                     );
+
+                    self.info.lock().unwrap().state = ServicePackageLocalState::NotExists;
 
                     e
                 })?
@@ -561,7 +569,12 @@ impl Service {
         self.sync_state(ServiceState::Stop);
 
         // 加载新的包文件
-        let ret = self.info.lock().unwrap().load_package_file(&file)?;
+        let ret = self.info.lock().unwrap().load_package_file(&file).map_err(|e| {
+            self.info.lock().unwrap().state = ServicePackageLocalState::Invalid;
+            e
+        })?;
+
+        self.info.lock().unwrap().state = ServicePackageLocalState::Ready;
 
         self.sync_state(ServiceState::Stop);
 
