@@ -26,19 +26,28 @@ impl Listener {
                 Ok(pkgs) => {
                     for datagram in pkgs {
                         let remote = datagram.source.remote.object_id().clone();
-                        if let Ok((pkg, remain)) =
-                            HotstuffPackage::raw_decode(datagram.data.as_slice())
-                        {
-                            log::debug!(
-                                "[group-listener] {:?}-{} recv message from {:?}, msg: {:?}, len: {}",
-                                pkg.rpath(),
-                                local_device_id,
-                                remote,
-                                pkg,
-                                datagram.data.len()
-                            );
-                            assert_eq!(remain.len(), 0);
-                            processor.on_message(pkg, remote).await;
+                        match HotstuffPackage::raw_decode(datagram.data.as_slice()) {
+                            Ok((pkg, remain)) => {
+                                log::debug!(
+                                    "[group-listener] {:?}-{} recv message from {:?}, msg: {:?}, len: {}",
+                                    pkg.rpath(),
+                                    local_device_id,
+                                    remote,
+                                    pkg,
+                                    datagram.data.len()
+                                );
+                                assert_eq!(remain.len(), 0);
+                                processor.on_message(pkg, remote).await;
+                            }
+                            Err(err) => {
+                                log::debug!(
+                                    "[group-listener] {} recv message from {:?}, len: {} decode failed {:?}",
+                                    local_device_id,
+                                    remote,
+                                    datagram.data.len(),
+                                    err
+                                );
+                            }
                         }
                     }
                 }

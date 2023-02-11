@@ -15,7 +15,6 @@ pub struct GroupConsensusBlockDescContent {
     result_state_id: Option<ObjectId>,
     height: u64,
     meta_block_id: ObjectId,
-    timestamp: u64,
     round: u64,
     group_chunk_id: ObjectId,
 }
@@ -263,7 +262,6 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
 
             height,
             meta_block_id,
-            timestamp: bucky_time_now(),
             body_hash: body.hash(),
             round,
             group_chunk_id,
@@ -271,6 +269,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
 
         let block = GroupConsensusBlockBuilder::new(desc, body)
             .owner(owner)
+            .create_time(bucky_time_now())
             .build();
 
         let block_id = GroupConsensusBlockId::try_from(block.desc().object_id()).unwrap();

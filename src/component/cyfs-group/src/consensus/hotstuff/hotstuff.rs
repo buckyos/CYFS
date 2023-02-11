@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc, time::{SystemTime, Duration}};
 
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
@@ -15,7 +15,7 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, Committee,
+    consensus::{synchronizer::Synchronizer, proposal}, dec_state::StatePusher, helper::Timer, Committee,
     ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
     PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
     HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
@@ -352,7 +352,7 @@ impl HotstuffRunner {
             self.advance_round(tc.round).await;
         }
 
-        self.process_block(block, remote).await
+        self.process_block(block, remote, &proposals).await
     }
 
     fn check_block_result_state(block: &GroupConsensusBlock) -> BuckyResult<()> {
@@ -603,6 +603,7 @@ impl HotstuffRunner {
         &mut self,
         block: &GroupConsensusBlock,
         remote: ObjectId,
+        proposals: &HashMap<ObjectId, GroupProposal>
     ) -> BuckyResult<()> {
         /**
          * 验证过的块执行这个函数
@@ -668,7 +669,7 @@ impl HotstuffRunner {
             return Ok(());
         }
 
-        if let Some(vote) = self.make_vote(block).await {
+        if let Some(vote) = self.make_vote(block, proposals).await {
             log::info!("[hotstuff] local: {:?}, vote to block {}, round: {}",
                 self, block.block_id(), block.round());
 
@@ -836,7 +837,7 @@ impl HotstuffRunner {
             .await;
     }
 
-    async fn make_vote(&mut self, block: &GroupConsensusBlock) -> Option<HotstuffBlockQCVote> {
+    async fn make_vote(&mut self, block: &GroupConsensusBlock, mut proposals: &HashMap<ObjectId, GroupProposal>) -> Option<HotstuffBlockQCVote> {
         if block.round() <= self.store.last_vote_round() {
             log::debug!("[hotstuff] local: {:?}, make vote ignore for timeouted block {}/{}, last vote roud: {}",
                 self, block.block_id(), block.round(), self.store.last_vote_round());
@@ -844,7 +845,19 @@ impl HotstuffRunner {
             return None;
         }
 
-        // TODO: 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
+        // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
+        let mut proposal_temp: HashMap<ObjectId, GroupProposal> = HashMap::new();
+        if proposals.len() == 0 && block.proposals().len() > 0 {
+            match self.non_driver.load_all_proposals_for_block(block, &mut proposal_temp).await {
+                Ok(_) => proposals = &proposal_temp,
+                Err(_) => return None
+            }
+        } else {
+            assert_eq!(proposals.len(), block.proposals().len());
+        }
+        if !Self::check_timestamp_precision(block, proposals) {
+            return None;
+        }
 
         // round只能逐个递增
         let qc_round = block.qc().as_ref().map_or(0, |qc| qc.round);
@@ -897,6 +910,27 @@ impl HotstuffRunner {
         }
 
         Some(vote)
+    }
+
+    fn check_timestamp_precision(block: &GroupConsensusBlock, proposals: &HashMap<ObjectId, GroupProposal>) -> bool {
+        let now = SystemTime::now();
+        let block_timestamp = bucky_time_to_system_time(block.named_object().desc().create_time());
+        if Self::calc_time_delta(now, block_timestamp) > TIME_PRECISION {
+            false
+        } else {
+            for proposal in block.proposals() {
+                let proposal = proposals.get(&proposal.proposal).expect("should load all proposals");
+                let proposal_timestamp = bucky_time_to_system_time(proposal.desc().create_time());
+                if Self::calc_time_delta(block_timestamp, proposal_timestamp) > TIME_PRECISION {
+                    return false
+                }
+            }
+            true
+        }
+    }
+
+    fn calc_time_delta(t1: SystemTime, t2: SystemTime) -> Duration {
+        t1.duration_since(t2).or(t2.duration_since(t1)).unwrap()
     }
 
     async fn handle_vote(
@@ -1359,10 +1393,7 @@ impl HotstuffRunner {
             }
 
             let create_time = bucky_time_to_system_time(proposal.desc().create_time());
-            if now
-                .duration_since(create_time)
-                .or(create_time.duration_since(now))
-                .unwrap()
+            if Self::calc_time_delta(now, create_time)
                 > TIME_PRECISION
             {
                 // 时间误差太大
@@ -1763,7 +1794,7 @@ impl HotstuffRunner {
                 message = self.rx_message.recv().fuse() => match message {
                     Ok((HotstuffMessage::Block(block), remote)) => {
                         if remote == self.local_id {
-                            self.process_block(&block, remote).await
+                            self.process_block(&block, remote, &HashMap::new()).await
                         } else {
                             self.handle_block(&block, remote).await
                         }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use cyfs_base::{
     AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject,
@@ -152,5 +152,45 @@ impl NONDriverHelper {
         } else {
             Err(BuckyError::new(BuckyErrorCode::Unmatch, "not device-id"))
         }
+    }
+
+    pub async fn load_all_proposals_for_block(
+        &self,
+        block: &GroupConsensusBlock,
+        proposals_map: &mut HashMap<ObjectId, GroupProposal>,
+    ) -> BuckyResult<()> {
+        let non_driver = self.clone();
+        let block_owner = block.owner().clone();
+
+        let load_futs = block.proposals().iter().map(|proposal| {
+            let proposal_id = proposal.proposal;
+            let non_driver = non_driver.clone();
+            async move {
+                non_driver
+                    .get_proposal(&proposal_id, Some(&block_owner))
+                    .await
+            }
+        });
+
+        let mut results = futures::future::join_all(load_futs).await;
+        let proposal_count = results.len();
+
+        for i in 0..proposal_count {
+            let result = results.pop().unwrap();
+            let proposal_id = block
+                .proposals()
+                .get(proposal_count - i - 1)
+                .unwrap()
+                .proposal;
+            match result {
+                Ok(proposal) => {
+                    assert_eq!(proposal_id, proposal.desc().object_id());
+                    proposals_map.insert(proposal_id, proposal);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(())
     }
 }

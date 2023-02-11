@@ -1,3 +1,5 @@
+use std::sync::{atomic::AtomicU32, Arc};
+
 use cyfs_base::{DeviceId, ObjectId, PeopleId, RawEncode};
 use cyfs_bdt::{DatagramOptions, DatagramTunnelGuard};
 use cyfs_core::GroupRPath;
@@ -12,6 +14,7 @@ pub struct Sender {
     vport: u16,
     non_driver: NONDriverHelper,
     local_device_id: ObjectId,
+    sequence: Arc<AtomicU32>,
 }
 
 impl Sender {
@@ -26,6 +29,7 @@ impl Sender {
             vport,
             non_driver,
             local_device_id,
+            sequence: Arc::new(AtomicU32::new(rand::random::<u32>() & 0x80000000)),
         }
     }
 
@@ -68,6 +72,10 @@ impl Sender {
         );
 
         let mut options = DatagramOptions::default();
+        options.sequence = Some(cyfs_bdt::TempSeq::from(
+            self.sequence
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        ));
 
         self.datagram
             .send_to(buf.as_slice(), &mut options, &remote, self.vport);

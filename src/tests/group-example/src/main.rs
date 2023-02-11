@@ -347,6 +347,9 @@ mod Client {
 }
 
 mod GroupDecService {
+    use std::{collections::HashSet, sync::Arc};
+
+    use async_std::sync::Mutex;
     use cyfs_base::*;
     use cyfs_core::{
         GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupProposalObject,
@@ -417,11 +420,15 @@ mod GroupDecService {
 
     pub struct MyRPathDelegate {
         local_name: String,
+        finished_proposals: Arc<Mutex<HashSet<ObjectId>>>,
     }
 
     impl MyRPathDelegate {
         pub fn new(local_name: String) -> Self {
-            MyRPathDelegate { local_name }
+            MyRPathDelegate {
+                local_name,
+                finished_proposals: Arc::new(Mutex::new(HashSet::new())),
+            }
         }
     }
 
@@ -545,15 +552,21 @@ mod GroupDecService {
                 u64::from_be_bytes(result_value)
             });
 
+            let proposal_id = proposal.desc().object_id();
+
             log::info!(
-                "proposal commited: height: {}/{}, delta: {}, result: {} -> {}, block: {}, local: {}",
+                "proposal commited: height: {}/{}, delta: {}, result: {} -> {}, proposal: {}, block: {}, local: {}",
                 block.height(), block.round(),
                 delta,
                 pre_value,
                 result_value,
+                proposal_id,
                 block.block_id(),
                 self.local_name
             );
+
+            let has_finished = self.finished_proposals.lock().await.insert(proposal_id);
+            assert!(!has_finished);
         }
 
         async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
@@ -673,7 +686,7 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 4 == 0 {
+        if i % 10 == 0 {
             async_std::task::sleep(Duration::from_millis(1000)).await;
         }
     }
