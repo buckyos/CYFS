@@ -11,6 +11,7 @@ description = "Rust cyfs-stack-loader package"
 [dependencies]
 cyfs-util = { path = "../cyfs-util" }
 cyfs-bdt = { path = "../cyfs-bdt" }
+cyfs-bdt-ext = { path = "../cyfs-bdt-ext" }
 cyfs-stack = { path = "../cyfs-stack" }
 cyfs-lib = { path = "../cyfs-lib" }
 cyfs-base = { path = "../cyfs-base" }

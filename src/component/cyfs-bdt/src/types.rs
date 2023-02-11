@@ -1,6 +1,5 @@
 use async_std::future;
 use cyfs_base::*;
-use cyfs_debug::Mutex;
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use rand::Rng;
 use std::fmt;
@@ -9,7 +8,6 @@ use std::{
     collections::LinkedList,
     sync::{
         atomic::{AtomicU32, Ordering},
-        Arc,
     },
     time::{Duration, SystemTime, UNIX_EPOCH}
 };
@@ -86,23 +84,6 @@ impl<'de> RawDecode<'de> for Sequence {
     }
 }
 
-pub struct SequenceGenerator {
-    next_seq: Arc<Mutex<u32>>,
-}
-
-impl SequenceGenerator {
-    pub fn new() -> Self {
-        SequenceGenerator {
-            next_seq: Arc::new(Mutex::new(1)),
-        }
-    }
-
-    pub fn generate(&self) -> Sequence {
-        let mut next_seq = self.next_seq.lock().unwrap();
-        *next_seq += 1;
-        Sequence(*next_seq - 1)
-    }
-}
 
 #[derive(Clone, Copy, Ord, PartialEq, Eq, Debug)]
 pub struct TempSeq(u32);
@@ -188,6 +169,16 @@ impl<'de> RawDecode<'de> for TempSeq {
 pub struct TempSeqGenerator {
     cur: AtomicU32,
 }
+
+
+impl From<TempSeq> for TempSeqGenerator {
+    fn from(init: TempSeq) -> Self {
+        Self {
+            cur: AtomicU32::new(init.value())
+        }
+    }
+}
+
 
 impl TempSeqGenerator {
     pub fn new() -> Self {
@@ -350,6 +341,16 @@ impl StateWaiter {
     pub async fn wait<T, S: FnOnce() -> T>(waiter: AbortRegistration, state: S) -> T {
         let _ = Abortable::new(future::pending::<()>(), waiter).await;
         state()
+    }
+
+    pub async fn abort_wait<A: futures::Future<Output = BuckyError>, T, S: FnOnce() -> T>(t: A, waiter: AbortRegistration, state: S) -> BuckyResult<T> {
+        match Abortable::new(t, waiter).await {
+            Ok(err) => {
+                //FIXME: remove waker 
+                Err(err)
+            }, 
+            Err(_) =>  Ok(state())
+        }
     }
 
     pub fn wake(self) {

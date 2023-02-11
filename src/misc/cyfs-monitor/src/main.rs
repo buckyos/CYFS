@@ -14,82 +14,11 @@ extern crate log;
 
 const SERVICE_NAME: &str = "monitor";
 
-fn load(config_path: &Path, key: &str) -> BuckyResult<toml::Value> {
-    let contents = std::fs::read_to_string(config_path)
-        .map_err(|e| {
-            let msg = format!(
-                "load monitor config failed! file={}, err={}",
-                config_path.display(),
-                e
-            );
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
-
-    let cfg_node: toml::Value = toml::from_str(&contents).map_err(|e| {
-        let msg = format!(
-            "parse monitor config failed! file={}, content={}, err={}",
-            config_path.display(),
-            contents,
-            e
-        );
-        error!("{}", msg);
-
-        BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-    })?;
-
-    let node = cfg_node.as_table().ok_or_else(|| {
-        let msg = format!(
-            "invalid config format! file={}, content={}",
-            config_path.display(),
-            contents,
-        );
-        error!("{}", msg);
-
-        BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-    })?;
-
-    let node = node.get(key).ok_or_else(|| {
-        println!("config node not found! key={}", key);
-        BuckyError::from(BuckyErrorCode::NotFound)
-    })?;
-
-    Ok(node.clone())
-}
-
-async fn load_config() -> BuckyResult<MontiorConfig> {
-    let mut monitor_config = MontiorConfig::default();
-
-    // 加载服务配置
-    if let Ok(config) = load(Path::new("./monitor.toml"), "config") {
-        let node = config.as_table().ok_or_else(|| {
-            let msg = format!(
-                "invalid log config format! content={}",
-                config,
-            );
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        }).unwrap();
-
-        for (k, v) in node {
-            match k.as_str() {
-                "dingtalk_url" => {
-                    monitor_config.dingtalk_url = Some(v.as_str().unwrap().to_string());
-                }
-                _ => {
-                    warn!("unknown monitor.config field: {}", k.as_str());
-                }
-            }
-        }
-
-        info!("monitor_config: {:?}", monitor_config);
-    } else {
-        warn!("cannot load monitor config file, use default config {:?}", monitor_config);
-    };
-
-    Ok(monitor_config)
+fn get_config(config_path: &Path) -> BuckyResult<MontiorConfig> {
+    Ok(toml::from_slice(&std::fs::read(config_path)?).map_err(|e| {
+        error!("parse config err {}", e);
+        BuckyError::from(BuckyErrorCode::InvalidFormat)
+    })?)
 }
 
 #[async_std::main]
@@ -98,6 +27,7 @@ async fn main() -> ExitCode {
         .version(cyfs_base::get_version())
         .about("monitor cyfs system")
         .arg(Arg::with_name("cases").takes_value(true).multiple(true))
+        .arg(Arg::with_name("args").last(true))
         .get_matches();
     let cases = matches.values_of("cases").map(|i|{i.collect()}).unwrap_or(vec![]);
     let run_once = cases.len() > 0;
@@ -114,12 +44,8 @@ async fn main() -> ExitCode {
         .build()
         .start();
 
-    let monitor_config = load_config()
-        .await
-        .map_err(|_e| {
-            std::process::exit(-1);
-        })
-        .unwrap();
+    let config_path = std::env::current_exe().unwrap().parent().unwrap().join("monitor.toml");
+    let monitor_config = get_config(&config_path).unwrap_or(MontiorConfig::default());
 
     let monitor = monitor::Monitor::new(monitor_config)
         .await

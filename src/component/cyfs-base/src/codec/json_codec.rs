@@ -172,6 +172,43 @@ impl JsonCodecHelper {
         }
     }
 
+    pub fn decode_serde_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<T>
+    where
+    T: for<'a> serde::de::Deserialize<'a>,
+    {
+        let v = obj.get(key).ok_or_else(|| {
+            let msg = format!("field not found: {}", key);
+            warn!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
+
+        <T as Deserialize>::deserialize(v).map_err(|e| {
+            let msg = format!("decode field with serde failed!: key={}, value={:?}, {}", key, v, e);
+            warn!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })
+    }
+
+    pub fn decode_option_serde_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<Option<T>>
+    where
+    T: for<'a> serde::de::Deserialize<'a>,
+    {
+        match obj.get(key) {
+            Some(v) => {
+                let ret = <T as Deserialize>::deserialize(v).map_err(|e| {
+                    let msg = format!("decode field with serde failed!: key={}, value={:?}, {}", key, v, e);
+                    warn!("{}", msg);
+        
+                    BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                })?;
+                Ok(Some(ret))
+            }
+            None => Ok(None)
+        }
+    }
+
     pub fn decode_int_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<T>
     where
         T: FromStr + TryFrom<u64> + TryFrom<i64>,

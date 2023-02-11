@@ -1,7 +1,7 @@
-use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
+use cyfs_util::LOCAL_DEVICE_MANAGER;
 
 pub struct DescUploader {
     meta_client: MetaClient,
@@ -29,7 +29,8 @@ impl DescUploader {
                 &SavedMetaObject::Device(device_info.device.clone()),
                 0,
                 0,
-                0, &device_info.private_key.as_ref().unwrap(),
+                0,
+                &device_info.private_key.as_ref().unwrap(),
             )
             .await
         {

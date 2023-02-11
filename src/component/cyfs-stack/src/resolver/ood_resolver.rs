@@ -1,5 +1,6 @@
 use super::obj_searcher::*;
 use cyfs_base::*;
+use cyfs_bdt::DeviceCache;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ struct ObjectSearcherWrapper(Arc<dyn ObjectSearcher>);
 #[derive(Clone)]
 pub(crate) struct OodResolver {
     device_id: DeviceId,
+    device_cache: Arc<Box<dyn DeviceCache>>,
     searcher: ObjectSearcherRef,
 }
 
@@ -19,9 +21,10 @@ pub(crate) struct OodResolver {
 // 目前认为People也没有owner
 // People,SimpleGroup 对象存在ood_list
 impl OodResolver {
-    pub(crate) fn new(local_device_id: DeviceId, searcher: ObjectSearcherRef) -> Self {
+    pub(crate) fn new(local_device_id: DeviceId, device_cache: Box<dyn DeviceCache>, searcher: ObjectSearcherRef) -> Self {
         Self {
             device_id: local_device_id,
+            device_cache: Arc::new(device_cache),
             searcher,
         }
     }
@@ -72,6 +75,14 @@ impl OodResolver {
         object: Arc<AnyNamedObject>,
     ) -> BuckyResult<Vec<DeviceId>> {
         Self::get_ood_by_object_impl(self.searcher.clone(), object_id, owner_id, object).await
+    }
+
+    pub async fn ensure_device_list(&self, list: &[DeviceId]) -> BuckyResult<()> {
+        for device_id in list {
+            self.device_cache.search(device_id).await?;
+        }
+
+        Ok(())
     }
 
     async fn get_ood_by_object_with_owner(

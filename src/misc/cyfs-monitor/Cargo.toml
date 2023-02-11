@@ -8,7 +8,6 @@ description = "Rust cyfs-monitor package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-bdt = {path = "../../component/cyfs-bdt"}
 cyfs-util = {path = "../../component/cyfs-util"}
 cyfs-base = {path = "../../component/cyfs-base"}
 cyfs-core = {path = "../../component/cyfs-core"}

@@ -1,7 +1,7 @@
 use crate::ndn_api::DirLoader;
-use crate::ndn_api::LocalDataManager;
 use crate::non::*;
 use cyfs_base::*;
+use cyfs_bdt_ext::ChunkStoreReader;
 use cyfs_lib::*;
 
 use std::borrow::Cow;
@@ -20,10 +20,10 @@ pub(crate) struct NONDirLoader {
 }
 
 impl NONDirLoader {
-    pub fn new(non: NONInputProcessorRef, data_manager: LocalDataManager) -> Self {
+    pub fn new(non: NONInputProcessorRef, chunk_reader: ChunkStoreReader) -> Self {
         Self {
             non,
-            dir_loader: DirLoader::new(data_manager),
+            dir_loader: DirLoader::new(chunk_reader),
         }
     }
 
@@ -88,11 +88,11 @@ impl NONDirLoader {
             ret = desc.object_map.get(inner_path2);
             if ret.is_none() {
                 let msg = format!(
-                    "load dir with inner_path but target not found! dir={}, inner_path={}",
+                    "get object from dir with inner_path but target path not exists! dir={}, inner_path={}",
                     req.object_id, inner_path,
                 );
                 warn!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                return Err(BuckyError::new(BuckyErrorCode::InnerPathNotFound, msg));
             }
         }
 
@@ -131,9 +131,11 @@ impl NONDirLoader {
                     }
 
                     // then try load from noc
-                    let ret = self.load_object_from_non(&req.common, &object_id, false).await?;
+                    let ret = self
+                        .load_object_from_non(&req.common, &object_id, false)
+                        .await?;
                     if ret.is_none() {
-                        let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={}", 
+                        let msg = format!("get object from dir with inner_path but target file not found! dir={}, inner_path={}, file={}", 
                             req.object_id, inner_path, object_id);
                         warn!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));

@@ -8,26 +8,25 @@ use async_std::{
     future
 };
 use cyfs_base::*;
-use cyfs_util::{
-    cache::*, 
-};
+
 use crate::{
     types::*, 
     stack::{WeakStack, Stack}, 
-    utils::{mem_tracker::MemTracker, local_chunk_store::LocalChunkReader}
+    utils::*
 };
 use super::{
     channel::{self, ChannelManager}, 
-    chunk::{ChunkManager, ChunkReader}, 
+    chunk::{self, ChunkManager, ChunkReader}, 
     event::*, 
     root::RootTask,
 };
 
 #[derive(Clone)]
 pub struct Config {
-    pub atomic_interval: Duration, 
+    pub atomic_interval: Duration,  
     pub schedule_interval: Duration, 
     pub channel: channel::Config,
+    pub chunk: chunk::Config
 }
 
 
@@ -46,27 +45,17 @@ pub struct NdnStack(Arc<StackImpl>);
 impl NdnStack {
     pub(crate) fn open(
         stack: WeakStack, 
-        ndc: Option<Box<dyn NamedDataCache>>,
-        tracker: Option<Box<dyn TrackerCache>>, 
         store: Option<Box<dyn ChunkReader>>, 
         event_handler: Option<Box<dyn NdnEventHandler>>, 
     ) -> Self {
-       
-        let mem_tracker = MemTracker::new();
-        let tracker = tracker.unwrap_or(TrackerCache::clone(&mem_tracker));
-        let ndc = ndc.unwrap_or(NamedDataCache::clone(&mem_tracker));
-        let store = store.unwrap_or(Box::new(LocalChunkReader::new(ndc.as_ref(), tracker.as_ref())));
+        let store = store.unwrap_or(Box::new(MemChunkStore::new()));
         let event_handler = event_handler.unwrap_or(Box::new(DefaultNdnEventHandler::new()));
         let strong_stack = Stack::from(&stack);
 
         Self(Arc::new(StackImpl {
             stack: stack.clone(), 
             last_schedule: AtomicU64::new(0), 
-            chunk_manager: ChunkManager::new(
-                stack.clone(), 
-                ndc, 
-                tracker, 
-                store), 
+            chunk_manager: ChunkManager::new(stack.clone(), store), 
             channel_manager: ChannelManager::new(stack.clone()), 
             event_handler, 
             root_task: RootTask::new(100000, strong_stack.config().ndn.channel.history_speed.clone()),
@@ -80,8 +69,13 @@ impl NdnStack {
             let ndn = self.clone();
             task::spawn(async move {
                 loop {
-                    ndn.on_time_escape(bucky_time_now());
-                    let _ = future::timeout(atomic_interval, future::pending::<()>()).await;
+                    let start = bucky_time_now();
+                    ndn.on_time_escape(start);
+                    let end = bucky_time_now();
+                    let escaped = Duration::from_micros(end - start);
+                    if escaped < atomic_interval {
+                        let _ = future::timeout(atomic_interval - escaped, future::pending::<()>()).await;
+                    }
                 }
             });
         }   
@@ -91,10 +85,10 @@ impl NdnStack {
         let stack = Stack::from(&self.0.stack);
         let last_schedule = self.0.last_schedule.load(Ordering::SeqCst);
         if now > last_schedule 
-            && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
+            && Duration::from_micros(now - last_schedule) > stack.config().ndn.schedule_interval {
             self.channel_manager().on_schedule(now);
-            self.chunk_manager().on_schedule(now);
             self.root_task().on_schedule(now);
+            self.chunk_manager().on_schedule(now);
             self.0.last_schedule.store(now, Ordering::SeqCst);
         }
         self.channel_manager().on_time_escape(now);
@@ -116,6 +110,6 @@ impl NdnStack {
         self.0.event_handler.as_ref()
     }
 
-
+    
 }
 

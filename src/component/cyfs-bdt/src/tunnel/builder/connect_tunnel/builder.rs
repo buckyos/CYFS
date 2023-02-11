@@ -87,6 +87,7 @@ impl ConnectTunnelBuilder {
 
         let first_box = Arc::new(self.first_box(&local).await);
 
+        info!("{} build with key {}", self, first_box.key());
         let remote_id = build_params.remote_const.device_id();
         let cached_remote = stack.device_cache().get_inner(&remote_id);
         let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
@@ -345,7 +346,9 @@ impl ConnectTunnelBuilder {
         let mut actions = vec![];
 
         let connect_info = remote.connect_info();
-        for udp_interface in net_listener.udp() {
+        
+        // FIXME: ipv6 udp frame may not support supper frame, simply ignore it now
+        for udp_interface in net_listener.udp().iter().filter(|ui| ui.local().addr().is_ipv4()) {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && filter(ep)) {
                 if let Ok((udp_tunnel, newly_created)) = tunnel.create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
                     if newly_created {

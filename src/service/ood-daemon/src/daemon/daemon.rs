@@ -66,7 +66,7 @@ impl Daemon {
     pub async fn run(&self) -> BuckyResult<()> {
         init_system_config().await?;
 
-        self.device_config_manager.init().await?;
+        self.device_config_manager.init()?;
 
         // 关注绑定事件
         let notify = BindNotify {

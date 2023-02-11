@@ -1,6 +1,7 @@
 use cyfs_base::*;
-use cyfs_stack_loader::{CyfsServiceLoader, DeviceInfo, LOCAL_DEVICE_MANAGER};
-use zone_simulator::{CyfsStackInsConfig, TestLoader, TestStack};
+use cyfs_stack_loader::CyfsServiceLoader;
+use cyfs_util::{DeviceInfo, LOCAL_DEVICE_MANAGER};
+use zone_simulator::{CyfsStackInsConfig, TestLoader, TestStack, TestZone};
 
 use crate::profile::*;
 
@@ -33,7 +34,11 @@ impl Loader {
         let device_id = device_info.device.desc().device_id();
         info!("current stack device_id={}", device_id);
 
-        let stack = TestStack::new(device_info, stack_config);
+        let stack = TestStack::new(
+            device_info,
+            stack_config,
+            TestZone::random_requestor_config(),
+        );
         stack
             .init(
                 profile.data.ws,

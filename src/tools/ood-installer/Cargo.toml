@@ -20,7 +20,6 @@ cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 ood-daemon = { path = "../../service/ood-daemon" }
 ood-control = { path = "../../service/ood-control" }
 cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
-cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 async-trait = "0.1.53"
 futures-util = "0.3"

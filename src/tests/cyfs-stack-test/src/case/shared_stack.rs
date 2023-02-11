@@ -1,4 +1,3 @@
-use cyfs_base::*;
 use cyfs_lib::*;
 use zone_simulator::*;
 
@@ -27,8 +26,8 @@ async fn use_once(mut param: SharedCyfsStackParam) {
     stack.wait_online(None).await.unwrap();
 
     let req = UtilGetDeviceStaticInfoRequest::new();
-    let resp = stack.util().get_device_static_info(req).await.unwrap();
-    info!("{}", resp);
+    let _resp = stack.util().get_device_static_info(req).await.unwrap();
+    // info!("{}", resp);
 
     let ret = stack.router_handlers().put_object().add_handler(
         RouterHandlerChain::PreRouter,

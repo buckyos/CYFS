@@ -16,6 +16,8 @@ const SVG_IMAGE: &str = r##"<?xml version="1.0" encoding="UTF-8" standalone="no"
 
 pub async fn test() {
     add_svg().await;
+    
+    info!("test all mime test case success!");
 }
 
 async fn add_svg() {

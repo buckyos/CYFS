@@ -824,6 +824,10 @@ impl TcpStream {
 
 #[async_trait]
 impl StreamProvider for TcpStream {
+    fn remote_id(&self) -> IncreaseId {
+        IncreaseId::default()
+    }
+
     fn local_ep(&self) -> &Endpoint {
         &self.0.local
     }
