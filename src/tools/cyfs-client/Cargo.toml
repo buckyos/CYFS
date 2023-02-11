@@ -16,7 +16,7 @@ cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 cyfs-chunk = { path = "../../component/cyfs-chunk" }
 cyfs-chunk-client = { path = "../../tools/cyfs-chunk-client" }
-cyfs-lib = {path="../../component/cyfs-lib"}
+cyfs-lib = { path = "../../component/cyfs-lib" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 url = "2.2"
 async-h1 = "2.3.3"

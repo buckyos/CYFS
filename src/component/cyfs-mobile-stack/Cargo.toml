@@ -9,10 +9,10 @@ description = "Rust mobile-stack package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-util = {path="../cyfs-util"}
-cyfs-debug = {path="../cyfs-debug"}
-cyfs-base = {path="../cyfs-base"}
-cyfs-lib = {path="../cyfs-lib"}
+cyfs-util = { path = "../cyfs-util" }
+cyfs-debug = { path = "../cyfs-debug" }
+cyfs-base = { path = "../cyfs-base" }
+cyfs-lib = { path = "../cyfs-lib" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 log = "0.4"
