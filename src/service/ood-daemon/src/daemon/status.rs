@@ -4,6 +4,7 @@ use ood_control::*;
 use serde::Serialize;
 
 use std::sync::{Arc, Mutex};
+use once_cell::sync::OnceCell;
 
 #[derive(Serialize)]
 pub struct OODDaemonStatus {
@@ -20,13 +21,37 @@ struct ServiceStatus {
 #[derive(Clone)]
 pub struct OODStatusManager {
     service_list: Arc<Mutex<Vec<ServiceStatus>>>,
+    interface: Arc<OnceCell<HttpTcpListener>>,
 }
 
 impl OODStatusManager {
     fn new() -> Self {
-        Self {
+        let ret = Self {
             service_list: Arc::new(Mutex::new(vec![])),
+            interface: Arc::new(OnceCell::new()),
+        };
+
+        ret.init_interface();
+        ret
+    }
+
+    fn init_interface(&self) {
+        let mut server = HttpServer::new_server();
+        self.register(&mut server);
+
+        let addr = std::net::SocketAddr::new(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            OOD_DAEMON_LOCAL_STATUS_PORT,
+        );
+
+        let interface = HttpTcpListener::new_with_raw_server(addr, Arc::new(server));
+        if let Err(_) = self.interface.set(interface) {
+            unreachable!();
         }
+    }
+
+    pub async fn start(&self) -> BuckyResult<()> {
+        self.interface.get().unwrap().start().await
     }
 
     pub fn register_server(&self) {
