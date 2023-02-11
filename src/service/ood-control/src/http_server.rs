@@ -180,12 +180,12 @@ where
 }
 
 #[derive(Clone)]
-pub(crate) struct HttpServer {
+pub struct HttpServer {
     server: Arc<::tide::Server<()>>,
 }
 
 impl HttpServer {
-    fn new_server() -> ::tide::Server<()> {
+    pub fn new_server() -> ::tide::Server<()> {
         use http_types::headers::HeaderValue;
         use tide::security::{CorsMiddleware, Origin};
 
@@ -211,6 +211,10 @@ impl HttpServer {
         }
     }
 
+    pub fn server(&self) -> &Arc<::tide::Server<()>> {
+        &self.server
+    }
+    
     pub async fn respond(
         &self,
         req: http_types::Request,
