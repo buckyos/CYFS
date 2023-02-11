@@ -26,11 +26,11 @@ impl ServiceItem {
             true => match GATEWAY_MONITOR.zone_role() {
                 ZoneRole::ActiveOOD => self.config.target_state,
                 _ => match self.config.name.as_str() {
-                    GATEWAY_SERVICE => ServiceState::RUN,
-                    _ => ServiceState::STOP,
+                    GATEWAY_SERVICE => ServiceState::Run,
+                    _ => ServiceState::Stop,
                 },
             },
-            false => ServiceState::STOP,
+            false => ServiceState::Stop,
         }
     }
 }
@@ -241,7 +241,7 @@ impl ServiceManager {
         let service_info = service_info.unwrap();
 
         let service = service_info.service.unwrap();
-        service.sync_state(ServiceState::STOP);
+        service.sync_state(ServiceState::Stop);
         service.remove();
     }
 
@@ -419,7 +419,7 @@ impl ServiceManager {
 
         // 首先停止老的服务
         if let Some(old_service) = old_service {
-            old_service.sync_state(ServiceState::STOP);
+            old_service.sync_state(ServiceState::Stop);
         }
 
         // 尝试启动新的服务
@@ -471,7 +471,7 @@ impl ServiceManager {
                 continue;
             }
 
-            if service_info.target_state() == ServiceState::RUN {
+            if service_info.target_state() == ServiceState::Run {
                 futures.push(Self::sync_service_package(service_info));
             }
         }
