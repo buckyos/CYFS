@@ -513,6 +513,8 @@ impl SingleDiskChunkCache {
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
         #[cfg(target_os = "windows")]
         {
+            use std::borrow::Cow;
+
             let hash_str = file_id.to_base36();
             let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
             let (mut first, mut mid) = tmp.split_at(tmp.len() - 3);
@@ -524,8 +526,17 @@ impl SingleDiskChunkCache {
                 }
                 _ => {},
             }
+
+            let last = match last {
+                "con" | "aux" | "nul" | "prn" => {
+                    Cow::Owned(format!("{}_", last))
+                }
+                _ => {
+                    Cow::Borrowed(last)
+                },
+            };
             
-            let path = self.path.join(last).join(mid);
+            let path = self.path.join(last.as_ref()).join(mid);
             if is_create && !path.exists() {
                 if let Err(e) = create_dir_all(path.as_path()) {
                     log::error!("create dir failed! {}, {}", path.display(), e);
