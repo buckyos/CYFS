@@ -178,7 +178,7 @@ dependencies = [
  "wait-timeout",
  "walkdir",
  "which",
- "zip",
+ "zip-extract",
 ]
 
 [[package]]
@@ -1513,7 +1513,7 @@ dependencies = [
  "simple_logger 2.3.0",
  "sqlx",
  "url 2.3.0",
- "zip",
+ "zip 0.6.3",
 ]
 
 [[package]]
@@ -2206,7 +2206,7 @@ dependencies = [
  "sqlx",
  "tide",
  "toml",
- "zip",
+ "zip 0.6.3",
 ]
 
 [[package]]
@@ -2350,7 +2350,7 @@ dependencies = [
  "url 2.3.0",
  "walkdir",
  "winapi",
- "zip",
+ "zip 0.6.3",
 ]
 
 [[package]]
@@ -4453,7 +4453,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
- "zip",
+ "zip 0.6.3",
 ]
 
 [[package]]
@@ -4562,7 +4562,7 @@ dependencies = [
  "sha2 0.8.2",
  "simple_logger 2.3.0",
  "walkdir",
- "zip",
+ "zip 0.6.3",
 ]
 
 [[package]]
@@ -7575,6 +7575,20 @@ dependencies = [
 
 [[package]]
 name = "zip"
+version = "0.5.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93ab48844d61251bb3835145c521d88aa4031d7139e8485990f60ca911fa0815"
+dependencies = [
+ "byteorder",
+ "bzip2",
+ "crc32fast",
+ "flate2",
+ "thiserror",
+ "time 0.1.44",
+]
+
+[[package]]
+name = "zip"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "537ce7411d25e54e8ae21a7ce0b15840e7bfcff15b51d697ec3266cc76bdf080"
@@ -7591,6 +7605,17 @@ dependencies = [
  "sha1 0.10.5",
  "time 0.3.16",
  "zstd",
+]
+
+[[package]]
+name = "zip-extract"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c5cc0309f6e81ab96c2b43d5e935025f8732c886690be8f78f68e06bad1d274"
+dependencies = [
+ "log 0.4.17",
+ "thiserror",
+ "zip 0.5.13",
 ]
 
 [[package]]
