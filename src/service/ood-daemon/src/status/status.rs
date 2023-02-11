@@ -1,18 +1,15 @@
 use cyfs_base::*;
 use cyfs_lib::RequestorHelper;
 use ood_control::*;
-use serde::Serialize;
+use super::service_status::*;
 
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::OnceCell;
 
-#[derive(Serialize)]
-pub struct OODDaemonStatus {
-
-}
 
 #[derive(Serialize)]
-struct ServiceStatus {
+struct ServiceStatusCache {
     name: String,
     status: serde_json::Value,
     last_update_tick: u64,
@@ -20,7 +17,7 @@ struct ServiceStatus {
 
 #[derive(Clone)]
 pub struct OODStatusManager {
-    service_list: Arc<Mutex<Vec<ServiceStatus>>>,
+    service_list: Arc<Mutex<Vec<ServiceStatusCache>>>,
     interface: Arc<OnceCell<HttpTcpListener>>,
 }
 
@@ -91,7 +88,7 @@ impl OODStatusManager {
             }
         }
 
-        list.push(ServiceStatus {
+        list.push(ServiceStatusCache {
             name: name.to_owned(),
             status,
             last_update_tick: bucky_time_now(),
