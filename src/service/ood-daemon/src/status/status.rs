@@ -19,6 +19,8 @@ struct ServiceStatusCache {
 pub struct OODStatusManager {
     service_list: Arc<Mutex<Vec<ServiceStatusCache>>>,
     interface: Arc<OnceCell<HttpTcpListener>>,
+
+    generator: Arc<OODDaemonStatusGenerator>,
 }
 
 impl OODStatusManager {
@@ -26,6 +28,7 @@ impl OODStatusManager {
         let ret = Self {
             service_list: Arc::new(Mutex::new(vec![])),
             interface: Arc::new(OnceCell::new()),
+            generator: Arc::new(OODDaemonStatusGenerator::new()),
         };
 
         ret.init_interface();
@@ -55,18 +58,23 @@ impl OODStatusManager {
         OOD_CONTROLLER.register_external_server(Box::new(self.clone()));
     }
 
-    pub fn update_ood_daemon_status(&self, status: &OODDaemonStatus) {
-        let value = serde_json::to_value(&status).unwrap();
-        self.update_service("ood-daemon", value);
+    pub fn refresh_ood_daemon_status(&self) {
+        if let Some(value) = self.generator.refresh_status() {
+            self.update_service("ood-daemon", value);
+        }
     }
 
     fn get_all(&self) -> String {
+        self.refresh_ood_daemon_status();
+
         let ret = serde_json::to_string(&*self.service_list.lock().unwrap()).unwrap();
 
         ret
     }
 
     fn get_one(&self, name: &str) -> Option<String> {
+        self.refresh_ood_daemon_status();
+
         let list = self.service_list.lock().unwrap();
         for item in list.iter() {
             if item.name == name {
