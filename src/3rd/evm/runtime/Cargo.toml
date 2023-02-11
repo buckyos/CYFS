@@ -12,7 +12,7 @@ edition = "2018"
 evm-core = { version = "0.26", path = "../core", default-features = false }
 primitive-types = { version = "0.9", default-features = false }
 sha3 = { version = "0.8", default-features = false }
-cyfs-base = {path="../../../component/cyfs-base"}
+cyfs-base = { path = "../../../component/cyfs-base" }
 
 [features]
 default = ["std"]
