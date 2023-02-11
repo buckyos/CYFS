@@ -228,7 +228,6 @@ impl WriteProvider {
                     provider.queue.close(stream);
                     provider.close_waiter = waker.map(|w| w.clone());
                     provider.check_wnd(stream, bucky_time_now(), provider.cc.rto(), &mut packages, false);
-                    *state = WriteProviderState::Closed;
                     Poll::Pending
                 }, 
                 WriteProviderState::Closed => Poll::Ready(Ok(()))
