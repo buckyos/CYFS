@@ -1,6 +1,12 @@
-use async_std::io::{Read, Seek};
+use async_std::io::{Write, Read, Seek};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
+pub trait SyncWriteWithSeek: std::io::Seek + std::io::Write {}
+
+pub trait AsyncWriteWithSeek: Write + Seek {}
+
+pub trait SyncReadWithSeek: std::io::Seek + std::io::Read {}
 
 pub trait AsyncReadWithSeek: Read + Seek {}
 

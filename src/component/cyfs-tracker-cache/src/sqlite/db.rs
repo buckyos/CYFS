@@ -2,26 +2,18 @@ use super::data::*;
 use super::sql::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::SqliteConnectionHolder;
 
-use rusqlite::{params, Connection, ToSql};
+use rusqlite::{params, ToSql};
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
 use std::sync::Arc;
-use thread_local::ThreadLocal;
 
 
+#[derive(Clone)]
 pub(crate) struct SqliteDBDataCache {
     data_file: PathBuf,
-    conn: Arc<ThreadLocal<Connection>>,
-}
-
-impl Clone for SqliteDBDataCache {
-    fn clone(&self) -> Self {
-        Self {
-            data_file: self.data_file.clone(),
-            conn: self.conn.clone(),
-        }
-    }
+    conn: Arc<SqliteConnectionHolder>,
 }
 
 impl SqliteDBDataCache {
@@ -59,8 +51,8 @@ impl SqliteDBDataCache {
         );
 
         let ret = Self {
-            data_file,
-            conn: Arc::new(ThreadLocal::new()),
+            data_file: data_file.clone(),
+            conn: Arc::new(SqliteConnectionHolder::new(data_file)),
         };
 
         if !file_exists {
@@ -79,32 +71,8 @@ impl SqliteDBDataCache {
         Ok(ret)
     }
 
-    fn get_conn(&self) -> BuckyResult<&Connection> {
-        self.conn.get_or_try(|| self.create_new_conn())
-    }
-
-    fn create_new_conn(&self) -> BuckyResult<Connection> {
-        let conn = Connection::open(&self.data_file).map_err(|e| {
-            let msg = format!(
-                "open tracker cache db failed, db={}, e={}",
-                self.data_file.display(),
-                e
-            );
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
-
-        // 设置一个30s的锁重试
-        if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
-            error!("init sqlite busy_timeout error! {}", e);
-        }
-
-        Ok(conn)
-    }
-
     fn init_db(&self) -> BuckyResult<()> {
-        let conn = self.get_conn()?;
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         for sql in &INIT_TRACKER_SQL_LIST {
             info!("will exec: {}", sql);
@@ -142,7 +110,7 @@ impl SqliteDBDataCache {
         let (pos_type, pos): (u8, String) = req.pos.clone().into();
         let direction: u8 = req.direction.into();
 
-        let conn = self.get_conn()?;
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         let now = bucky_time_now() as i64;
         let file_params = params![req.id, pos, pos_type, direction, &now, &now, req.flags,];
@@ -220,7 +188,8 @@ impl SqliteDBDataCache {
 
         debug!("will exec delete tracker sql: {}", sql);
 
-        let conn = self.get_conn()?;
+        let (conn, _lock) = self.conn.get_write_conn()?;
+
         let count = conn.execute(&sql, params.iter().map(|item| item.as_ref()).collect::<Vec<&dyn ToSql>>().as_slice()).map_err(|e| {
             let msg = format!("execute delete pos error: sql={}, err={}", sql, e);
             error!("{}", msg);
@@ -262,7 +231,7 @@ impl SqliteDBDataCache {
         }
 
         let sql = sql.to_owned() + &querys.join(" AND ");
-        let conn = self.get_conn()?;
+        let (conn, _lock) = self.conn.get_read_conn()?;
         let mut stmt = conn.prepare(&sql).map_err(|e| {
             let msg = format!("prepare select pos error: sql={}, {}", sql, e);
             error!("{}", msg);

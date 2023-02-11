@@ -34,6 +34,9 @@ declare_collection_codec_for_serde!(GlobalStatePathMeta);
 
 #[derive(Clone)]
 pub struct GlobalStatePathMetaSyncCollection {
+    // current device id
+    device_id: DeviceId,
+
     meta: Arc<NOCCollectionRWSync<GlobalStatePathMeta>>,
 
     // dump to local file for debug and review
@@ -42,10 +45,12 @@ pub struct GlobalStatePathMetaSyncCollection {
 
 impl GlobalStatePathMetaSyncCollection {
     pub fn new(
+        device_id: DeviceId,
         storage: Arc<GlobalStatePathMetaStorage>,
         meta: NOCCollectionRWSync<GlobalStatePathMeta>,
     ) -> Self {
         Self {
+            device_id,
             meta: Arc::new(meta),
             storage,
         }
@@ -128,7 +133,7 @@ impl GlobalStatePathMetaSyncCollection {
         req: GlobalStateAccessRequest<'d, 'a, 'b>,
     ) -> BuckyResult<()> {
         let meta = self.meta.coll().read().unwrap();
-        meta.access.check(req)
+        meta.access.check(req, &self.device_id)
     }
 
     pub async fn add_link(
@@ -275,7 +280,7 @@ impl GlobalStatePathMetaSyncCollection {
     ) -> BuckyResult<Option<()>> {
         let meta = self.meta.coll().read().unwrap();
         meta.object
-            .check(target_dec_id, object_data, source, permissions)
+            .check(target_dec_id, object_data, source, permissions, &self.device_id)
     }
 
     // path config

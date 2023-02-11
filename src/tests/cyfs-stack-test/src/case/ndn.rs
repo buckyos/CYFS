@@ -10,7 +10,7 @@ use async_std::io::WriteExt;
 use std::convert::TryFrom;
 use std::path::Path;
 
-fn new_dec(name: &str) -> ObjectId {
+pub fn new_dec(name: &str) -> ObjectId {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
 
     let dec_id = DecApp::generate_id(owner_id.object_id().to_owned(), name);
@@ -44,7 +44,7 @@ pub async fn test() {
     info!("test all ndn case success!");
 }
 
-fn gen_random_dir(dir: &Path) {
+pub fn gen_random_dir(dir: &Path) {
     (0..10).for_each(|i| {
         let name = format!("test{}", i);
         let dir = dir.join(&name);
@@ -83,6 +83,8 @@ async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId, String, ChunkId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
@@ -93,7 +95,7 @@ async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId, String, ChunkId) {
     // 事件是异步注册的，需要等待
     async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_dir error! {}", ret.unwrap_err());
         unreachable!();
@@ -396,7 +398,7 @@ async fn get_chunk(dir_id: &DirId, file_id: &FileId, inner_path: &str, chunk_id:
     assert!(ret.is_ok());
 }
 
-async fn gen_all_random_file(local_path: &Path) {
+pub async fn gen_all_random_file(local_path: &Path) {
     if local_path.exists() {
         assert!(local_path.is_file());
         info!("will remove random file: {}", local_path.display());
@@ -466,12 +468,14 @@ async fn test_range_file(dec_id: &ObjectId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_dir error! {}", ret.unwrap_err());
         unreachable!();
@@ -582,12 +586,14 @@ pub async fn test_chunk_in_bundle() {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_dir error! {}", ret.unwrap_err());
         unreachable!();
@@ -638,6 +644,7 @@ pub async fn test_chunk_in_bundle() {
         };
 
         meta.add_access(item).await.unwrap();
+        info!("modify req_path access success! path={}", req_path);
     }
 
     let target = stack.local_device_id();
@@ -651,10 +658,23 @@ pub async fn test_chunk_in_bundle() {
     let mut ndn_req = NDNGetDataRequest::new_router(Some(target.object_id().to_owned()), bundle_file_id.clone(), None);
     ndn_req.common.req_path = Some(req_path.to_owned());
     let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
-    assert!(ret.is_err());
+    match ret {
+        Ok(mut resp) => {
+            let mut buf = vec![];
+            resp.data.read_to_end(&mut buf).await.unwrap_err();
+        }
+        Err(_) => {
+
+        }
+    }
 
     // test get from other zone, with CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL flag
     ndn_req.common.flags = CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL;
     let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
     assert!(ret.is_ok());
+    let mut resp = ret.unwrap();
+    let mut buf = vec![];
+    resp.data.read_to_end(&mut buf).await.unwrap();
+
+    info!("test chunk in bundle success!");
 }

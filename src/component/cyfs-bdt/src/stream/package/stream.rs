@@ -1,12 +1,14 @@
 use log::*;
 use std::{
-    time::Duration, 
+    time::{Duration, Instant}, 
     task::{Context, Poll}, 
+    sync::Mutex,
+    collections::LinkedList,
 };
 use async_std::{
     sync::Arc,
     task, 
-    future
+    future,
 };
 use async_trait::{async_trait};
 use cyfs_base::*;
@@ -22,7 +24,7 @@ use super::super::{
     stream_provider::{Shutdown, StreamProvider}};
 use super::{
     write::WriteProvider,  
-    read::ReadProvider
+    read::ReadProvider,
 };
 
 #[derive(Clone)]
@@ -34,14 +36,21 @@ pub struct Config {
     pub cc: cc::Config
 }
 
+struct PacePackage {
+    send_time: Instant,
+    package: DynamicPackage,
+}
+
 struct PackageStreamImpl {
     config: super::super::container::Config, 
     owner_disp: String, 
     tunnel: UdpTunnel, 
-    local_id: IncreaseId,
+    local_id: IncreaseId, 
     remote_id: IncreaseId, 
     write_provider: WriteProvider, 
-    read_provider: ReadProvider
+    read_provider: ReadProvider, 
+    pacer: Mutex<cc::pacing::Pacer>, 
+    package_queue: Arc<Mutex<LinkedList<PacePackage>>>, 
 }
 
 #[derive(Clone)]
@@ -75,7 +84,9 @@ impl PackageStream {
             local_id, 
             remote_id, 
             write_provider,
-            read_provider
+            read_provider,
+            pacer: Mutex::new(cc::pacing::Pacer::new(PackageStream::mss() * 4, PackageStream::mss())),
+            package_queue: Arc::new(Mutex::new(Default::default())),
         }));
 
         Ok(stream)
@@ -91,6 +102,57 @@ impl PackageStream {
 
     pub fn read_provider(&self) -> &ReadProvider {
         &self.0.read_provider
+    }
+
+    fn package_delay(&self, package: DynamicPackage, send_time: Instant) {
+        let mut package_queue = self.0.package_queue.lock().unwrap();
+        package_queue.push_back(PacePackage {
+            send_time,
+            package,
+        });
+
+        if package_queue.len() == 1 {
+            let mut delay = Instant::now() - send_time;
+            let package_queue = self.0.package_queue.clone();
+            let stream = self.clone();
+            task::spawn(async move {
+                loop {
+                    task::sleep(delay).await;
+
+                    let now = Instant::now();
+                    {
+                        let mut packages = package_queue.lock().unwrap();
+                        let mut n = 0;
+
+                        for (_, package) in packages.iter().enumerate() {
+                            if package.send_time > now {
+                                delay = package.send_time.checked_duration_since(now).unwrap();
+                                break ;
+                            }
+                            n += 1;
+                        }
+
+                        while n > 0 {
+                            if let Some(package) = packages.pop_front() {
+                                match stream.0.tunnel.send_package(package.package) {
+                                    Ok(sent_len) => {
+                                        trace!("package_delay send_package {}", sent_len);
+                                    },
+                                    Err(err) => {
+                                        error!("stream send_package err={}", err);
+                                    }
+                                }
+                            }
+                            n -= 1;
+                        }
+
+                        if packages.len() == 0 {
+                            return ;
+                        }
+                    }
+                }
+            });
+        }
     }
 
     pub fn send_packages(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
@@ -116,15 +178,50 @@ impl PackageStream {
             // trace!("{} will send session data package {}", self, session_data);
         }
         
-        for package in packages {
-            let _ = self.0.tunnel.send_package(package);
+        let mut sent_bytes = 0;
+        let mut sent_packages = 0;
+        {
+            let mut pacer = self.0.pacer.lock().unwrap();
+            let now = Instant::now();
+            for package in packages {
+                let session_data: & SessionData = package.as_ref();
+                if !session_data.is_ctrl_package() {
+                    let package_size = session_data.data_size();
+                    if let Some(next_time) = pacer.send(package_size, now) {
+                        sent_bytes += package_size;
+                        sent_packages += 1;
+
+                        self.package_delay(package, next_time);
+                        continue;
+                    }
+                }
+
+                match self.0.tunnel.send_package(package) {
+                    Ok(sent_len) => {
+                        sent_bytes += sent_len;
+                        sent_packages += 1;
+                    },
+                    Err(err) => {
+                        error!("stream send_package err={}", err);
+                    }
+                }
+            }
         }
+
+        if sent_packages > 0 {
+            self.write_provider().on_sent(sent_bytes as u64, sent_packages);
+        }
+
         Ok(())
     } 
 }
 
 #[async_trait]
 impl StreamProvider for PackageStream {
+    fn remote_id(&self) -> IncreaseId {
+        self.0.remote_id
+    }
+
     fn local_ep(&self) -> &Endpoint {
         self.0.tunnel.local()
     }
@@ -168,6 +265,7 @@ impl StreamProvider for PackageStream {
             }, 
             Shutdown::Both => {
                 let _ = self.write_provider().close(self, None);
+                let _ = self.read_provider().close(self);
             }
         }
         Ok(())
@@ -219,13 +317,39 @@ impl OnPackage<SessionData> for PackageStream {
             Ok(OnPackageResult::Handled)
         } else {
             trace!("{} on session data {}", self, session_data);
-            match self.write_provider().on_package(session_data, (self, &mut packages))? {
-                OnPackageResult::Continue => self.read_provider().on_package(session_data, (self, &mut packages)), 
-                OnPackageResult::Handled => Ok(OnPackageResult::Handled), 
-                _ => unreachable!()
+            let write_result = self.write_provider().on_package(session_data, (self, &mut packages))?;
+            match write_result {
+                OnPackageResult::Continue | OnPackageResult::Break => {
+                    let read_result = self.read_provider().on_package(session_data, (self, &mut packages));
+                    if read_result.is_err() {
+                        read_result
+                    } else {
+                        let read_result = read_result.unwrap();
+                        if write_result == OnPackageResult::Break && 
+                            read_result == OnPackageResult::Break && 
+                            !session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+                            let mut package = SessionData::new();
+                            package.flags_add(SESSIONDATA_FLAG_RESET);
+                            package.send_time = bucky_time_now();
+                            packages.push(DynamicPackage::from(package));
+                        }
+
+                        Ok(OnPackageResult::Handled)
+                    }
+                }, 
+                OnPackageResult::Handled => {
+                    Ok(OnPackageResult::Handled)
+                }, 
             }
         }?;
+
+    	{
+            let mut pacer = self.0.pacer.lock().unwrap();
+            pacer.update(self.write_provider().rate());
+        }
+
         let _ = self.send_packages(packages);
+        
         Ok(r)
     }
 }

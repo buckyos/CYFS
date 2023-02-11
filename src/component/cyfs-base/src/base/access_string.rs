@@ -2,6 +2,7 @@ use crate::*;
 use intbits::Bits;
 use std::convert::TryInto;
 use std::fmt::{Formatter};
+use std::str::FromStr;
 use itertools::Itertools;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{Error, SeqAccess, Visitor};
@@ -373,6 +374,14 @@ impl TryFrom<&str> for AccessString {
     type Error = BuckyError;
 
     fn try_from(value: &str) -> BuckyResult<Self> {
+        Self::from_str(value)
+    }
+}
+
+impl FromStr for AccessString {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> BuckyResult<Self> {
         let mut access = AccessString::new(0);
         for (mut chunk, group) in value.chars().filter(|c|c != &'_' && c != &' ').chunks(3).into_iter().zip(ACCESS_GROUP_LIST) {
             access.set_group_permissions(*group, AccessPermissions::try_from(chunk.join("").as_str())?);
@@ -464,6 +473,10 @@ mod test {
     #[test]
     fn main() {
 
+        let s = "rwxrwxrwx---rwxrwx";
+        let v = AccessString::from_str(s).unwrap();
+        assert_eq!(v.to_string(), s);
+        
         let mut access_string = AccessString::default();
         println!("default={}", access_string);
 

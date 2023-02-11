@@ -22,6 +22,8 @@ pub struct HttpBugReporter {
 
 impl HttpBugReporter {
     pub fn new(addr: &str) -> Self {
+        info!("new http bug reporter: {}", addr);
+
         let url = Url::from_str(addr).unwrap();
         Self {
             notify_addr: url,

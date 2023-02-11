@@ -1569,10 +1569,34 @@ dependencies = [
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2 0.8.2",
  "socket2",
  "winapi",
+]
+
+[[package]]
+name = "cyfs-bdt-ext"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-chunk-cache",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-ndc",
+ "cyfs-tracker-cache",
+ "cyfs-util",
+ "futures",
+ "log 0.4.17",
+ "lru_time_cache",
+ "once_cell",
+ "serde",
 ]
 
 [[package]]
@@ -1596,7 +1620,7 @@ dependencies = [
  "cyfs-util",
  "dirs 4.0.0",
  "log 0.4.17",
- "sysinfo",
+ "sysinfo 0.26.5",
 ]
 
 [[package]]
@@ -1636,7 +1660,7 @@ dependencies = [
  "scan_dir",
  "sha2 0.8.2",
  "shared_memory",
- "sysinfo",
+ "sysinfo 0.26.5",
 ]
 
 [[package]]
@@ -1741,6 +1765,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cyfs-base",
+ "cyfs-bdt",
  "cyfs-util",
  "hex",
  "int-enum",
@@ -1834,6 +1859,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "surf",
  "tide",
 ]
 
@@ -1987,7 +2013,6 @@ dependencies = [
  "clap",
  "cyfs-base",
  "cyfs-base-meta",
- "cyfs-bdt",
  "cyfs-client",
  "cyfs-core",
  "cyfs-debug",
@@ -2016,7 +2041,6 @@ dependencies = [
  "cyfs-util",
  "log 0.4.17",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
@@ -2037,7 +2061,6 @@ dependencies = [
  "lru_time_cache",
  "once_cell",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
@@ -2150,6 +2173,7 @@ dependencies = [
  "crossbeam",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-chunk-cache",
  "cyfs-chunk-lib",
  "cyfs-core",
@@ -2216,6 +2240,7 @@ dependencies = [
  "async-trait",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",
@@ -2237,6 +2262,7 @@ dependencies = [
  "async-recursion",
  "async-std",
  "async-trait",
+ "chrono",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-chunk-lib",
@@ -2285,7 +2311,6 @@ dependencies = [
  "cyfs-util",
  "log 0.4.17",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
@@ -2319,7 +2344,8 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_logger 2.3.0",
- "sysinfo",
+ "sysinfo 0.27.7",
+ "thread_local",
  "toml",
  "url 2.3.0",
  "walkdir",
@@ -4395,7 +4421,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.26.5",
  "tide",
 ]
 
@@ -4414,11 +4440,11 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",
- "cyfs-stack-loader",
  "cyfs-util",
  "fs_extra",
  "futures",
  "futures-util",
+ "hex",
  "http-types",
  "lazy_static",
  "log 0.4.17",
@@ -4441,7 +4467,6 @@ dependencies = [
  "cyfs-base-meta",
  "cyfs-debug",
  "cyfs-meta-lib",
- "cyfs-stack-loader",
  "cyfs-util",
  "desc-tool",
  "futures-util",
@@ -6221,6 +6246,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sn-online-test"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "clap",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-util",
+ "log 0.4.17",
+ "rand 0.7.3",
+ "simple_logger 4.0.0",
+]
+
+[[package]]
 name = "sn-updater"
 version = "0.1.0"
 dependencies = [
@@ -6529,6 +6568,21 @@ name = "sysinfo"
 version = "0.26.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ade661fa5e048ada64ad7901713301c21d2dbc5b65ee7967de8826c111452960"
+dependencies = [
+ "cfg-if 1.0.0",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "winapi",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.27.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "975fe381e0ecba475d4acff52466906d95b153a40324956552e027b2a9eaa89e"
 dependencies = [
  "cfg-if 1.0.0",
  "core-foundation-sys",

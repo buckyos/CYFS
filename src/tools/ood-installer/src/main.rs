@@ -135,6 +135,12 @@ async fn main_run() {
                 .help(&format!("Sync service packages from repo to local repo store")),
         )
         .arg(
+            Arg::with_name("init_ood_daemon")
+                .long("init-ood-daemon")
+                .takes_value(false)
+                .help(&format!("Init ood-daemon service after sync service packages from repo, use with sync-repo param together!")),
+        )
+        .arg(
             Arg::with_name("bind")
                 .long("bind")
                 .takes_value(false)
@@ -308,7 +314,10 @@ async fn main_run() {
         if let Err(_e) = repo_downloader::RepoDownloader::new().load().await {
             std::process::exit(-1);
         } else {
-            std::process::exit(0);
+            let init_ood_daemon = matches.is_present("init_ood_daemon");
+            if !init_ood_daemon {
+                std::process::exit(0);
+            }
         }
     }
 

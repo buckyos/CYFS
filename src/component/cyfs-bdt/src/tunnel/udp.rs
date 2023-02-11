@@ -293,7 +293,7 @@ impl Tunnel {
     }
 
 
-    fn owner(&self) -> Option<TunnelContainer> {
+    pub fn owner(&self) -> Option<TunnelContainer> {
         let state = &*self.0.state.read().unwrap();
         match state {
             TunnelState::Connecting(connecting) => Some(connecting.container.clone()),  
@@ -356,7 +356,7 @@ impl tunnel::Tunnel for Tunnel {
         interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
 
-    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage) -> Result<usize, BuckyError> {
         let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {
             Ok((active_state.container.clone(), active_state.interface.clone(), active_state.key.clone()))
@@ -367,8 +367,8 @@ impl tunnel::Tunnel for Tunnel {
         let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
         let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
-        interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
-        Ok(())
+        let sent_len = interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
+        Ok(sent_len)
     }
 
     fn retain_keeper(&self) {
@@ -439,6 +439,49 @@ impl tunnel::Tunnel for Tunnel {
         info!("{} reset to Dead", self);
         let mut state = self.0.state.write().unwrap();
         *state = TunnelState::Dead;
+    }
+
+    fn mark_dead(&self, former_state: tunnel::TunnelState) {
+        let notify = match &former_state {
+            tunnel::TunnelState::Connecting => {
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    TunnelState::Connecting(connecting) => {
+                        info!("{} Connecting=>Dead", self);
+                        let owner = connecting.owner.clone_as_tunnel_owner();
+                        *state = TunnelState::Dead;
+                        Some((owner, tunnel::TunnelState::Dead))
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Active(remote_timestamp) => {
+                let remote_timestamp = *remote_timestamp;
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    TunnelState::Active(active) => {
+                        let owner = active.owner.clone_as_tunnel_owner();
+                        if active.remote_timestamp == remote_timestamp {
+                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
+                            *state = TunnelState::Dead;
+                            Some((owner, tunnel::TunnelState::Dead))
+                        } else {
+                            None
+                        }
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Dead => None
+        };
+
+        if let Some((owner, new_state)) = notify {
+            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
+        }
     }
 }
 

@@ -13,21 +13,47 @@ ObjectMap的缓存设计
 每个root共享一个读缓存
 */
 
+#[derive(Clone)]
+pub struct ObjectMapCacheItem {
+    pub object: ObjectMap,
+    pub access: AccessString,
+}
+
 // objectmap的依赖的noc接口，实现了object的最终保存和加载
 #[async_trait::async_trait]
 pub trait ObjectMapNOCCache: Send + Sync {
     async fn exists(&self, dec: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<bool>;
 
-    async fn get_object_map(&self, dec: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<Option<ObjectMap>>;
+    async fn get_object_map(
+        &self,
+        dec: Option<ObjectId>,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMap>> {
+        self.get_object_map_ex(dec, object_id)
+            .await
+            .map(|ret| ret.map(|v| v.object))
+    }
 
-    async fn put_object_map(&self, dec: Option<ObjectId>, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()>;
+    async fn get_object_map_ex(
+        &self,
+        dec: Option<ObjectId>,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapCacheItem>>;
+
+    async fn put_object_map(
+        &self,
+        dec: Option<ObjectId>,
+        object_id: ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()>;
 }
 
 pub type ObjectMapNOCCacheRef = Arc<Box<dyn ObjectMapNOCCache>>;
 
 // 简单的内存版本的noc
 pub(crate) struct ObjectMapMemoryNOCCache {
-    cache: Mutex<HashMap<ObjectId, ObjectMap>>,
+    cache: Mutex<HashMap<ObjectId, ObjectMapCacheItem>>,
 }
 
 impl ObjectMapMemoryNOCCache {
@@ -43,24 +69,45 @@ impl ObjectMapMemoryNOCCache {
 #[async_trait::async_trait]
 impl ObjectMapNOCCache for ObjectMapMemoryNOCCache {
     async fn exists(&self, dec_id: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<bool> {
-        info!("[memory_noc] exists object: dec={:?}, {}", dec_id, object_id);
+        info!(
+            "[memory_noc] exists object: dec={:?}, {}",
+            dec_id, object_id
+        );
 
         Ok(self.cache.lock().unwrap().contains_key(object_id))
     }
 
-    async fn get_object_map(&self, dec_id: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<Option<ObjectMap>> {
+    async fn get_object_map_ex(
+        &self,
+        dec_id: Option<ObjectId>,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapCacheItem>> {
         info!("[memory_noc] load object: dec={:?}, {}", dec_id, object_id);
 
         let cache = self.cache.lock().unwrap();
-        Ok(cache.get(object_id).map(|v| v.clone()))
+        Ok(cache.get(object_id).cloned())
     }
 
-    async fn put_object_map(&self, dec_id: Option<ObjectId>, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
-        info!("[memory_noc] save object: dec={:?}, {}", dec_id, object_id);
+    async fn put_object_map(
+        &self,
+        dec_id: Option<ObjectId>,
+        object_id: ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()> {
+        info!(
+            "[memory_noc] save object: dec={:?}, {}, {:?}",
+            dec_id, object_id, access
+        );
+
+        let item = ObjectMapCacheItem {
+            object,
+            access: access.unwrap_or(AccessString::default()),
+        };
 
         {
             let mut cache = self.cache.lock().unwrap();
-            cache.insert(object_id, object);
+            cache.insert(object_id, item);
         }
 
         Ok(())
@@ -73,12 +120,32 @@ impl ObjectMapNOCCache for ObjectMapMemoryNOCCache {
 pub trait ObjectMapRootCache: Send + Sync {
     async fn exists(&self, object_id: &ObjectId) -> BuckyResult<bool>;
 
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>>;
+    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
+        self.get_object_map_ex(object_id)
+            .await
+            .map(|ret| ret.map(|v| v.object))
+    }
 
-    async fn put_object_map(&self, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()>;
+    async fn get_object_map_ex(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>>;
+
+    async fn put_object_map(
+        &self,
+        object_id: ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()>;
 }
 
 pub type ObjectMapRootCacheRef = Arc<Box<dyn ObjectMapRootCache>>;
+
+#[derive(Clone)]
+pub struct ObjectMapRefCacheItem {
+    pub object: ObjectMapRef,
+    pub access: AccessString,
+}
 
 pub struct ObjectMapRootMemoryCache {
     // None for system dec
@@ -88,11 +155,16 @@ pub struct ObjectMapRootMemoryCache {
     noc: ObjectMapNOCCacheRef,
 
     // 用来缓存从noc加载的objectmap和subs
-    cache: Arc<Mutex<lru_time_cache::LruCache<ObjectId, ObjectMapRef>>>,
+    cache: Arc<Mutex<lru_time_cache::LruCache<ObjectId, ObjectMapRefCacheItem>>>,
 }
 
 impl ObjectMapRootMemoryCache {
-    pub fn new(dec_id: Option<ObjectId>, noc: ObjectMapNOCCacheRef, timeout_in_secs: u64, capacity: usize) -> Self {
+    pub fn new(
+        dec_id: Option<ObjectId>,
+        noc: ObjectMapNOCCacheRef,
+        timeout_in_secs: u64,
+        capacity: usize,
+    ) -> Self {
         let cache = lru_time_cache::LruCache::with_expiry_duration_and_capacity(
             std::time::Duration::from_secs(timeout_in_secs),
             capacity,
@@ -105,11 +177,19 @@ impl ObjectMapRootMemoryCache {
         }
     }
 
-    pub fn new_ref(dec_id: Option<ObjectId>, noc: ObjectMapNOCCacheRef, timeout_in_secs: u64, capacity: usize) -> ObjectMapRootCacheRef {
+    pub fn new_ref(
+        dec_id: Option<ObjectId>,
+        noc: ObjectMapNOCCacheRef,
+        timeout_in_secs: u64,
+        capacity: usize,
+    ) -> ObjectMapRootCacheRef {
         Arc::new(Box::new(Self::new(dec_id, noc, timeout_in_secs, capacity)))
     }
 
-    pub fn new_default_ref(dec_id: Option<ObjectId>, noc: ObjectMapNOCCacheRef) -> ObjectMapRootCacheRef {
+    pub fn new_default_ref(
+        dec_id: Option<ObjectId>,
+        noc: ObjectMapNOCCacheRef,
+    ) -> ObjectMapRootCacheRef {
         Arc::new(Box::new(Self::new(dec_id, noc, 60 * 5, 1024)))
     }
 
@@ -121,12 +201,15 @@ impl ObjectMapRootMemoryCache {
         self.noc.exists(self.dec_id.clone(), object_id).await
     }
 
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
-        let obj = self.get_object_map_impl(object_id).await?;
+    async fn get_object_map_ex(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>> {
+        let item = self.get_object_map_impl(object_id).await?;
 
         // FIXME 校验一次id是否是最新的
-        if let Some(obj) = &obj {
-            let current = obj.lock().await;
+        if let Some(item) = &item {
+            let current = item.object.lock().await;
             let real_id = current.flush_id_without_cache();
             assert_eq!(real_id, *object_id);
 
@@ -134,29 +217,40 @@ impl ObjectMapRootMemoryCache {
             assert_eq!(current_id, Some(real_id));
         }
 
-        Ok(obj)
+        Ok(item)
     }
 
-    async fn get_object_map_impl(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
+    async fn get_object_map_impl(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>> {
         // 首先查看缓存
         if let Some(v) = self.cache.lock().unwrap().get(object_id) {
             return Ok(Some(v.to_owned()));
         }
 
         // 最后尝试从noc加载
-        let ret = self.noc.get_object_map(self.dec_id.clone(), object_id).await?;
+        let ret = self
+            .noc
+            .get_object_map_ex(self.dec_id.clone(), object_id)
+            .await?;
         if ret.is_none() {
             return Ok(None);
         }
 
-        let obj = ret.unwrap();
+        let item = ret.unwrap();
 
-        let obj = Arc::new(AsyncMutex::new(obj));
+        let object = Arc::new(AsyncMutex::new(item.object));
+
+        let item = ObjectMapRefCacheItem {
+            object,
+            access: item.access,
+        };
 
         // 缓存
         {
             let mut cache = self.cache.lock().unwrap();
-            if let Some(_) = cache.insert(object_id.to_owned(), obj.clone()) {
+            if let Some(_) = cache.insert(object_id.to_owned(), item.clone()) {
                 warn!(
                     "insert objectmap to memory cache but already exists! id={}",
                     object_id
@@ -164,10 +258,15 @@ impl ObjectMapRootMemoryCache {
             }
         }
 
-        Ok(Some(obj))
+        Ok(Some(item))
     }
 
-    async fn put_object_map(&self, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
+    async fn put_object_map(
+        &self,
+        object_id: ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()> {
         // TODO 这里是否需要更新缓存?
 
         // FIXME 校验一次id是否是最新的
@@ -177,7 +276,9 @@ impl ObjectMapRootMemoryCache {
         let real_id = object.flush_id_without_cache();
         assert_eq!(real_id, current_id);
 
-        self.noc.put_object_map(self.dec_id.clone(), object_id, object).await
+        self.noc
+            .put_object_map(self.dec_id.clone(), object_id, object, access)
+            .await
     }
 }
 
@@ -187,12 +288,20 @@ impl ObjectMapRootCache for ObjectMapRootMemoryCache {
         Self::exists(&self, object_id).await
     }
 
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
-        Self::get_object_map(&self, object_id).await
+    async fn get_object_map_ex(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>> {
+        Self::get_object_map_ex(&self, object_id).await
     }
 
-    async fn put_object_map(&self, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
-        Self::put_object_map(&self, object_id, object).await
+    async fn put_object_map(
+        &self,
+        object_id: ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()> {
+        Self::put_object_map(&self, object_id, object, access).await
     }
 }
 
@@ -201,13 +310,26 @@ impl ObjectMapRootCache for ObjectMapRootMemoryCache {
 #[async_trait::async_trait]
 pub trait ObjectMapOpEnvCache: Send + Sync {
     // from pending list and lower cache
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>>;
+    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
+        let ret = self.get_object_map_ex(object_id).await?;
+        Ok(ret.map(|v| v.object))
+    }
+
+    async fn get_object_map_ex(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>>;
 
     // check if target object exists, in cache and in lower cache, not only for ObjectMap
     async fn exists(&self, object_id: &ObjectId) -> BuckyResult<bool>;
 
     // 同步的put，放置到暂存区
-    fn put_object_map(&self, object_id: &ObjectId, object: ObjectMap) -> BuckyResult<ObjectMapRef>;
+    fn put_object_map(
+        &self,
+        object_id: &ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<ObjectMapRef>;
 
     // 从暂存区移除先前已经提交的操作(put_sub之后，commit之前)
     fn remove_object_map(&self, object_id: &ObjectId) -> BuckyResult<ObjectMapRef>;
@@ -227,6 +349,7 @@ pub type ObjectMapOpEnvCacheRef = Arc<Box<dyn ObjectMapOpEnvCache>>;
 struct ObjectMapPendingItem {
     is_touched: bool,
     item: ObjectMapRef,
+    access: AccessString,
 }
 
 // 写操作缓存
@@ -245,9 +368,17 @@ impl ObjectMapOpEnvMemoryCachePendingList {
         self.pending.contains_key(object_id)
     }
 
-    fn get_object_map(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
+    fn get_object_map(
+        &mut self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>> {
         if let Some(v) = self.pending.get(object_id) {
-            return Ok(Some(v.item.to_owned()));
+            let item = ObjectMapRefCacheItem {
+                object: v.item.clone(),
+                access: v.access.clone(),
+            };
+
+            return Ok(Some(item));
         }
 
         // 缺页错误
@@ -275,26 +406,32 @@ impl ObjectMapOpEnvMemoryCachePendingList {
         &mut self,
         object_id: &ObjectId,
         object: ObjectMap,
+        access: Option<AccessString>,
     ) -> BuckyResult<ObjectMapRef> {
         let object = Arc::new(AsyncMutex::new(object));
 
         match self.pending.entry(object_id.to_owned()) {
             Entry::Occupied(mut o) => {
                 warn!(
-                    "insert object to objectmap memory cache but already exists! id={}",
-                    object_id
+                    "insert object to objectmap memory cache but already exists! id={}, access={:?}",
+                    object_id, access,
                 );
                 let v = ObjectMapPendingItem {
                     is_touched: false,
                     item: object.clone(),
+                    access: access.unwrap_or(AccessString::default()),
                 };
                 o.insert(v);
             }
             Entry::Vacant(v) => {
-                debug!("insert object to objectmap memory cache! id={}", object_id);
+                debug!(
+                    "insert object to objectmap memory cache! id={}, access={:?}",
+                    object_id, access
+                );
                 let item = ObjectMapPendingItem {
                     is_touched: false,
                     item: object.clone(),
+                    access: access.unwrap_or(AccessString::default()),
                 };
                 v.insert(item);
             }
@@ -309,13 +446,16 @@ impl ObjectMapOpEnvMemoryCachePendingList {
     ) -> BuckyResult<()> {
         let count = pending.len();
         for (object_id, value) in pending {
-            let value = value.item;
+            let obj = value.item;
 
-            assert!(Arc::strong_count(&value) == 1);
-            let value = Arc::try_unwrap(value).unwrap();
-            let obj = value.into_inner();
+            assert!(Arc::strong_count(&obj) == 1);
+            let obj = Arc::try_unwrap(obj).unwrap();
+            let obj = obj.into_inner();
 
-            if let Err(e) = root_cache.put_object_map(object_id.clone(), obj).await {
+            if let Err(e) = root_cache
+                .put_object_map(object_id.clone(), obj, Some(value.access))
+                .await
+            {
                 let msg = format!("commit pending objectmap error! obj={}, {}", object_id, e);
                 error!("{}", msg);
                 return Err(e);
@@ -357,21 +497,29 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
         self.root_cache.exists(object_id).await
     }
 
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMapRef>> {
+    async fn get_object_map_ex(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectMapRefCacheItem>> {
         // 首先从当前写缓存里面查找
         if let Some(obj) = self.pending.lock().unwrap().get_object_map(object_id)? {
             return Ok(Some(obj));
         }
 
         // 最后尝试从root_cache加载
-        self.root_cache.get_object_map(object_id).await
+        self.root_cache.get_object_map_ex(object_id).await
     }
 
-    fn put_object_map(&self, object_id: &ObjectId, object: ObjectMap) -> BuckyResult<ObjectMapRef> {
+    fn put_object_map(
+        &self,
+        object_id: &ObjectId,
+        object: ObjectMap,
+        access: Option<AccessString>,
+    ) -> BuckyResult<ObjectMapRef> {
         self.pending
             .lock()
             .unwrap()
-            .put_object_map(object_id, object)
+            .put_object_map(object_id, object, access)
     }
 
     fn remove_object_map(&self, object_id: &ObjectId) -> BuckyResult<ObjectMapRef> {
@@ -393,7 +541,10 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
     }
 
     async fn gc(&self, single: bool, target: &ObjectId) -> BuckyResult<()> {
-        info!("objectmap op_env cache will gc, single={}, target={}", single, target);
+        info!(
+            "objectmap op_env cache will gc, single={}, target={}",
+            single, target
+        );
 
         let mut pending = HashMap::new();
         {
@@ -409,11 +560,18 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
             gc.path_gc(target).await?
         };
 
-        let mut result: HashMap<ObjectId, ObjectMapPendingItem> = result.into_iter().filter(|item| {
-            item.1.is_touched
-        }).collect();
+        let mut result: HashMap<ObjectId, ObjectMapPendingItem> = result
+            .into_iter()
+            .filter(|item| item.1.is_touched)
+            .collect();
 
-        info!("gc for target single={}, target={}, {} -> {}", single, target, prev_count, result.len());
+        info!(
+            "gc for target single={}, target={}, {} -> {}",
+            single,
+            target,
+            prev_count,
+            result.len()
+        );
 
         {
             let mut inner = self.pending.lock().unwrap();
@@ -424,21 +582,18 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
     }
 }
 
-
 struct ObjectMapOpEnvMemoryCacheGC {
     pending: HashMap<ObjectId, ObjectMapPendingItem>,
 }
 
 impl ObjectMapOpEnvMemoryCacheGC {
     pub fn new(pending: HashMap<ObjectId, ObjectMapPendingItem>) -> Self {
-        Self {
-            pending,
-        }
+        Self { pending }
     }
 
     fn touch_item(&mut self, id: &ObjectId) {
         debug!("gc touch item: {}", id);
-        if id.is_data()  {
+        if id.is_data() {
             return;
         }
 
@@ -461,7 +616,10 @@ impl ObjectMapOpEnvMemoryCacheGC {
         Ok(this.pending)
     }
 
-    pub async fn path_gc(mut self, root: &ObjectId) -> BuckyResult<HashMap<ObjectId, ObjectMapPendingItem>> {
+    pub async fn path_gc(
+        mut self,
+        root: &ObjectId,
+    ) -> BuckyResult<HashMap<ObjectId, ObjectMapPendingItem>> {
         // first touch the root
         self.touch_item(root);
 

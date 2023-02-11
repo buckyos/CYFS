@@ -4,10 +4,11 @@ use super::DeviceConfig;
 use super::PATHS;
 use crate::config_repo::*;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct DeviceConfigManager {
@@ -26,7 +27,7 @@ impl DeviceConfigManager {
         }
     }
 
-    pub async fn init(&self) -> BuckyResult<()> {
+    pub fn init(&self) -> BuckyResult<()> {
         // 从system_config获取device_config依赖的desc
         let desc = &get_system_config().config_desc;
 
@@ -58,7 +59,7 @@ impl DeviceConfigManager {
         }
 
         // 计算当前device_config的hash
-        let hash = Self::calc_config_hash().await;
+        let hash = Self::calc_config_hash();
         *self.device_config_hash.lock().unwrap() = hash;
 
         Ok(())
@@ -82,7 +83,7 @@ impl DeviceConfigManager {
     }
 
     // 计算本地文件的hash
-    async fn calc_config_hash() -> Option<HashValue> {
+    fn calc_config_hash() -> Option<HashValue> {
         let config_file = &PATHS.device_config;
 
         if !config_file.exists() {
@@ -94,7 +95,7 @@ impl DeviceConfigManager {
             return None;
         }
 
-        match cyfs_base::hash_file(&config_file).await {
+        match cyfs_base::hash_file_sync(&config_file) {
             Ok((hash_value, _len)) => {
                 info!(
                     "current config file hash is path={}, hash={}",
@@ -159,7 +160,7 @@ impl DeviceConfigManager {
         );
 
         info!("device config: {}", device_config_str);
-        
+
         // 保存到本地配置文件
         Self::save_config_file(device_config_str.as_bytes()).await?;
 

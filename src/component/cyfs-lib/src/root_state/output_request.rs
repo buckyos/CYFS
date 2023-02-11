@@ -239,6 +239,7 @@ pub struct OpEnvLoadOutputRequest {
     pub common: OpEnvOutputRequestCommon,
 
     pub target: ObjectId,
+    pub inner_path: Option<String>,
 }
 
 impl OpEnvLoadOutputRequest {
@@ -246,6 +247,15 @@ impl OpEnvLoadOutputRequest {
         Self {
             common: OpEnvOutputRequestCommon::new_empty(),
             target,
+            inner_path: None,
+        }
+    }
+
+    pub fn new_with_inner_path(target: ObjectId, inner_path: impl Into<String>) -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            target,
+            inner_path: Some(inner_path.into()),
         }
     }
 }

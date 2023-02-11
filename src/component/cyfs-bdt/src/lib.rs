@@ -9,13 +9,13 @@ mod finder;
 pub mod sn;
 pub mod tunnel;
 pub mod pn;
-mod cc;
+pub mod cc;
 mod stream;
 mod datagram;
 mod dht;
 mod stack;
 pub mod ndn;
-mod utils;
+pub mod utils;
 pub mod debug;
 
 pub use types::*;

@@ -34,12 +34,13 @@ pub trait Tunnel: Send + Sync + std::fmt::Display {
     fn remote(&self) -> &Endpoint;
     fn state(&self) -> TunnelState; 
     fn proxy(&self) -> ProxyType;
-    fn send_package(&self, packages: protocol::DynamicPackage) -> Result<(), BuckyError>;
+    fn send_package(&self, packages: protocol::DynamicPackage) -> Result<usize, BuckyError>;
     fn raw_data_header_len(&self) -> usize;
     fn send_raw_data(&self, data: &mut [u8]) -> Result<usize, BuckyError>;
     fn ptr_eq(&self, other: &DynamicTunnel) -> bool;
     fn retain_keeper(&self);
     fn release_keeper(&self);
+    fn mark_dead(&self, former_state: TunnelState);
     fn reset(&self);
     fn mtu(&self) -> usize;
 }

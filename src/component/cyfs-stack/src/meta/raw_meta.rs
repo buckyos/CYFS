@@ -94,7 +94,7 @@ impl RawMetaCache {
         match self.noc.put_object(&req).await {
             Ok(resp) => match resp.result {
                 NamedObjectCachePutObjectResult::AlreadyExists => {
-                    info!("meta object alreay in noc: {}", object_id);
+                    debug!("meta object alreay in noc: {}", object_id);
                     Ok(false)
                 }
                 NamedObjectCachePutObjectResult::Merged => {

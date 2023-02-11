@@ -48,12 +48,14 @@ async fn add_dir(_dec_id: &ObjectId) -> (DirId, FileId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_dir error! {}", ret.unwrap_err());
         unreachable!();

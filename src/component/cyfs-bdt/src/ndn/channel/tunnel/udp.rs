@@ -1,13 +1,14 @@
 use log::*;
 use std::{
     collections::{LinkedList},
-    time::{Duration},
+    time::{Duration, Instant},
     cell::RefCell, 
     sync::Mutex
 };
 // use cyfs_debug::Mutex;
 use async_std::{
     sync::Arc, 
+    task, 
 };
 use cyfs_base::*;
 use crate::{
@@ -16,9 +17,12 @@ use crate::{
     tunnel::{udp::Tunnel as RawTunnel, Tunnel, DynamicTunnel, TunnelState}, 
     cc::{self, CongestionControl},
 };
+use super::super::super::{
+    chunk::ChunkEncoder
+};
 use super::super::{
     protocol::v0::*, 
-    channel::Channel
+    channel::{self}
 };
 use super::{
     tunnel::*
@@ -50,10 +54,10 @@ struct CcImpl {
 }
 
 impl CcImpl {
-    fn new(config: &cc::Config) -> Self {
+    fn new(config: &cc::Config, init_seq: TempSeq) -> Self {
         Self {
             est_stubs: LinkedList::new(), 
-            est_seq: TempSeqGenerator::new(), 
+            est_seq: TempSeqGenerator::from(init_seq), 
             on_air: 0, 
             cc: CongestionControl::new(PieceData::max_payload(), config), 
             no_resp_counter: 0, 
@@ -68,13 +72,21 @@ struct RespEstimateStub {
     recved: u64,
 }
 
+struct PacePackage {
+    send_time: Instant,
+    data: Vec<u8>,
+}
+
 struct TunnelImpl {
-    channel: Channel, 
+    config: channel::Config, 
     raw_tunnel: RawTunnel, 
     start_at: Timestamp, 
     active_timestamp: Timestamp, 
     cc: Mutex<CcImpl>, 
-    resp_estimate: Mutex<RespEstimateStub>,
+    resp_estimate: Mutex<RespEstimateStub>, 
+    uploaders: Uploaders,
+    pacer: Mutex<cc::pacing::Pacer>, 
+    package_queue: Arc<Mutex<LinkedList<PacePackage>>>, 
 }
 
 #[derive(Clone)]
@@ -82,18 +94,18 @@ pub struct UdpTunnel(Arc<TunnelImpl>);
 
 impl std::fmt::Display for UdpTunnel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{tunnel:{}}}", self.0.channel, self.0.raw_tunnel)
+        write!(f, "{{tunnel:{}}}", self.0.raw_tunnel)
     }
 }
 
 impl UdpTunnel {
     pub fn new(
-        channel: Channel, 
+        config: channel::Config, 
         raw_tunnel: RawTunnel, 
         active_timestamp: Timestamp) -> Self {
-        let cc = CcImpl::new(&channel.config().udp.cc);
+        let cc = CcImpl::new(&config.udp.cc, raw_tunnel.owner().map(|t| t.generate_sequence()).unwrap_or_default());
         Self(Arc::new(TunnelImpl {
-            channel, 
+            config, 
             raw_tunnel, 
             start_at: bucky_time_now(), 
             active_timestamp, 
@@ -101,19 +113,74 @@ impl UdpTunnel {
             resp_estimate: Mutex::new(RespEstimateStub {
                 seq: TempSeq::default(), 
                 recved: 0
-            })
+            }), 
+            uploaders: Uploaders::new(),
+            pacer: Mutex::new(cc::pacing::Pacer::new(PieceData::max_payload() * 4, PieceData::max_payload())),
+            package_queue: Arc::new(Mutex::new(Default::default())),
         }))
     }
 
-    fn config(&self) -> &Config {
-        &self.0.channel.config().udp
+    fn config(&self) -> &channel::Config {
+        &self.0.config
+    }
+
+    fn package_delay(&self, data: &[u8], send_time: Instant) {
+        let mut package_queue = self.0.package_queue.lock().unwrap();
+
+        let mut package_data = vec![0u8; MTU];
+        package_data.copy_from_slice(data);
+
+        package_queue.push_back(PacePackage {
+            send_time,
+            data: package_data,
+        });
+
+        if package_queue.len() == 1 {
+            let mut delay = Instant::now() - send_time;
+            let package_queue = self.0.package_queue.clone();
+
+            let tunnel = self.clone();
+            task::spawn(async move {
+                loop {
+                    task::sleep(delay).await;
+
+                    let now = Instant::now();
+                    {
+                        let mut packages = package_queue.lock().unwrap();
+                        let mut n = 0;
+
+                        for (_, package) in packages.iter().enumerate() {
+                            if package.send_time > now {
+                                delay = package.send_time.checked_duration_since(now).unwrap();
+                                break ;
+                            }
+                            n += 1;
+                        }
+
+                        let raw_tunnel = &tunnel.0.raw_tunnel;
+                        while n > 0 {
+                            if let Some(package) = packages.pop_front() {
+                                let mut data = package.data;
+                                let res = raw_tunnel.send_raw_data(&mut data);
+                                info!("package_delay ndn {:?}", res);
+                            }
+                            n -= 1;
+                        }
+
+                        if packages.len() == 0 {
+                            return ;
+                        }
+                    }
+                }
+            });
+        }
     }
 
     fn send_pieces(&self, piece_count: usize) {
         if piece_count == 0 {
             return;
         }
-        trace!("{} schedule send pieces count {}", self, piece_count);
+        // trace!("{} schedule send pieces count {}", self, piece_count);
         struct BufferIndex {
             index: usize, 
             len: usize
@@ -127,6 +194,10 @@ impl UdpTunnel {
                 let mut pre_buf_index: Option<BufferIndex> = None;
                 let mut sent = 0;
                 let tunnel = &self.0.raw_tunnel;
+                let mut send_bytes = 0;
+                let mut packets = 0;
+                let mut pacer = self.0.pacer.lock().unwrap();
+                let now = Instant::now();
                 for _ in 0..piece_count {
                     let mut buf_index = if let Some(bi) = &pre_buf_index {
                         if bi.index == 0 {
@@ -139,13 +210,16 @@ impl UdpTunnel {
                     } else {
                         BufferIndex {index: 0, len: 0}
                     };
-                    let piece_len = self.0.channel.next_piece(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..]);
+                    let piece_len = self.uploaders().next_piece(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..]);
                     if piece_len > 0 {
                         sent += 1;
                         buf_index.len = piece_len;
                         if pre_buf_index.is_some() {
                             std::mem::swap(pre_buf_index.as_mut().unwrap(), &mut buf_index);
-                            let _ = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]);
+                            if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
+                                send_bytes += size;
+                                packets += 1;
+                            }
                         } else {
                             pre_buf_index = Some(buf_index);
                         }
@@ -168,7 +242,22 @@ impl UdpTunnel {
                     };
                     debug!("{} send estimate sequence:{:?} sent:{}", self, est_seq, sent);
                     PieceData::reset_estimate(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..], est_seq);
-                    let _ = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]);
+
+                    let package_size = buf_index.len + tunnel.raw_data_header_len();
+                    if let Some(next_time) = pacer.send(package_size, now) {
+                        self.package_delay(&buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()], next_time);
+                        send_bytes += package_size;
+                        packets += 1;
+                        info!("pacer next_time={:?}", next_time);
+                    } else if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
+                        send_bytes += size;
+                        packets += 1;
+                    }
+                }
+
+                {
+                    let mut cc = self.0.cc.lock().unwrap();
+                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, packets);
                 }
             })
         });      
@@ -202,33 +291,22 @@ impl ChannelTunnel for UdpTunnel {
         self.0.active_timestamp
     }
 
-    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    fn send_piece_control(&self, control: PieceControl) {
-        debug!("{} will send piece control {:?}", self, control);
-        let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
-    }
-
     fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()> {
         trace!("{} got piece data est_seq:{:?} chunk:{} desc:{:?} data:{}", self, piece.est_seq, piece.chunk, piece.desc, piece.data.len());
         if let Some(est_seq) = piece.est_seq {
             if let Some(resp) = {
                 debug!("{} got estimate seqenuce:{:?}", self, est_seq);
+
                 let mut est_stub = self.0.resp_estimate.lock().unwrap();
                 est_stub.recved += 1;
                 if est_stub.seq < est_seq {
-                    let resp = ChannelEstimate {
-                        sequence: est_seq, 
-                        recved: est_stub.recved,
-                    };
                     est_stub.seq = est_seq;
-
-                    Some(resp)
-                } else {
-                    None
-                }
+                } 
+                let resp = ChannelEstimate {
+                    sequence: est_seq, 
+                    recved: est_stub.recved,
+                };
+                Some(resp)
             } {
                 let tunnel = &self.0.raw_tunnel;
                 let mut buffer = vec![0u8; tunnel.raw_data_header_len() + resp.raw_measure(&None).unwrap()];
@@ -238,7 +316,10 @@ impl ChannelTunnel for UdpTunnel {
                     self,
                     est_seq
                 );
-                let _ = tunnel.send_raw_data(&mut buffer[..]);
+                if let Ok(send_bytes) = tunnel.send_raw_data(&mut buffer[..]) {
+                    let mut cc = self.0.cc.lock().unwrap();
+                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, 1);
+                }
             }
         } else {
             let mut est_stub = self.0.resp_estimate.lock().unwrap();
@@ -259,7 +340,7 @@ impl ChannelTunnel for UdpTunnel {
                 let rtt = Duration::from_micros(bucky_time_now() - stub.send_time);
                 let delay = rtt / 2;
                 
-                cc.cc.on_estimate(rtt, delay);
+                cc.cc.on_estimate(rtt, delay, false);
                 debug!("{} estimate rtt:{:?} delay:{:?} rto:{:?}", self, rtt, delay, cc.cc.rto());
 
                 est_index = Some(cc.est_stubs.len() - 1 - index);
@@ -272,8 +353,10 @@ impl ChannelTunnel for UdpTunnel {
             let mut resp_count = 0;
 
             let est_stubs = cc.est_stubs.split_off(est_index + 1);
+            let mut send_time = 0;
             for stub in &cc.est_stubs {
                 resp_count += stub.sent;
+                send_time = stub.send_time;
             }
             cc.est_stubs = est_stubs;
 
@@ -283,22 +366,28 @@ impl ChannelTunnel for UdpTunnel {
             debug!("{} cc on ack on_air:{}, ack:{}", self, on_air, resp_count);
             cc.no_resp_counter = 0;
             cc.break_counter = 0;
+            let packet_num = if cc.est_stubs.len() == 0 {
+                None
+            } else {
+                Some(cc.est_stubs.len() as u64)
+            };
             cc.cc.on_ack(
                 (on_air * PieceData::max_payload()) as u64, 
                 (resp_count * PieceData::max_payload()) as u64, 
-            	None,
-            	bucky_time_now());
+                packet_num,
+            	send_time,
+                false);
         }
         
         Ok(())
     }
 
-    fn on_piece_control(&self, _ctrl: &mut PieceControl) -> BuckyResult<()> {
-        Ok(())
-    }
 
 
     fn on_time_escape(&self, now: Timestamp) -> BuckyResult<()> {
+        if TunnelState::Dead == self.0.raw_tunnel.state() {
+            return Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's dead"));
+        }
         let send_count = {
             let mut cc = self.0.cc.lock().unwrap();
             cc.cc.on_time_escape(now);
@@ -317,7 +406,7 @@ impl ChannelTunnel for UdpTunnel {
             if let Some(index) = loss_from_index {
                 cc.no_resp_counter += 1;
                 cc.break_counter += 1;
-                if cc.break_counter > self.config().break_loss_count {
+                if cc.break_counter > self.config().udp.break_loss_count {
                     cc.no_resp_counter = 0;
                     cc.break_counter = 0;
                     cc.est_stubs = LinkedList::new();
@@ -326,7 +415,7 @@ impl ChannelTunnel for UdpTunnel {
                 } else {
                     cc.est_stubs = cc.est_stubs.split_off(index + 1);
                     cc.on_air -= loss_count;
-                    if cc.no_resp_counter > self.config().no_resp_loss_count  {
+                    if cc.no_resp_counter > self.config().udp.no_resp_loss_count  {
                         debug!("{} outcome on no resp {} rto {:?} ", self, loss_count, cc.cc.rto());
                         cc.no_resp_counter = 0;
                         cc.cc.on_no_resp((loss_count * PieceData::max_payload()) as u64);
@@ -350,9 +439,111 @@ impl ChannelTunnel for UdpTunnel {
                     Ok(0)
                 }
             }
-        }?;
+        }.map_err(|err| {
+            self.0.raw_tunnel.mark_dead(TunnelState::Active(self.0.active_timestamp));
+            err
+        })?;
         self.send_pieces(send_count);
         Ok(())
     }
+
+    fn uploaders(&self) -> &Uploaders {
+        &self.0.uploaders
+    }
+
+    fn download_state(&self) -> Box<dyn TunnelDownloadState> {
+        Box::new(UdpDownloadState {
+            config: self.config().clone(), 
+            last_pushed: None, 
+            next_send_time: None
+        })
+    }
+
+    fn upload_state(&self, encoder: Box<dyn ChunkEncoder>) -> Box<dyn ChunkEncoder> {
+        encoder
+    }
 }
 
+
+#[derive(Clone, Copy)]
+enum LastPushed {
+    PieceData(Timestamp), 
+    RespInterest(Timestamp)
+}
+
+impl LastPushed {
+    fn time(&self) -> Timestamp {
+        match self {
+            Self::PieceData(at) => *at, 
+            Self::RespInterest(at) => *at
+        }
+    }
+}
+
+struct UdpDownloadState {
+    config: channel::Config, 
+    last_pushed: Option<LastPushed>,  
+    next_send_time: Option<Timestamp>
+}
+
+impl TunnelDownloadState for UdpDownloadState {
+    fn on_piece_data(&mut self) {
+        let now = bucky_time_now();
+        if let Some(last_pushed) = self.last_pushed {
+            if now > last_pushed.time() {
+                match last_pushed {
+                    LastPushed::PieceData(at) => {
+                        let interval = u64::max(now - at, self.config.udp.cc.min_rto.as_micros() as u64);
+                        let interval = u64::min(self.config.block_interval.as_micros() as u64, interval);
+                        self.last_pushed = Some(LastPushed::PieceData(now));
+                        self.next_send_time = Some(now + interval);
+                    },
+                    LastPushed::RespInterest(_) => {
+                        self.last_pushed = Some(LastPushed::PieceData(now));
+                        self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+                    }
+                }
+            }
+        } else {
+            self.last_pushed = Some(LastPushed::PieceData(now));
+            self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+        }
+    }
+
+    fn on_resp_interest(&mut self) {
+        let now = bucky_time_now();
+        if let Some(last_pushed) = self.last_pushed {
+            if now > last_pushed.time() {
+                match last_pushed {
+                    LastPushed::PieceData(_) => {
+                        self.last_pushed = Some(LastPushed::RespInterest(now));
+                        self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+                    },
+                    LastPushed::RespInterest(at) => {
+                        let interval = now - at;
+                        self.last_pushed = Some(LastPushed::RespInterest(now));
+                        self.next_send_time = Some(now + interval);
+                    }
+                }
+            }
+        } else {
+            self.last_pushed = Some(LastPushed::RespInterest(now));
+            self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+        }
+    }
+
+
+    fn on_time_escape(&mut self, now: Timestamp) -> bool {
+        if let Some(next_send_time) = self.next_send_time {
+            if now > next_send_time {
+                let interval = next_send_time - self.last_pushed.clone().unwrap().time();
+                self.next_send_time = Some(next_send_time + 2 * interval);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+}

@@ -261,6 +261,7 @@ impl ProtobufTransform<&AppLocalStatusDesc> for protos::AppLocalStatusDesc {
             };
             permissions.push(item);
         }
+        permissions.sort_by(|left, right| left.permission.partial_cmp(&right.permission).unwrap());
         ret.permissions = permissions.into();
 
         Ok(ret)
