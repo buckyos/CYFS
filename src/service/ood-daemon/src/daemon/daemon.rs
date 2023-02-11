@@ -5,7 +5,7 @@ use crate::service::SERVICE_MANAGER;
 use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
-use super::status::OOD_STATUS_MANAGER;
+use crate::status::OOD_STATUS_MANAGER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
