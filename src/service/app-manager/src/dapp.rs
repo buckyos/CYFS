@@ -99,15 +99,15 @@ impl DApp {
         let app_info = DApp::parse_info(app_info_root)?;
         if app_info.start.is_empty() {
             let msg = format!("app {} has no start script!", &dec_id);
-            warn!(&msg);
+            warn!("{}", &msg);
         }
         if app_info.status.is_empty() {
             let msg = format!("app {} has no status script!", &dec_id);
-            warn!(&msg);
+            warn!("{}", &msg);
         }
         if app_info.stop.is_empty() {
             let msg = format!("app {} has no stop script!", &dec_id);
-            warn!(&msg);
+            warn!("{}", &msg);
         }
         Ok(DApp {
             dec_id,
