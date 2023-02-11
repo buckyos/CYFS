@@ -9,8 +9,10 @@ use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
 
 use super::service::Service;
+use super::service_info::ServicePackageLocalState;
 use crate::config::*;
 use crate::daemon::GATEWAY_MONITOR;
+use crate::status::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
 
@@ -288,12 +290,13 @@ impl ServiceManager {
         let service_path = self.service_root.join(&service_config.name);
         if !service_path.is_dir() {
             if let Err(e) = std::fs::create_dir_all(service_path.as_path()) {
-                error!(
+                let msg = format!(
                     "create service dir error! dir={}, err={}",
                     service_path.display(),
                     e
                 );
-                return Err(BuckyError::from(e));
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
             }
         }
 
@@ -501,6 +504,36 @@ impl ServiceManager {
 
         let service = service_item.service.as_ref().unwrap();
         service.sync_state(target_state);
+    }
+
+    pub fn collect_status(&self) -> Vec<OODServiceStatusItem> {
+        let mut list = vec![];
+        let services = self.service_list.lock().unwrap();
+        for (_name, item) in services.iter() {
+            let package_state = match &item.service {
+                Some(service) => service.package_local_status(),
+                None => ServicePackageLocalState::Init,
+            };
+
+            let process_state = match &item.service {
+                Some(service) => service.state(),
+                None => ServiceState::Stop,
+            };
+
+            let item = OODServiceStatusItem {
+                id: item.config.id.clone(),
+                name: item.config.name.clone(),
+                version: item.config.version.clone(),
+                enable: item.config.enable,
+                target_state: item.config.target_state,
+                package_state,
+                process_state,
+            };
+
+            list.push(item);
+        }
+
+        list
     }
 }
 
