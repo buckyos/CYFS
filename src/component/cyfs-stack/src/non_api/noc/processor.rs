@@ -7,8 +7,8 @@ use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use crate::{non::*, AclManagerRef};
 use cyfs_base::*;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
+use crate::NamedDataComponents;
 
 use std::sync::Arc;
 
@@ -33,17 +33,15 @@ impl NOCLevelInputProcessor {
     // noc processor with inner_path service
     pub(crate) fn new_with_inner_path_service(
         noc: NamedObjectCacheRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         router_handlers: RouterHandlersManager,
         zone_manager: ZoneManagerRef,
-        chunk_manager: Arc<ChunkManager>,
     ) -> NONInputProcessorRef {
         let raw_processor = Self::new(zone_manager, &router_handlers, noc.clone());
 
         // add inner_path supports
         let inner_path_processor =
-            NONInnerPathServiceProcessor::new(raw_processor, chunk_manager, ndc, tracker, noc);
+            NONInnerPathServiceProcessor::new(raw_processor, named_data_components, noc);
 
         // 增加pre-noc前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
@@ -129,7 +127,7 @@ impl NOCLevelInputProcessor {
                     NamedObjectCachePutObjectResult::AlreadyExists => {
                         // 对象已经在noc里面了
                         info!(
-                            "object alreay in noc: id={}, access={:?}",
+                            "object alreay in noc and update time is newer: id={}, access={:?}",
                             noc_req.object.object_id, req.access
                         );
                     }

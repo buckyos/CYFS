@@ -116,6 +116,7 @@ impl GlobalStateObjectMetaList {
         object_data: &dyn ObjectSelectorDataProvider,
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
+        current_device_id: &DeviceId,
     ) -> BuckyResult<Option<()>> {
         if self.list.is_empty() {
             return Ok(None);
@@ -151,7 +152,7 @@ impl GlobalStateObjectMetaList {
                         return Ok(Some(()));
                     } else {
                         let msg =
-                            format!("object meta reject by item: req={}, access={}", object_data.object_id(), item);
+                            format!("object meta reject by item: device={}, req={}, access={}", current_device_id, object_data.object_id(), item);
                         warn!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                     }
@@ -164,7 +165,7 @@ impl GlobalStateObjectMetaList {
                             return Ok(Some(()));
                         } else {
                             let msg =
-                                format!("object meta reject by item: req={}, access={}", object_data.object_id(), item);
+                                format!("object meta reject by item: device={}, req={}, access={}", current_device_id, object_data.object_id(), item);
                             warn!("{}", msg);
                             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                         }

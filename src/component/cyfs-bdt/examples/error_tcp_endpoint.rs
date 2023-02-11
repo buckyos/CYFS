@@ -5,10 +5,6 @@ use async_std::{
 };
 use cyfs_base::*;
 use futures::StreamExt;
-use cyfs_util::cache::{
-    NamedDataCache, 
-    TrackerCache
-};
 use cyfs_bdt::*;
 use std::{net::Shutdown, time::Duration};
 mod utils;
@@ -65,11 +61,8 @@ async fn main() {
     let (rn_dev2, rn_secret2) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4tcp127.0.0.1:10004"]).unwrap();
 
     let mut ln_params = StackOpenParams::new("");
-    let ln_tracker = MemTracker::new();
-    let ln_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    let ln_store = MemChunkStore::new();
     ln_params.chunk_store = Some(ln_store.clone_as_reader());
-    ln_params.ndc = Some(NamedDataCache::clone(&ln_tracker));
-    ln_params.tracker = Some(TrackerCache::clone(&ln_tracker));
 
     let mut rn_dev = rn_dev1.clone();
 
@@ -80,21 +73,14 @@ async fn main() {
 
 
     let mut rn_params = StackOpenParams::new("");
-    let rn_tracker = MemTracker::new();
-    let rn_store = MemChunkStore::new(NamedDataCache::clone(&rn_tracker).as_ref());
-    rn_params.chunk_store = Some(rn_store.clone_as_reader());
-    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
-    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
-   
+    let rn_store = MemChunkStore::new();
+    rn_params.chunk_store = Some(rn_store.clone_as_reader()); 
     let rn_stack1 = Stack::open(rn_dev1, rn_secret1, rn_params).await.unwrap();
 
 
     let mut rn_params = StackOpenParams::new("");
-    let rn_tracker = MemTracker::new();
-    let rn_store = MemChunkStore::new(NamedDataCache::clone(&rn_tracker).as_ref());
+    let rn_store = MemChunkStore::new();
     rn_params.chunk_store = Some(rn_store.clone_as_reader());
-    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
-    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
     let _ = Stack::open(rn_dev2, rn_secret2, rn_params).await.unwrap();
 
 

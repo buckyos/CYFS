@@ -128,12 +128,18 @@ pub struct OpEnvLoadInputRequest {
     pub common: OpEnvInputRequestCommon,
 
     pub target: ObjectId,
+    pub inner_path: Option<String>,
 }
 
 impl fmt::Display for OpEnvLoadInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", target: {}", self.target)
+        write!(f, ", target: {}", self.target)?;
+        if let Some(inner_path) = &self.inner_path {
+            write!(f, ", inner_path: {}", inner_path)?;
+        }
+
+        Ok(())
     }
 }
 

@@ -3,11 +3,12 @@ use super::local::LocalRepo;
 use super::named_data::NamedDataRepo;
 use crate::config::PATHS;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 use cyfs_util::TomlHelper;
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum RepoType {

@@ -24,6 +24,7 @@ pub struct DingtalkNotifier {
 
 impl DingtalkNotifier {
     pub fn new(dingtalk_url: &str) -> Self {
+        info!("new dingtalk bug reporter: {}", dingtalk_url);
         Self {
             dingtalk_url: dingtalk_url.to_owned(),
         }

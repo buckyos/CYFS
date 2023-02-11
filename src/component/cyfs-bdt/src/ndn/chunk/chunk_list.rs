@@ -267,3 +267,187 @@ impl ChunkListDesc {
         ranges
     }
 }
+
+
+
+#[derive(Clone, Debug)]
+pub struct ChunkStateList {
+    start: usize,
+    states: Vec<u8>,
+}
+
+impl Default for ChunkStateList {
+    fn default() -> Self {
+        Self {
+            start: 0,
+            states: vec![],
+        }
+    }
+}
+
+impl From<(usize, Vec<ChunkState>)> for ChunkStateList {
+    fn from(params: (usize, Vec<ChunkState>)) -> Self {
+        let (start, states) = params;
+        Self {
+            start,
+            states: Vec::from_iter(states.into_iter().map(|s| s.into())),
+        }
+    }
+}
+
+impl ChunkStateList {
+    pub fn new(desc: &ChunkListDesc) -> Self {
+        Self {
+            start: 0,
+            states: vec![ChunkState::Unknown.into(); desc.chunks().len()],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.states.len()
+    }
+
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn range(&self) -> Range<usize> {
+        self.start..(self.start + self.len())
+    }
+
+    pub fn state_of_index(&self, index: usize) -> Option<ChunkState> {
+        self.states
+            .get(index - self.start)
+            .map(|s| ChunkState::try_from(*s).unwrap())
+    }
+
+    pub fn state_of(&self, desc: &ChunkListDesc, chunk: &ChunkId) -> Option<ChunkState> {
+        desc.index_of(chunk).map(|indices| {
+            self.states
+                .get(indices[0] - self.start)
+                .map(|s| ChunkState::try_from(*s).unwrap())
+                .unwrap()
+        })
+    }
+
+    pub fn update_of(
+        &mut self,
+        desc: &ChunkListDesc,
+        chunk: &ChunkId,
+        state: ChunkState,
+    ) -> Option<ChunkState> {
+        desc.index_of(chunk).map(|indices| {
+            for i in indices {
+                *self.states.get_mut(i - self.start).unwrap() = state.into();
+            }
+            state
+        })
+    }
+
+    pub fn update_index_of(&mut self, index: usize, state: ChunkState) -> Option<ChunkState> {
+        let index = index - self.start;
+        let former = ChunkState::try_from(self.states[index]).unwrap();
+        self.states[index] = state as u8;
+        Some(former)
+    }
+
+    pub fn range_of(&self, range: &Range<usize>) -> Self {
+        let start = range.start;
+        let states = Vec::from(&self.states.as_slice()[(range.start - self.start)..(range.end - self.start)]);
+        Self { start, states }
+    }
+
+    pub fn update_range_of(&mut self, range: &Self) -> usize {
+        let r = range.range();
+        self.states.as_mut_slice()[(r.start - self.start)..(r.end - self.start)].copy_from_slice(range.states.as_slice());
+        range.len()
+    }
+
+    pub fn is_range_ready(&self, range: &Range<usize>) -> Option<Self> {
+        for state in &self.states.as_slice()[(range.start - self.start)..(range.end - self.start)] {
+            if *state == ChunkState::Ready as u8 {
+                return Some(self.range_of(range));
+            }
+        }
+        None
+    }
+
+    pub fn range_ready_count(&self, range: &Range<usize>) -> usize {
+        let mut count = 0;
+        for state in &self.states.as_slice()[(range.start - self.start)..(range.end - self.start)] {
+            if *state == ChunkState::Ready as u8 {
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+impl RawEncode for ChunkStateList {
+    fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> Result<usize, BuckyError> {
+        Ok(u32::raw_bytes().unwrap() 
+            + u32::raw_bytes().unwrap()
+            + self.states.len())
+    }
+
+    fn raw_encode<'a>(
+        &self,
+        buf: &'a mut [u8],
+        purpose: &Option<RawEncodePurpose>,
+    ) -> Result<&'a mut [u8], BuckyError> {
+        let bytes = self.raw_measure(purpose)?;
+        if buf.len() < bytes {
+            return Err(BuckyError::new(
+                BuckyErrorCode::OutOfLimit,
+                "not enough buffer",
+            ));
+        }
+        let buf = (self.start as u32).raw_encode(buf, purpose)?;
+        let buf = (self.states.len() as u32).raw_encode(buf, purpose)?;
+        unsafe {
+            std::ptr::copy(
+                self.states.as_slice().as_ptr(),
+                buf.as_mut_ptr(),
+                self.states.len(),
+            );
+        }
+        Ok(&mut buf[self.states.len()..])
+    }
+}
+
+impl<'de> RawDecode<'de> for ChunkStateList {
+    fn raw_decode(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        if buf.len() < u32::raw_bytes().unwrap() {
+            return Err(BuckyError::new(
+                BuckyErrorCode::OutOfLimit,
+                "not enough buffer",
+            ));
+        }
+        let (start, buf) = u32::raw_decode(buf)?;
+        let start = start as usize;
+
+        if buf.len() < u32::raw_bytes().unwrap() {
+            return Err(BuckyError::new(
+                BuckyErrorCode::OutOfLimit,
+                "not enough buffer",
+            ));
+        }
+        let (len, buf) = u32::raw_decode(buf)?;
+        let len = len as usize;
+
+        if buf.len() < len {
+            return Err(BuckyError::new(
+                BuckyErrorCode::OutOfLimit,
+                "not enough buffer",
+            ));
+        }
+        let mut states = vec![0u8; len];
+        unsafe {
+            std::ptr::copy(buf.as_ptr(), states.as_mut_slice().as_mut_ptr(), len);
+        }
+
+        let bytes = Self { start, states };
+
+        Ok((bytes, &buf[len..]))
+    }
+}

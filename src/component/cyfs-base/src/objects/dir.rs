@@ -241,6 +241,8 @@ impl TryFrom<&DirBodyContent> for protos::DirBodyContent {
                     item.set_value(v.to_owned());
                     item_list.push(item);
                 }
+                
+                item_list.sort_by(|left, right| left.obj_id.partial_cmp(&right.obj_id).unwrap());
                 ret.set_obj_list(item_list.into());
             }
         }

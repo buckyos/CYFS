@@ -978,6 +978,10 @@ impl SessionData {
         self.syn_info.is_some() && (self.flags & SESSIONDATA_FLAG_ACK != 0)
     }
 
+    pub fn is_reset(&self) -> bool {
+        self.flags & SESSIONDATA_FLAG_RESET != 0
+    }
+
     pub fn set_ack(&mut self) -> &mut Self {
         self.flags = self.flags | SESSIONDATA_FLAG_ACK;
         self

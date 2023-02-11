@@ -32,7 +32,7 @@ pub struct PooledStream(Arc<PooledStreamImpl>);
 
 impl std::fmt::Display for PooledStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PooledStream {{stream:{}}}", self.0.stream.as_ref())
+        write!(f, "PooledStream {{stream:{}}}", self.0.stream)
     }
 }
 

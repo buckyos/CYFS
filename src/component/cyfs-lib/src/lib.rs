@@ -17,6 +17,7 @@ mod trans;
 mod util;
 mod ws;
 mod zone;
+mod requestor;
 
 pub use crate::util::*;
 pub use acl::*;
@@ -37,6 +38,7 @@ pub use sync::*;
 pub use trans::*;
 pub use ws::*;
 pub use zone::*;
+pub use requestor::*;
 
 // 重新导出cache相关接口，由于bdt层的依赖关系，只能放在util工程
 pub use cyfs_util::cache::*;

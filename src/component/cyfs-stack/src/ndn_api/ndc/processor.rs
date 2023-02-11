@@ -1,16 +1,16 @@
 use super::super::acl::NDNAclLocalInputProcessor;
-use super::super::data::{zero_bytes_reader, LocalDataManager};
+use super::super::data::LocalDataManager;
 use super::object_loader::NDNObjectLoader;
-use crate::ndn::*;
-use crate::ndn_api::NDNForwardObjectData;
-use crate::ndn_api::acl::NDNAclInputProcessor;
-use crate::non::*;
-use cyfs_base::*;
-use cyfs_lib::*;
-use cyfs_util::cache::NamedDataCache;
-use cyfs_chunk_cache::ChunkManager;
-use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
 use crate::acl::AclManagerRef;
+use crate::ndn_api::acl::NDNAclInputProcessor;
+use crate::ndn_api::NDNForwardObjectData;
+use crate::non::*;
+use crate::{ndn::*, NamedDataComponents};
+use cyfs_base::*;
+use cyfs_bdt_ext::zero_bytes_reader;
+use cyfs_chunk_cache::MemChunk;
+use cyfs_chunk_lib::ChunkMeta;
+use cyfs_lib::*;
 
 use futures::AsyncReadExt;
 use std::convert::TryFrom;
@@ -25,24 +25,24 @@ pub(crate) struct NDCLevelInputProcessor {
 impl NDCLevelInputProcessor {
     pub fn new(
         acl: AclManagerRef,
-        chunk_manager: Arc<ChunkManager>,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
 
         // router non processor, but only get_object from current stack
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
- 
         let ret = Self {
-            data_manager: LocalDataManager::new(chunk_manager.clone(), ndc.clone(), tracker.clone()),
+            data_manager: LocalDataManager::new(named_data_components),
             object_loader: NDNObjectLoader::new(non_processor.clone()),
         };
 
         let raw_processor = Arc::new(Box::new(ret) as Box<dyn NDNInputProcessor>);
 
-        // add default ndn acl and chunk verifier 
-        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
-        let acl_processor = NDNAclInputProcessor::new(acl, data_manager, raw_processor);
+        // add default ndn acl and chunk verifier
+        let acl_processor = NDNAclInputProcessor::new(
+            acl,
+            named_data_components.new_chunk_store_reader(),
+            raw_processor,
+        );
         acl_processor.bind_non_processor(non_processor);
 
         Arc::new(Box::new(acl_processor))
@@ -51,13 +51,10 @@ impl NDCLevelInputProcessor {
     // 创建一个带本地权限的processor
     pub fn new_local(
         acl: AclManagerRef,
-        chunk_manager: Arc<ChunkManager>,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
-
-        let processor = Self::new(acl, chunk_manager, ndc, tracker, non_processor);
+        let processor = Self::new(acl, &named_data_components, non_processor);
 
         // with current device's acl
         let local_processor = NDNAclLocalInputProcessor::new(processor.clone());
@@ -105,7 +102,7 @@ impl NDCLevelInputProcessor {
                 self.data_manager
                     .put_chunk(
                         &chunk_id,
-                        &MemRefChunk::from(chunk_raw.as_slice()),
+                        Box::new(MemChunk::from(chunk_raw)),
                         req.common.referer_object,
                     )
                     .await?;
@@ -115,7 +112,7 @@ impl NDCLevelInputProcessor {
                     .to_chunk()
                     .await?;
                 self.data_manager
-                    .put_chunk(&chunk_id, chunk.as_ref(), req.common.referer_object)
+                    .put_chunk(&chunk_id, chunk, req.common.referer_object)
                     .await?;
             }
         }
@@ -144,7 +141,6 @@ impl NDCLevelInputProcessor {
 
     // 从本地noc查找file对象
     async fn get_file(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-
         let udata = if let Some(udata) = &req.common.user_data {
             NDNForwardObjectData::from_any(udata)
         } else {
@@ -179,10 +175,17 @@ impl NDCLevelInputProcessor {
             // no range param specified, will get the whole file
         }
 
-        let (data, length) = if need_process {
-            self.data_manager.get_file(&udata.file, ranges).await?
+        let (data, length, group) = if need_process {
+            self.data_manager
+                .get_file(
+                    &req.common.source,
+                    &udata.file,
+                    req.group.as_deref(),
+                    ranges,
+                )
+                .await?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -191,6 +194,7 @@ impl NDCLevelInputProcessor {
             attr: None,
             length,
             range: resp_range,
+            group,
             data,
         };
 
@@ -224,33 +228,32 @@ impl NDCLevelInputProcessor {
             // no range param specified, will get the whole chunk
         }
 
-        let ret = if need_process {
+        let (data, length, group) = if need_process {
             match req.data_type {
-                NDNDataType::Mem => self.data_manager.get_chunk(&chunk_id, ranges).await?,
-                NDNDataType::SharedMem => self.data_manager.get_chunk_meta(&chunk_id).await?,
+                NDNDataType::Mem => {
+                    self.data_manager
+                        .get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges)
+                        .await?
+                }
+                NDNDataType::SharedMem => {
+                    let (reader, len) = self.data_manager.get_chunk_meta(&chunk_id).await?;
+                    (reader, len, None)
+                }
             }
         } else {
-            Some((zero_bytes_reader(), 0))
+            (zero_bytes_reader(), 0, None)
         };
 
-        if let Some((data, length)) = ret {
-            let resp = NDNGetDataInputResponse {
-                object_id: req.object_id,
-                owner_id: None,
-                attr: None,
-                range: resp_range,
-                length,
-                data,
-            };
-            Ok(resp)
-        } else {
-            let msg = format!(
-                "ndn get_chunk from local but not found! id={}",
-                req.object_id
-            );
-            error!("{}", msg);
-            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-        }
+        let resp = NDNGetDataInputResponse {
+            object_id: req.object_id,
+            owner_id: None,
+            attr: None,
+            range: resp_range,
+            group,
+            length,
+            data,
+        };
+        Ok(resp)
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {

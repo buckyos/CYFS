@@ -21,6 +21,7 @@ use crate::{
     history::keystore, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
+    tunnel::{TunnelContainer}, 
     stream::{StreamContainer}
 };
 use super::super::super::{BuildTunnelParams, tunnel::ProxyType};
@@ -67,6 +68,7 @@ struct ConnectStreamBuilderImpl {
     start_at: Timestamp, 
     params: BuildTunnelParams, 
     stream: StreamContainer, 
+    tunnel: TunnelContainer, 
     state: RwLock<ConnectStreamBuilderState>
 }
 
@@ -75,7 +77,7 @@ pub struct ConnectStreamBuilder(Arc<ConnectStreamBuilderImpl>);
 
 impl fmt::Display for ConnectStreamBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ConnectStreamBuilder{{stream:{}}}", self.0.stream.as_ref())
+        write!(f, "ConnectStreamBuilder{{stream:{}}}", self.0.stream)
     }
 }
 
@@ -83,12 +85,14 @@ impl ConnectStreamBuilder {
     pub fn new(
         stack: WeakStack, 
         params: BuildTunnelParams, 
-        stream: StreamContainer) -> Self {
+        stream: StreamContainer, 
+        tunnel: TunnelContainer) -> Self {
         Self(Arc::new(ConnectStreamBuilderImpl {
             stack, 
             params, 
             start_at: bucky_time_now(), 
-            stream,
+            stream, 
+            tunnel, 
             state: RwLock::new(ConnectStreamBuilderState::Connecting(ConnectingState {
                 action_entries: BTreeMap::new(), 
                 pre_established_actions: LinkedList::new(), 
@@ -107,6 +111,10 @@ impl ConnectStreamBuilder {
         }
     }
 
+    fn tunnel(&self) -> &TunnelContainer {
+        &self.0.tunnel
+    }
+
     async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
 
@@ -119,6 +127,8 @@ impl ConnectStreamBuilder {
         }
 
         let first_box = Arc::new(first_box.unwrap());
+
+        info!("{} build with key {}", self, first_box.key());
         let remote_id = build_params.remote_const.device_id();
         let cached_remote = stack.device_cache().get_inner(&remote_id);
         let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
@@ -186,7 +196,7 @@ impl ConnectStreamBuilder {
 
         let _ = self.build_inner().await
             .map_err(|err| {
-                let _ = self.0.stream.as_ref().cancel_connecting_with(&err);
+                let _ = self.0.stream.cancel_connecting_with(&err);
             });
     }
 
@@ -194,21 +204,21 @@ impl ConnectStreamBuilder {
         let stream = &self.0.stream;
         let stack = Stack::from(&self.0.stack);
 
-        let syn_session_data = stream.as_ref().syn_session_data();
+        let syn_session_data = stream.syn_session_data();
         if syn_session_data.is_none() {
             return None;
         }
         let syn_session_data = syn_session_data.unwrap();
-        let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote_const(), true);
+        let key_stub = stack.keystore().create_key(self.tunnel().remote_const(), true);
         // 生成第一个package box
         let mut first_box = PackageBox::encrypt_box(
-            stream.as_ref().tunnel().remote().clone(), 
+            self.tunnel().remote().clone(), 
             key_stub.key.clone());
             
         let syn_tunnel = SynTunnel {
-            protocol_version: stream.as_ref().tunnel().protocol_version(), 
-            stack_version: stream.as_ref().tunnel().stack_version(), 
-            to_device_id: stream.as_ref().tunnel().remote().clone(), 
+            protocol_version: self.tunnel().protocol_version(), 
+            stack_version: self.tunnel().stack_version(), 
+            to_device_id: self.tunnel().remote().clone(),
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 
             send_time: syn_session_data.send_time.clone()
@@ -250,11 +260,9 @@ impl ConnectStreamBuilder {
 
     async fn call_sn_inner(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let stream = &self.0.stream;
-        let tunnel = stream.as_ref().tunnel();
         let call_session = stack.sn_client().call().call(
             None,
-            tunnel.remote(),
+            self.tunnel().remote(),
             &sn_list,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
@@ -286,7 +294,7 @@ impl ConnectStreamBuilder {
                                 ConnectStreamBuilderState::Connecting(connecting) => {
                                     if connecting.proxy.is_none() {
                                         let proxy = ProxyBuilder::new(
-                                            tunnel.clone(), 
+                                            self.tunnel().clone(), 
                                             remote.get_obj_update_time(),  
                                             first_box.clone());
                                         debug!("{} create proxy builder", self);
@@ -330,7 +338,6 @@ impl ConnectStreamBuilder {
 
     fn explore_endpoint_pair<F: Fn(&Endpoint) -> bool>(&self, remote: &Device, first_box: Arc<PackageBox>, filter: F) -> Vec<DynConnectStreamAction> {
         let stack = Stack::from(&self.0.stack);
-        let stream = &self.0.stream;
         let net_listener = stack.net_manager().listener();
 
         let mut has_udp_tunnel = false;
@@ -339,12 +346,12 @@ impl ConnectStreamBuilder {
         let connect_info = remote.connect_info();
         for udp_interface in net_listener.udp() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && filter(ep)) {
-                if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
+                if let Ok((tunnel, newly_created)) = self.tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
                     if newly_created {
                         SynUdpTunnel::new(
                             tunnel, 
-                            first_box.clone(), 
-                            stream.as_ref().tunnel().config().udp.holepunch_interval); 
+                            first_box.clone(),
+                            self.tunnel().config().udp.holepunch_interval);
                         has_udp_tunnel = true; 
                     }
                 }
@@ -353,7 +360,7 @@ impl ConnectStreamBuilder {
 
         // for local_ip in net_listener.ip_set() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_tcp() && filter(ep)) {
-                if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
+                if let Ok((tunnel, newly_created)) = self.tunnel().create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
                     if newly_created {
                         let action = ConnectTcpStream::new(
                             self.0.stack.clone(), 
@@ -394,7 +401,7 @@ impl ConnectStreamBuilder {
         let builder = self.clone();
         task::spawn(async move {
             let builder_impl = &builder.0;
-            let waiter = match builder_impl.stream.as_ref().wait_establish().await {
+            let waiter = match builder_impl.stream.wait_establish().await {
                 Ok(_) => {
                     let state = &mut *builder_impl.state.write().unwrap();
                     match state {
@@ -473,7 +480,7 @@ impl ConnectStreamBuilder {
                 loop {
                     match action.continue_connect().await {
                         Ok(selector) => {
-                            let _ = builder.stream().as_ref().establish_with(selector, builder.stream()).await;
+                            let _ = builder.stream().establish_with(selector).await;
                             break;
                         }, 
                         Err(_) => {
@@ -582,7 +589,7 @@ impl PingClientCalledEvent for ConnectStreamBuilder {
         let remote_timestamp = called.peer_info.get_obj_update_time();
         task::spawn(async move {
             let stack = Stack::from(&builder.0.stack);
-            let tunnel = builder.0.stream.as_ref().tunnel().clone();
+            let tunnel = builder.tunnel().clone();
             if let Some(first_box) = builder.first_box(&stack.sn_client().ping().default_local()).await {
                 if let Some(proxy_builder) = {
                     let state = &mut *builder.0.state.write().unwrap();

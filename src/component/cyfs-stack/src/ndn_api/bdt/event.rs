@@ -1,19 +1,18 @@
 use super::acl::BdtNDNDataAclProcessor;
-use crate::ndn_api::LocalDataManager;
+
 use crate::{
     acl::*,
     non::NONInputProcessorRef,
     non_api::NONHandlerCaller,
     router_handler::{RouterHandlers, RouterHandlersManager},
     zone::*,
+    NamedDataComponents,
 };
 use cyfs_base::*;
 use cyfs_bdt::{
-    download,
     ndn::channel::{protocol::v0::*, Channel, DownloadSession},
-    DefaultNdnEventHandler, NdnEventHandler, Stack,
+    NdnEventHandler, Stack,
 };
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 use cyfs_util::acl::*;
 
@@ -22,7 +21,6 @@ use cyfs_util::acl::*;
 pub(crate) struct BdtNDNEventHandler {
     acl: BdtNDNDataAclProcessor,
     handlers: RouterHandlersManager,
-    default: DefaultNdnEventHandler,
 }
 
 impl BdtNDNEventHandler {
@@ -30,21 +28,16 @@ impl BdtNDNEventHandler {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
     ) -> Self {
-        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
-
         Self {
             acl: BdtNDNDataAclProcessor::new(
                 zone_manager,
                 acl,
                 handlers.clone(),
-                data_manager,
+                named_data_components.new_chunk_store_reader(),
             ),
             handlers,
-            default: DefaultNdnEventHandler::new(),
         }
     }
 
@@ -62,16 +55,36 @@ impl BdtNDNEventHandler {
             .acl
             .get_data(BdtGetDataInputRequest {
                 object_id: interest.chunk.object_id(),
-                source: from.remote().clone(),
+                source: from.tunnel().remote().clone(),
                 referer: interest.referer.clone(),
             })
             .await
         {
             Ok(_) => {
-                let _ = self
-                    .default
-                    .on_newly_interest(stack, interest, from)
-                    .await?;
+                let desc = interest.prefer_type.fill_values(&interest.chunk);
+                let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
+                if cache.wait_loaded().await {
+                    let encoder = cache.create_encoder(&desc);
+                    let session = from.upload(
+                        interest.chunk.clone(), 
+                        interest.session_id.clone(), 
+                        desc.clone(), 
+                        encoder)?;
+                    
+                    let _ = stack.ndn().root_task().upload().add_task(vec![], &session)?;
+                    Ok(())
+                } else {
+                    from.resp_interest(RespInterest {
+                        session_id: interest.session_id.clone(),
+                        chunk: interest.chunk.clone(),
+                        err: BuckyErrorCode::NotFound,
+                        redirect: None,
+                        redirect_referer: None,
+                        to: None,
+                    });
+
+                    Ok(())
+                }
             }
             Err(err) => {
                 from.resp_interest(RespInterest {
@@ -82,9 +95,10 @@ impl BdtNDNEventHandler {
                     redirect_referer: None,
                     to: None,
                 });
+
+                Ok(())
             }
         }
-        Ok(())
     }
 
     async fn call_interest_handler(
@@ -104,8 +118,9 @@ impl BdtNDNEventHandler {
                 chunk: interest.chunk.clone(),
                 prefer_type: interest.prefer_type.clone(),
                 from: interest.from.clone(),
-                referer,
-                from_channel: from.remote().clone(),
+                referer, 
+                group_path: interest.group_path.clone(), 
+                from_channel: from.tunnel().remote().clone(),
             },
             response: None,
         };
@@ -148,11 +163,11 @@ impl BdtNDNEventHandler {
 impl NdnEventHandler for BdtNDNEventHandler {
     fn on_unknown_piece_data(
         &self,
-        stack: &Stack,
-        piece: &PieceData,
-        from: &Channel,
+        _stack: &Stack,
+        _piece: &PieceData,
+        _from: &Channel,
     ) -> BuckyResult<DownloadSession> {
-        self.default.on_unknown_piece_data(stack, piece, from)
+        Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"))
     }
 
     async fn on_newly_interest(
@@ -175,7 +190,7 @@ impl NdnEventHandler for BdtNDNEventHandler {
                     self.call_default_with_acl(stack, interest, from).await
                 }
                 InterestHandlerResponse::Upload(groups) => {
-                    match download::start_upload_task(stack, interest, from, groups).await {
+                    match cyfs_bdt::start_upload_task(stack, interest, from, groups).await {
                         Ok(_) => {},
                         Err(err) => {
                             from.resp_interest(RespInterest {
@@ -193,9 +208,10 @@ impl NdnEventHandler for BdtNDNEventHandler {
                 InterestHandlerResponse::Transmit(to) => {
                     let mut interest = interest.clone();
                     if interest.from.is_none() {
-                        interest.from = Some(from.remote().clone());
+                        interest.from = Some(from.tunnel().remote().clone());
                     }
-                    let trans_channel = stack.ndn().channel_manager().create_channel(&to);
+                    let to_dev = stack.device_cache().get(&to).await.ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, format!("device not cached: {}", to)))?;
+                    let trans_channel = stack.ndn().channel_manager().create_channel(&to_dev.desc())?;
                     trans_channel.interest(interest);
                     Ok(())
                 }

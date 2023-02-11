@@ -2,13 +2,12 @@ use log::*;
 use async_std::{
     future, 
     task, 
-    sync::{Arc}
 };
 use std::{
     time::Duration, 
     fmt, 
-    sync::{RwLock}, 
-    collections::BTreeMap, 
+    sync::{RwLock, Arc, Weak}, 
+    collections::{BTreeMap, LinkedList}, 
     ops::Deref,
     convert::TryFrom
 };
@@ -103,6 +102,7 @@ struct TunnelDeadState {
 struct TunnelConnectingState {
     waiter: StateWaiter, 
     build_state: TunnelBuildState, 
+    packages: LinkedList<(DynamicPackage, bool)>
 }
 
 struct TunnelActiveState {
@@ -117,14 +117,8 @@ enum TunnelStateImpl {
     Dead(TunnelDeadState)
 }
 
-enum TunnelRecycleState {
-    InUse, 
-    Recycle(Timestamp)
-}
-
 struct TunnelContainerState {
     last_update: Timestamp, 
-    recyle_state: TunnelRecycleState, 
     tunnel_state: TunnelStateImpl, 
     tunnel_entries: BTreeMap<EndpointPair, DynamicTunnel>
 }
@@ -150,12 +144,12 @@ impl TunnelContainer {
             remote_const, 
             sequence_generator: TempSeqGenerator::new(), 
             state: RwLock::new(TunnelContainerState {
-                recyle_state: TunnelRecycleState::InUse, 
                 tunnel_entries: BTreeMap::new(), 
                 last_update: bucky_time_now(), 
                 tunnel_state: TunnelStateImpl::Connecting(TunnelConnectingState {
                     waiter: StateWaiter::new(), 
-                    build_state: TunnelBuildState::Idle
+                    build_state: TunnelBuildState::Idle, 
+                    packages: LinkedList::new()
                 })
             }), 
         }))
@@ -166,22 +160,6 @@ impl TunnelContainer {
             tunnel.mtu()
         } else {
             MTU-12
-        }
-    }
-
-    fn mark_in_use(&self) {
-        let mut state = self.0.state.write().unwrap();
-        state.recyle_state = TunnelRecycleState::InUse;
-    }
-
-    fn mark_recycle(&self, when: Timestamp) -> Timestamp {
-        let mut state = self.0.state.write().unwrap();
-        match &state.recyle_state {
-            TunnelRecycleState::InUse => {
-                state.recyle_state = TunnelRecycleState::Recycle(when);
-                when
-            }, 
-            TunnelRecycleState::Recycle(when) => *when
         }
     }
 
@@ -291,39 +269,39 @@ impl TunnelContainer {
         Ok(())
     }
 
-    pub fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
-        let tunnel = self.default_tunnel()?;
-        tunnel.as_ref().send_package(package)
-    }
+    pub fn send_package(&self, package: DynamicPackage, plaintext: bool) -> BuckyResult<()> {
+        if plaintext {
+            assert_eq!(package.cmd_code(), PackageCmdCode::Datagram);
+            let tunnel = self.default_tunnel()?;
 
-    pub fn send_plaintext(&self, package: DynamicPackage) -> Result<(), BuckyError> {
-        let tunnel = self.default_tunnel()?;
+            let mut buf = vec![0u8; MTU];
 
-        let mut buf = vec![0u8; MTU];
+            let buf_len = buf.len();
+            let enc_from = tunnel.as_ref().raw_data_header_len();
 
-        let buf_len = buf.len();
-        let enc_from = tunnel.as_ref().raw_data_header_len();
+            let mut context = merge_context::FirstEncode::new();
+            let enc: &dyn RawEncodeWithContext<merge_context::FirstEncode> = package.as_ref();
+            let buf_ptr = enc.raw_encode_with_context(&mut buf[enc_from..], &mut context, &None)?;
 
-        let mut context = merge_context::FirstEncode::new();
-        let enc: &dyn RawEncodeWithContext<merge_context::FirstEncode> = package.as_ref();
-        let buf_ptr = enc.raw_encode_with_context(&mut buf[enc_from..], &mut context, &None)?;
+            let len = buf_len - buf_ptr.len();
 
-        let len = buf_len - buf_ptr.len();
-
-        match tunnel.as_ref().send_raw_data(&mut buf[..len]) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(BuckyError::new(BuckyErrorCode::Failed, format!("{}", e)))
-        }
+            let _ = tunnel.as_ref().send_raw_data(&mut buf[..len])?;
+            Ok(())
+        } else {
+            let tunnel = self.default_tunnel()?;
+            tunnel.as_ref().send_package(package)
+        }     
     }
 
     pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams, plaintext: bool) -> BuckyResult<()> {
-        let (tunnel, builder) = {
+        let (tunnel_and_package, builder) = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.tunnel_state {
                 TunnelStateImpl::Active(active) => {
-                    (Some(active.default_tunnel.clone()), None)
+                    (Some((active.default_tunnel.clone(), package)), None)
                 }, 
                 TunnelStateImpl::Connecting(connecting) => {
+                    connecting.packages.push_back((package, plaintext));
                     (None, match connecting.build_state {
                         TunnelBuildState::Idle => {
                             // 创建新的 tunnel builder
@@ -340,22 +318,21 @@ impl TunnelContainer {
                 TunnelStateImpl::Dead(_) => {
                     let builder = ConnectTunnelBuilder::new(self.0.stack.clone(), self.clone(), build_params);
                     state.last_update = bucky_time_now();
+                    let mut packages = LinkedList::new();
+                    packages.push_back((package, plaintext));
                     state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                         waiter: StateWaiter::new(), 
-                        build_state: TunnelBuildState::ConnectTunnel(builder.clone())
+                        build_state: TunnelBuildState::ConnectTunnel(builder.clone()), 
+                        packages
                     });
                     (None, Some(builder))
                 }
             }
         };
 
-        if let Some(tunnel) = tunnel {
+        if let Some((tunnel, package)) = tunnel_and_package {
             trace!("{} send packages from {}", self, tunnel.as_ref().as_ref());
-            if plaintext {
-                self.send_plaintext(package)
-            } else {
-                tunnel.as_ref().send_package(package)
-            }
+            self.send_package(package, plaintext)
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());
@@ -366,7 +343,6 @@ impl TunnelContainer {
             });
             Ok(())
         } else {
-            //FIXME: 加入到connecting的 send 缓存里面去  
             Ok(())
         }
     }
@@ -529,11 +505,13 @@ impl TunnelContainer {
                         let builder = ConnectStreamBuilder::new(
                             tunnel_impl.stack.clone(), 
                             build_params, 
-                            stream);
+                            stream,
+                            self.clone());
                         state.last_update = bucky_time_now();
                         state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                             waiter: StateWaiter::new(), 
-                            build_state: TunnelBuildState::ConnectStream(builder.clone())
+                            build_state: TunnelBuildState::ConnectStream(builder.clone()), 
+                            packages: LinkedList::new()
                         });
                         let tunnels: Vec<DynamicTunnel> = tunnel_entries.into_iter().map(|(_, tunnel)| tunnel).collect();
                         (None, Some(builder), None, Some(tunnels))
@@ -545,7 +523,8 @@ impl TunnelContainer {
                             let builder = ConnectStreamBuilder::new(
                                 tunnel_impl.stack.clone(), 
                                 build_params, 
-                                stream);
+                                stream, 
+                                self.clone());
                             connecting.build_state = TunnelBuildState::ConnectStream(builder.clone());
                             (None, Some(builder), None, None)
                         }, 
@@ -559,11 +538,13 @@ impl TunnelContainer {
                     let builder = ConnectStreamBuilder::new(
                         tunnel_impl.stack.clone(), 
                         build_params, 
-                        stream);
+                        stream,
+                        self.clone());
 
                     state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                         waiter: StateWaiter::new(), 
-                        build_state: TunnelBuildState::ConnectStream(builder.clone())
+                        build_state: TunnelBuildState::ConnectStream(builder.clone()), 
+                        packages: LinkedList::new()
                     });
 
                     (None, Some(builder), None, None)
@@ -690,7 +671,7 @@ impl TunnelContainer {
         Ok(())
     }
 
-    pub(super) fn on_raw_data(&self, data: &[u8]) -> BuckyResult<()> {
+    pub(super) fn on_raw_data(&self, data: &[u8], tunnel: DynamicTunnel) -> BuckyResult<()> {
         let tunnel_impl = &self.0;
         let (cmd_code, buf) = u8::raw_decode(data)?;
         let cmd_code = PackageCmdCode::try_from(cmd_code)?;
@@ -702,7 +683,7 @@ impl TunnelContainer {
             },
             PackageCmdCode::SessionData => unimplemented!(), 
             _ => {
-                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self)
+                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_raw_data(data, (self, tunnel))
             }, 
         }
     }
@@ -749,8 +730,22 @@ impl fmt::Display for TunnelContainer {
 impl TunnelOwner for TunnelContainer {
     fn sync_tunnel_state(&self, tunnel: &DynamicTunnel, former_state: TunnelState, new_state: TunnelState) {
         //TODO: 这里的策略可以调整
-        let mut tunnels = vec![];
-        let (old, new, waiter) = match new_state {
+        struct NextStep {
+            old_default: Option<DynamicTunnel>, 
+            new_default: Option<DynamicTunnel>, 
+            reset_tunnels: LinkedList<DynamicTunnel>, 
+            waiters: StateWaiter, 
+            packages: LinkedList<(DynamicPackage, bool)>
+        }
+
+        let mut next_step = NextStep {
+            old_default: None, 
+            new_default: None, 
+            reset_tunnels: LinkedList::new(), 
+            waiters: StateWaiter::new(), 
+            packages: LinkedList::new()
+        };
+        match new_state {
             TunnelState::Connecting => {
                 unreachable!()
             }, 
@@ -777,10 +772,10 @@ impl TunnelOwner for TunnelContainer {
                         }
                     } 
                     for remote in to_reset {
-                        tunnels.push(state.tunnel_entries.remove(&remote).unwrap());
+                        next_step.reset_tunnels.push_back(state.tunnel_entries.remove(&remote).unwrap());
                     }
                     
-                    let (ret, updated) = match &mut state.tunnel_state {
+                    let updated = match &mut state.tunnel_state {
                         TunnelStateImpl::Active(active) => {
                             // 如果当前激活的tunnel 属于更新的对端Endpoints
                             let remote_updated = active.remote_timestamp < remote_timestamp;
@@ -801,23 +796,23 @@ impl TunnelOwner for TunnelContainer {
                             };
                             if change_default {
                                 info!("{} change default from {} to {}", self, active.default_tunnel.as_ref().as_ref(), tunnel.as_ref().as_ref());
-                                let old = Some(active.default_tunnel.clone());
+                                next_step.old_default = Some(active.default_tunnel.clone());
                                 active.remote_timestamp = remote_timestamp;
                                 active.default_tunnel = tunnel.clone();
-                                ((old, Some(tunnel.clone()), None), true)
-                            } else {
-                                ((None, None, None), false)
-                            }
+                                next_step.new_default = Some(tunnel.clone());
+                            } 
+                            change_default
                         }, 
                         TunnelStateImpl::Connecting(connecting) => {
                             info!("{} connecting=>active with default {}", self, tunnel.as_ref().as_ref());
-                            let mut ret_waiter = StateWaiter::new();
-                            connecting.waiter.transfer_into(&mut ret_waiter);
+                            connecting.waiter.transfer_into(&mut next_step.waiters);
                             state.tunnel_state = TunnelStateImpl::Active(TunnelActiveState {
                                 default_tunnel: tunnel.clone(), 
                                 remote_timestamp: remote_timestamp
                             });
-                            ((None, Some(tunnel.clone()), Some(ret_waiter)), true)
+
+                            next_step.new_default = Some(tunnel.clone());
+                            true
                         },
                         TunnelStateImpl::Dead(_) => {
                             info!("{} dead=>active with default {}", self, tunnel.as_ref().as_ref());
@@ -825,17 +820,16 @@ impl TunnelOwner for TunnelContainer {
                                 default_tunnel: tunnel.clone(), 
                                 remote_timestamp: remote_timestamp
                             });
-                            ((None, Some(tunnel.clone()), None), true)
+                            next_step.new_default = Some(tunnel.clone());
+                            true
                         }
                     };
                     if updated {
                         state.last_update = bucky_time_now();
                     }
-                    ret
                 } else {
                     warn!("{} reset tunnel {} for not in ep map", self, tunnel.as_ref().as_ref());
-                    tunnels.push(tunnel.clone());
-                    (None, None, None)
+                    next_step.reset_tunnels.push_back(tunnel.clone());
                 }
             }, 
             TunnelState::Dead => {
@@ -865,7 +859,7 @@ impl TunnelOwner for TunnelContainer {
                                     let default_tunnel = active.default_tunnel.clone();
                                     info!("{} active=>dead for tunnel {} dead", self, tunnel.as_ref().as_ref());
                                     for (_, tunnel) in &state.tunnel_entries {
-                                        tunnels.push(tunnel.clone());
+                                        next_step.reset_tunnels.push_back(tunnel.clone());
                                     }
                                     state.tunnel_entries.clear();
                                     state.last_update = bucky_time_now();
@@ -873,36 +867,31 @@ impl TunnelOwner for TunnelContainer {
                                         former_state: TunnelState::Active(active.remote_timestamp), 
                                         when: bucky_time_now()
                                     });
-                                    (Some(default_tunnel), None, None)
-                                } else {
-                                    (None, None, None)
+                                    next_step.old_default = Some(default_tunnel);
                                 }
                             }, 
                             _ => {
                                 // do nothing
-                                (None, None, None)
                             }
                         }
-                    } else {
-                        (None, None, None)
-                    }
-                } else {
-                    (None, None, None)
-                }
+                    } 
+                } 
             }
         };
-        if let Some(waiter) = waiter {
-            waiter.wake();
-        }
-        if let Some(old) = old {
+        next_step.waiters.wake();
+        if let Some(old) = next_step.old_default {
             old.as_ref().release_keeper();
         }
-        if let Some(new) = new {
+        if let Some(new) = next_step.new_default {
             new.as_ref().retain_keeper();
         }
 
-        for tunnel in tunnels {
+        for tunnel in next_step.reset_tunnels {
             tunnel.as_ref().reset();
+        }
+
+        for (package, plaintext) in next_step.packages {
+            let _ = self.send_package(package, plaintext);
         }
     }
 
@@ -941,7 +930,7 @@ impl OnUdpRawData<(interface::udp::Interface, DeviceId, MixAesKey, Endpoint)> fo
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给udp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
         let _ = udp_tunnel.active(&key, false, None);
-        self.on_raw_data(data)
+        self.on_raw_data(data, DynamicTunnel::new(udp_tunnel))
     }
 }
 
@@ -982,7 +971,7 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                         return Ok(());
                     }
                     let stream = stream.unwrap();
-                    let acceptor = stream.as_ref().acceptor();
+                    let acceptor = stream.acceptor();
                     if acceptor.is_none() {
                         debug!("{} ignore accept stream builder for stream of {} no more connecting", self, remote_seq);
                         return Ok(());
@@ -1030,7 +1019,8 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                                     state.last_update = bucky_time_now();
                                     state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                                         waiter: StateWaiter::new(), 
-                                        build_state: TunnelBuildState::AcceptStream(acceptor.clone())
+                                        build_state: TunnelBuildState::AcceptStream(acceptor.clone()), 
+                                        packages: LinkedList::new()
                                     });
                                     let mut tunnel_entries = BTreeMap::new();
                                     std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
@@ -1043,7 +1033,8 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                                 state.last_update = bucky_time_now();
                                 state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                                     waiter: StateWaiter::new(), 
-                                    build_state: TunnelBuildState::AcceptStream(acceptor.clone())
+                                    build_state: TunnelBuildState::AcceptStream(acceptor.clone()), 
+                                    packages: LinkedList::new()
                                 });
                                 Ok((vec![], None))
                             }   
@@ -1106,7 +1097,8 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                             state.last_update = bucky_time_now();
                             state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                                 waiter: StateWaiter::new(), 
-                                build_state: TunnelBuildState::AcceptTunnel(acceptor.clone())
+                                build_state: TunnelBuildState::AcceptTunnel(acceptor.clone()), 
+                                packages: LinkedList::new()
                             });
                             let mut tunnel_entries = BTreeMap::new();
                             std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
@@ -1119,7 +1111,8 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                         state.last_update = bucky_time_now();
                         state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                             waiter: StateWaiter::new(), 
-                            build_state: TunnelBuildState::AcceptTunnel(acceptor.clone())
+                            build_state: TunnelBuildState::AcceptTunnel(acceptor.clone()), 
+                            packages: LinkedList::new()
                         });
                         Ok((vec![], None))
                     }   
@@ -1248,32 +1241,49 @@ impl OnPackage<AckProxy, &DeviceId> for TunnelContainer {
     }
 }
 
-
+struct ContainerRef(TunnelContainer);
 
 #[derive(Clone)]
-pub struct TunnelGuard(Arc<TunnelContainer>);
+pub struct TunnelGuard(Arc<ContainerRef>);
+
+#[derive(Clone)]
+pub struct WeakTunnelGuard(Weak<ContainerRef>);
+
+impl WeakTunnelGuard {
+    pub fn to_strong(&self) -> Option<TunnelGuard> {
+        self.0.upgrade().map(|s| TunnelGuard(s))
+    }
+}
 
 impl TunnelGuard {
     pub(super) fn new(tunnel: TunnelContainer) -> Self {
-        Self(Arc::new(tunnel))
+        Self(Arc::new(ContainerRef(tunnel)))
     }
 
-    pub(super) fn mark_in_use(&self) {
-        self.0.mark_in_use()
+    pub fn to_weak(&self) -> WeakTunnelGuard {
+        WeakTunnelGuard(Arc::downgrade(&self.0))
     }
 
-    pub(super) fn mark_recycle(&self, when: Timestamp) -> Option<Timestamp> {
-        if Arc::strong_count(&self.0) > 1 {
-            None
-        } else {
-            Some(self.0.mark_recycle(when))
-        }
+    pub fn ref_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+}
+
+impl Drop for ContainerRef {
+    fn drop(&mut self) {
+        self.0.reset();
     }
 }
 
 impl Deref for TunnelGuard {
     type Target = TunnelContainer;
     fn deref(&self) -> &TunnelContainer {
-        &(*self.0)
+        &self.0.0
+    }
+}
+
+impl AsRef<TunnelContainer> for TunnelGuard {
+    fn as_ref(&self) -> &TunnelContainer {
+        &self.0.0
     }
 }

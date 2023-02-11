@@ -20,6 +20,7 @@ pub struct GlobalStatePathMetaManager {
     root_state_service: GlobalStateLocalService,
     category: GlobalStateCategory,
     noc: NamedObjectCacheRef,
+    device_id: DeviceId,
 
     all: Arc<Mutex<HashMap<ObjectId, GlobalStatePathMetaItem>>>,
 }
@@ -31,6 +32,7 @@ impl GlobalStatePathMetaManager {
         root_state_service: GlobalStateLocalService,
         category: GlobalStateCategory,
         noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
         Self {
             isolate: isotate.to_owned(),
@@ -38,6 +40,7 @@ impl GlobalStatePathMetaManager {
             root_state_service,
             category,
             noc,
+            device_id,
             all: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -49,6 +52,7 @@ impl GlobalStatePathMetaManager {
             self.category,
             Some(dec_id),
             self.noc.clone(),
+            self.device_id.clone(),
         );
 
         Arc::new(raw)

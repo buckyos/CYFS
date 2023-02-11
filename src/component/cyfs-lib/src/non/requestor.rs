@@ -3,6 +3,7 @@ use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
 use crate::stack::SharedObjectStackDecID;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
@@ -128,16 +129,6 @@ pub struct NONRequestor {
 }
 
 impl NONRequestor {
-    pub fn new_default_tcp(dec_id: Option<SharedObjectStackDecID>) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 
@@ -299,11 +290,12 @@ impl NONRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
+            let resp = NONRequestorHelper::decode_get_object_response(&mut resp).await?;
             info!(
-                "get object from non service success: {}",
-                req.object_debug_info()
+                "get object from non service success: {}, object={}",
+                req.object_debug_info(), resp.object.object_id,
             );
-            NONRequestorHelper::decode_get_object_response(&mut resp).await
+            Ok(resp)
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
             error!(

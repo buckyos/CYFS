@@ -133,7 +133,11 @@ const misc = [
     {
         "name": "cyfs-monitor",
         "include": formal_platform
-    }
+    },
+    {
+        "name": "sn-online-test",
+        "include": formal_platform
+    },
 ]
 
 module.exports = {

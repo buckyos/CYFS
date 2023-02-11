@@ -212,6 +212,7 @@ impl OpEnvRequestHandler {
         let req = OpEnvLoadInputRequest {
             common,
             target: output_req.target,
+            inner_path: output_req.inner_path,
         };
 
         info!("recv op_env load request: {}", req);

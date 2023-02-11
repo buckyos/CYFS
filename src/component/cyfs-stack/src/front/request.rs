@@ -6,6 +6,7 @@ use cyfs_lib::*;
 pub struct FrontORequest {
     pub source: RequestSourceInfo,
 
+    pub req_path: Option<String>,
     pub target: Vec<ObjectId>,
 
     pub object_id: ObjectId,
@@ -14,6 +15,8 @@ pub struct FrontORequest {
 
     // for ndn requests
     pub referer_objects: Vec<NDNDataRefererObject>,
+    pub context: Option<String>,
+    pub group: Option<String>,
 
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
@@ -44,6 +47,9 @@ pub struct FrontRRequest {
     pub page_index: Option<u32>,
     pub page_size: Option<u32>,
 
+    pub context: Option<String>,
+    pub group: Option<String>,
+
     pub mode: FrontRequestGetMode,
     pub flags: u32,
 }
@@ -68,7 +74,11 @@ pub struct FrontNDNRequest {
     pub object: NONObjectInfo,
     pub range: Option<NDNDataRequestRange>,
 
+    pub req_path: Option<String>,
     pub referer_objects: Vec<NDNDataRefererObject>,
+
+    pub context: Option<String>,
+    pub group: Option<String>,
 
     pub flags: u32,
 }
@@ -82,7 +92,10 @@ impl FrontNDNRequest {
             target: req.target,
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
+            req_path: req.req_path,
             referer_objects: req.referer_objects,
+            context: req.context,
+            group: req.group,
             flags: req.flags,
         }
     }
@@ -110,23 +123,32 @@ impl FrontNDNRequest {
             target: req.target,
             object,
             range: req.range,
+            req_path: req.req_path,
             referer_objects,
+            context: req.context,
+            group: req.group,
             flags: req.flags,
         }
     }
 
-    pub fn new_r_resp(req: FrontRRequest, object: NONObjectInfo) -> Self {
+    pub fn new_r_resp(req: FrontRRequest, state_resp: &RootStateAccessorGetObjectByPathInputResponse) -> Self {
         let target = match req.target {
             Some(target) => vec![target],
             None => vec![],
         };
 
+        let mut req_path = RequestGlobalStatePath::new(req.target_dec_id.clone(), req.inner_path.clone());
+        req_path.set_root(state_resp.root.clone());
+
         FrontNDNRequest {
             source: req.source,
             target,
-            object,
+            object: state_resp.object.object.clone(),
             range: req.range,
+            req_path: Some(req_path.format_string()),
             referer_objects: vec![],
+            context: req.context,
+            group: req.group,
             flags: req.flags,
         }
     }
@@ -189,6 +211,8 @@ pub struct FrontARequest {
     pub origin_url: http_types::Url,
 
     pub referer_objects: Vec<NDNDataRefererObject>,
+    pub context: Option<String>,
+    pub group: Option<String>,
 
     pub flags: u32,
 }

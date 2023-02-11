@@ -1,111 +1,83 @@
-use super::reader::ChunkStoreReader;
-use super::stream_writer::FileChunkListStreamWriter;
+use cyfs_bdt_ext::*;
 use cyfs_base::*;
-use cyfs_bdt::ChunkReader;
-use cyfs_chunk_cache::{ChunkManagerRef, ChunkType};
-use cyfs_chunk_lib::{Chunk, ChunkReadWithRanges};
+use cyfs_chunk_cache::ChunkType;
+use cyfs_chunk_lib::Chunk;
 use cyfs_lib::*;
-use cyfs_util::AsyncReadWithSeekAdapter;
 
 use async_std::io::{Cursor, Read};
+use once_cell::sync::OnceCell;
 use std::convert::TryFrom;
 use std::ops::Range;
 
 pub(crate) struct LocalDataManager {
-    chunk_manager: ChunkManagerRef,
-    ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>,
+    named_data_components: NamedDataComponents,
 
-    reader: ChunkStoreReader,
+    target_data_manager: OnceCell<TargetDataManager>,
 }
 
 impl LocalDataManager {
-    pub(crate) fn new(
-        chunk_manager: ChunkManagerRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
-    ) -> Self {
-        let reader = ChunkStoreReader::new(chunk_manager.clone(), ndc.clone(), tracker.clone());
+    pub(crate) fn new(named_data_components: &NamedDataComponents) -> Self {
         Self {
-            chunk_manager,
-            ndc,
-            tracker,
-
-            reader,
+            named_data_components: named_data_components.to_owned(),
+            target_data_manager: OnceCell::new(),
         }
+    }
+
+    fn target_data_manager(&self) -> &TargetDataManager {
+        self.target_data_manager.get_or_init(|| {
+            let target = self
+                .named_data_components
+                .bdt_stack()
+                .local_device_id()
+                .to_owned();
+            let target_desc = self
+                .named_data_components
+                .bdt_stack()
+                .local_const()
+                .to_owned();
+
+            let context =
+                ContextManager::create_download_context_from_target_sync("", target, target_desc);
+
+            TargetDataManager::new(
+                self.named_data_components.bdt_stack().clone(),
+                self.named_data_components.chunk_manager.clone(),
+                context,
+            )
+        })
     }
 
     pub async fn get_file(
         &self,
+        source: &RequestSourceInfo,
         file_obj: &File,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
-        let total_size = file_obj.desc().content().len() as usize;
-        let file_id = file_obj.desc().object_id();
-
-        info!(
-            "will local get file: file={}, size={}, range={:?}",
-            file_id, total_size, ranges
-        );
-
-        match file_obj.body() {
-            Some(body) => match body.content().chunk_list() {
-                ChunkList::ChunkInList(list) => match ranges {
-                    Some(ranges) => {
-                        self.get_chunks_with_range(&file_id, total_size, list, ranges)
-                            .await
-                    }
-                    None => self.get_chunks(&file_id, total_size, list).await,
-                },
-                ChunkList::ChunkInBundle(bundle) => match ranges {
-                    Some(ranges) => {
-                        self.get_chunks_with_range(
-                            &file_id,
-                            total_size,
-                            bundle.chunk_list(),
-                            ranges,
-                        )
-                        .await
-                    }
-                    None => {
-                        self.get_chunks(&file_id, total_size, bundle.chunk_list())
-                            .await
-                    }
-                },
-                ChunkList::ChunkInFile(id) => {
-                    let msg = format!(
-                        "chunk in file not support yet! file={}, chunk file={}",
-                        file_id, id
-                    );
-                    error!("{}", msg);
-                    Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
-                }
-            },
-            None => {
-                if total_size == 0 {
-                    warn!("file has not body! file={}", file_id);
-                    let reader = FileChunkListStreamWriter::new(&file_id, 0);
-                    Ok((Box::new(reader), 0))
-                } else {
-                    let msg = format!("file has not body! file={}, size={}", file_id, total_size);
-                    error!("{}", msg);
-                    Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
-                }
-            }
-        }
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
+        self.target_data_manager()
+            .get_file(source, file_obj, group, ranges)
+            .await
     }
 
     pub async fn put_chunk(
         &self,
         chunk_id: &ChunkId,
-        chunk: &dyn Chunk,
+        chunk: Box<dyn Chunk>,
         referer_object: Vec<NDNDataRefererObject>,
     ) -> BuckyResult<()> {
         assert!(chunk_id.len() == chunk.get_len());
 
-        self.chunk_manager.put_chunk(chunk_id, chunk).await?;
+        self.named_data_components
+            .chunk_manager
+            .put_chunk(chunk_id, chunk)
+            .await?;
 
-        self.ndc
+        self.named_data_components
+            .ndc
             .insert_chunk(&InsertChunkRequest {
                 chunk_id: chunk_id.clone(),
                 state: ChunkState::Ready,
@@ -121,7 +93,12 @@ impl LocalDataManager {
             pos: TrackerPostion::ChunkManager,
             flags: 0,
         };
-        if let Err(e) = self.tracker.add_position(&request).await {
+        if let Err(e) = self
+            .named_data_components
+            .tracker
+            .add_position(&request)
+            .await
+        {
             if e.code() != BuckyErrorCode::AlreadyExists {
                 error!("add to tracker failed for {}", e);
                 return Err(e);
@@ -168,7 +145,10 @@ impl LocalDataManager {
         }
 
         if !req.add_list.is_empty() {
-            self.ndc.update_chunk_ref_objects(&req).await?;
+            self.named_data_components
+                .ndc
+                .update_chunk_ref_objects(&req)
+                .await?;
         }
 
         info!(
@@ -182,64 +162,30 @@ impl LocalDataManager {
 
     pub async fn get_chunk(
         &self,
+        source: &RequestSourceInfo,
         chunk_id: &ChunkId,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
-        let ret = self.reader.read(chunk_id).await;
-
-        if let Err(e) = ret {
-            if e.code() == BuckyErrorCode::NotFound {
-                info!("local get chunk but not found: chunk={}, {}", chunk_id, e);
-                return Ok(None);
-            }
-            error!("local get chunk error! chunk={}, {}", chunk_id, e);
-            return Err(e);
-        }
-
-        let data = ret.unwrap();
-        debug!(
-            "local get chunk success! chunk={}, len={}, ranges={:?}",
-            chunk_id,
-            chunk_id.len(),
-            ranges,
-        );
-
-        let ret = if let Some(ranges) = ranges {
-            let length = RangeHelper::sum(&ranges);
-            let range_reader = ChunkReadWithRanges::new(data, ranges);
-            (
-                Box::new(range_reader) as Box<dyn Read + Unpin + Send + Sync + 'static>,
-                length,
-            )
-        } else {
-            (
-                AsyncReadWithSeekAdapter::new(data).into_reader(),
-                chunk_id.len() as u64,
-            )
-        };
-
-        Ok(Some(ret))
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
+        self.target_data_manager()
+            .get_chunk(source, chunk_id, group, ranges)
+            .await
     }
 
     pub async fn get_chunk_meta(
         &self,
         chunk_id: &ChunkId,
-    ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
-        let ret = self
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+        let data = self
+            .named_data_components
             .chunk_manager
             .get_chunk_meta(chunk_id, ChunkType::MMapChunk)
-            .await;
+            .await?;
 
-        if let Err(e) = ret {
-            if e.code() == BuckyErrorCode::NotFound {
-                info!("local get chunk but not found: chunk={}, {}", chunk_id, e);
-                return Ok(None);
-            }
-            error!("local get chunk error! chunk={}, {}", chunk_id, e);
-            return Err(e);
-        }
-
-        let data = ret.unwrap();
         debug!(
             "local get chunk success! chunk={}, len={}",
             chunk_id,
@@ -248,152 +194,17 @@ impl LocalDataManager {
 
         let buf = data.to_vec()?;
         let len = buf.len() as u64;
-        Ok(Some((Box::new(Cursor::new(buf)), len)))
+        Ok((Box::new(Cursor::new(buf)), len))
     }
 
     pub async fn exist_chunk(&self, chunk_id: &ChunkId) -> bool {
-        let exist = self.chunk_manager.exist(chunk_id).await;
+        let exist = self
+            .named_data_components
+            .chunk_manager
+            .exist(chunk_id)
+            .await;
 
         exist
-    }
-
-    // 获取chunk列表
-    async fn get_chunks(
-        &self,
-        file_id: &ObjectId,
-        total_size: usize,
-        chunks: &Vec<ChunkId>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
-        info!(
-            "will get chunk list: count={}, total_size={}",
-            chunks.len(),
-            total_size
-        );
-        let result = FileChunkListStreamWriter::new(file_id, total_size);
-
-        for (i, chunk_id) in chunks.iter().enumerate() {
-            debug!(
-                "will local get chunk, index={}, chunk={}, len={}",
-                i,
-                chunk_id,
-                chunk_id.len()
-            );
-            if chunk_id.len() == 0 {
-                // 对于长度为0的chunk，直接认为已经成功
-                continue;
-            }
-
-            let reader = self.reader.read(chunk_id).await.map_err(|e| {
-                if e.code() == BuckyErrorCode::NotFound {
-                    warn!(
-                        "local get chunk but not found! chunk={}, len={}",
-                        chunk_id,
-                        chunk_id.len()
-                    );
-                } else {
-                    warn!(
-                        "local get chunk error! chunk={}, len={}, {}",
-                        chunk_id,
-                        chunk_id.len(),
-                        e,
-                    );
-                }
-
-                e
-            })?;
-
-            let reader = AsyncReadWithSeekAdapter::new(reader).into_reader();
-            result.append(chunk_id, reader);
-        }
-
-        Ok((Box::new(result), total_size as u64))
-    }
-
-    fn calc_chunks_with_ranges(
-        chunks: &Vec<ChunkId>,
-        ranges: &Vec<Range<u64>>,
-    ) -> (u64, Vec<(ChunkId, Vec<Range<u64>>)>) {
-        let mut start = 0;
-        let mut result = vec![];
-        let mut length = 0;
-        for chunk_id in chunks {
-            let chunk_range = Range {
-                start,
-                end: start + chunk_id.len() as u64,
-            };
-            start = chunk_range.end;
-
-            let list = RangeHelper::intersect_list(&chunk_range, ranges);
-            if list.is_empty() {
-                continue;
-            }
-
-            length += RangeHelper::sum(&list);
-            result.push((chunk_id.to_owned(), list));
-        }
-
-        (length, result)
-    }
-
-    async fn get_chunks_with_range(
-        &self,
-        file_id: &ObjectId,
-        total_size: usize,
-        chunks: &Vec<ChunkId>,
-        ranges: Vec<Range<u64>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
-        info!(
-            "will get chunk list: count={}, total_size={}, range={:?}",
-            chunks.len(),
-            total_size,
-            ranges,
-        );
-
-        let (length, list) = Self::calc_chunks_with_ranges(&chunks, &ranges);
-
-        // length maybe > total_size! if there are some overlap ranges
-        info!("calc all range len: {}", length);
-
-        let result = FileChunkListStreamWriter::new(file_id, length as usize);
-
-        for (i, (chunk_id, ranges)) in list.into_iter().enumerate() {
-            debug!(
-                "will local get chunk with range, index={}, chunk={}, len={}, ranges={:?}",
-                i,
-                chunk_id,
-                chunk_id.len(),
-                ranges,
-            );
-            if chunk_id.len() == 0 {
-                // 对于长度为0的chunk，直接认为已经成功
-                continue;
-            }
-            assert!(!ranges.is_empty());
-
-            let reader = self.reader.read(&chunk_id).await.map_err(|e| {
-                if e.code() == BuckyErrorCode::NotFound {
-                    warn!(
-                        "local get chunk but not found! chunk={}, len={}",
-                        chunk_id,
-                        chunk_id.len()
-                    );
-                } else {
-                    warn!(
-                        "local get chunk error! chunk={}, len={}, {}",
-                        chunk_id,
-                        chunk_id.len(),
-                        e,
-                    );
-                }
-
-                e
-            })?;
-
-            let range_reader = ChunkReadWithRanges::new(reader, ranges);
-            result.append(&chunk_id, Box::new(range_reader));
-        }
-
-        Ok((Box::new(result), length))
     }
 
     pub async fn query_file(
@@ -418,7 +229,12 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                match self.ndc.get_file_by_file_id(&req).await? {
+                match self
+                    .named_data_components
+                    .ndc
+                    .get_file_by_file_id(&req)
+                    .await?
+                {
                     Some(item) => vec![item],
                     None => vec![],
                 }
@@ -429,7 +245,12 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                match self.ndc.get_file_by_hash(&req).await? {
+                match self
+                    .named_data_components
+                    .ndc
+                    .get_file_by_hash(&req)
+                    .await?
+                {
                     Some(item) => vec![item],
                     None => vec![],
                 }
@@ -441,7 +262,10 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                self.ndc.get_files_by_quick_hash(&req).await?
+                self.named_data_components
+                    .ndc
+                    .get_files_by_quick_hash(&req)
+                    .await?
             }
             NDNQueryFileParam::Chunk(chunk_id) => {
                 let req = GetFileByChunkRequest {
@@ -449,7 +273,10 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                self.ndc.get_files_by_chunk(&req).await?
+                self.named_data_components
+                    .ndc
+                    .get_files_by_chunk(&req)
+                    .await?
             }
         };
 

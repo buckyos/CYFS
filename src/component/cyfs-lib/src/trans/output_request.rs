@@ -1,13 +1,11 @@
 use crate::*;
 use cyfs_base::*;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use cyfs_bdt::{DownloadTaskControlState, DownloadTaskState};
+use cyfs_core::TransContext;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use cyfs_core::TransContext;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransTaskOnAirState {
@@ -22,7 +20,7 @@ pub enum TransTaskState {
     Downloading(TransTaskOnAirState),
     Paused,
     Canceled,
-    Finished(u32 /*upload_speed*/),
+    Finished(u32/*upload_speed*/),
     Err(BuckyErrorCode),
 }
 
@@ -36,7 +34,7 @@ pub enum TransTaskStatus {
 
 pub struct TransTaskInfo {
     pub task_id: String,
-    pub context_id: Option<ObjectId>,
+    pub context: Option<String>,
     pub object_id: ObjectId,
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
@@ -113,12 +111,23 @@ impl FromStr for TransTaskControlAction {
 
 pub struct TransGetContextOutputRequest {
     pub common: NDNOutputRequestCommon,
-    pub context_name: String,
+
+    // get TransContext object by object id
+    pub context_id: Option<ObjectId>,
+
+    // or get TransContext object by context_path excatly
+    pub context_path: Option<String>,
+}
+
+pub struct TransGetContextOutputResponse {
+    pub context: TransContext,
 }
 
 pub struct TransPutContextOutputRequest {
     pub common: NDNOutputRequestCommon,
+    
     pub context: TransContext,
+    pub access: Option<AccessString>,
 }
 
 #[derive(Debug)]
@@ -128,9 +137,17 @@ pub struct TransCreateTaskOutputRequest {
     // 保存到的本地目录or文件
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
-    pub context_id: Option<ObjectId>,
+
+    pub group: Option<String>,
+    pub context: Option<String>,
+
     // 任务创建完成之后自动启动任务
     pub auto_start: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransCreateTaskOutputResponse {
+    pub task_id: String,
 }
 
 pub struct TransTaskOutputRequest {
@@ -147,7 +164,7 @@ pub struct TransControlTaskOutputRequest {
     pub action: TransTaskControlAction,
 }
 
-
+// get task state
 #[derive(Debug)]
 pub struct TransGetTaskStateOutputRequest {
     // 用以处理acl
@@ -155,14 +172,25 @@ pub struct TransGetTaskStateOutputRequest {
     pub task_id: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransGetTaskStateOutputResponse {
+    pub state: TransTaskState,
+    pub group: Option<String>,
+}
+
+// query tasks
 #[derive(Debug)]
 pub struct TransQueryTasksOutputRequest {
     pub common: NDNOutputRequestCommon,
-    pub context_id: Option<ObjectId>,
     pub task_status: Option<TransTaskStatus>,
     pub range: Option<(u64, u32)>,
 }
 
+pub struct TransQueryTasksOutputResponse {
+    pub task_list: Vec<TransTaskInfo>,
+}
+
+// publish file
 #[derive(Debug)]
 pub struct TransPublishFileOutputRequest {
     // 用以处理acl
@@ -175,6 +203,8 @@ pub struct TransPublishFileOutputRequest {
     // chunk大小
     pub chunk_size: u32,
 
+    pub access: Option<AccessString>,
+    
     // 需要发布的文件对象ID，如果设置，内部不再计算文件对象
     pub file_id: Option<ObjectId>,
 
@@ -187,12 +217,41 @@ pub struct TransPublishFileOutputResponse {
     pub file_id: ObjectId,
 }
 
-
+// get task group state
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransCreateTaskOutputResponse {
-    pub task_id: String,
+pub struct TransGetTaskGroupStateOutputRequest {
+    pub common: NDNOutputRequestCommon,
+
+    pub group: String,
+    pub speed_when: Option<u64>,
 }
 
-pub struct TransQueryTasksOutputResponse {
-    pub task_list: Vec<TransTaskInfo>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransGetTaskGroupStateOutputResponse {
+    pub state: DownloadTaskState,
+    pub control_state: DownloadTaskControlState,
+    pub speed: Option<u32>,
+    pub cur_speed: u32,
+    pub history_speed: u32,
+}
+
+// control task group
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TransTaskGroupControlAction {
+    Resume,
+    Cancel,
+    Pause,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransControlTaskGroupOutputRequest {
+    pub common: NDNOutputRequestCommon,
+
+    pub group: String,
+    pub action: TransTaskGroupControlAction,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TransControlTaskGroupOutputResponse {
+    pub control_state: DownloadTaskControlState,
 }
