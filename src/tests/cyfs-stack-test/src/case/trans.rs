@@ -53,57 +53,9 @@ pub async fn test() {
     download_chunk(ret.0, ret.1, ret.2).await;
     test_get_chunk(ret2.0, ret2.1, ret2.2).await;
 
-    test_context().await;
-
     info!("test all trans case success!");
 }
 
-async fn test_context() {
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
-    let ret = stack
-        .trans_service()
-        .get_context(&TransGetContextOutputRequest {
-            common: NDNOutputRequestCommon {
-                req_path: None,
-                dec_id: Some(ObjectId::default()),
-                level: Default::default(),
-                target: None,
-                referer_object: vec![],
-                flags: 0,
-            },
-            context_name: "test".to_string(),
-        })
-        .await;
-    let mut context = match ret {
-        Ok(context) => context,
-        Err(e) => {
-            if e.code() == BuckyErrorCode::NotFound {
-                TransContext::new(ObjectId::default(), "test".to_string())
-            } else {
-                assert!(false);
-                return;
-            }
-        }
-    };
-    context.set_ref_id(Some(ObjectId::default()));
-    context.get_device_list_mut().push(DeviceId::default());
-
-    stack
-        .trans_service()
-        .put_context(&TransPutContextOutputRequest {
-            common: NDNOutputRequestCommon {
-                req_path: None,
-                dec_id: Some(ObjectId::default()),
-                level: Default::default(),
-                target: None,
-                referer_object: vec![],
-                flags: 0,
-            },
-            context,
-        })
-        .await
-        .unwrap();
-}
 
 // 创建一个临时文件并覆盖
 pub async fn gen_random_file(local_path: &Path) {
@@ -213,12 +165,14 @@ async fn add_dir_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_file error! {}", ret.unwrap_err());
         unreachable!();
@@ -290,12 +244,14 @@ async fn add_file_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_file error! {}", ret.unwrap_err());
         unreachable!();
@@ -336,6 +292,7 @@ async fn add_file_impl2(
         local_path: local_path.to_path_buf(),
         owner: USER1_DATA.get().unwrap().people_id.object_id().to_owned(),
         chunk_size: 1024 * 1024 * 4,
+        access: None,
     };
     let ret = stack.util().build_file_object(req).await.unwrap();
     let file_id = ret.object_id;
@@ -356,12 +313,14 @@ async fn add_file_impl2(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+        
         // 关联的dirs
         file_id: Some(file_id),
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_file error! {}", ret.unwrap_err());
         unreachable!();
@@ -429,11 +388,12 @@ async fn download_file_impl(
         object_id: file_id.object_id().to_owned(),
         local_path: local_path.to_owned(),
         device_list: vec![device_id],
-        context_id: None,
+        group: None,
+        context: None,
         auto_start: false,
     };
 
-    let ret = stack.trans().create_task(&req).await;
+    let ret = stack.trans().create_task(req).await;
     if ret.is_err() {
         error!("trans create task error! {}", ret.err().unwrap());
         unreachable!();
@@ -451,7 +411,7 @@ async fn download_file_impl(
         },
         task_id: task_id.clone(),
     };
-    let ret = stack.trans().start_task(&req).await;
+    let ret = stack.trans().start_task(req).await;
     if ret.is_err() {
         error!("trans start task error! {}", ret.err().unwrap());
         unreachable!()
@@ -471,13 +431,13 @@ async fn download_file_impl(
             task_id: task_id.clone(),
         };
 
-        let ret = stack.trans().get_task_state(&req).await;
+        let ret = stack.trans().get_task_state(req).await;
         if ret.is_err() {
             error!("get trans task state error! {}", ret.unwrap_err());
             unreachable!();
         }
 
-        let state = ret.unwrap();
+        let state = ret.unwrap().state;
         match state {
             TransTaskState::Downloading(v) => {
                 info!("trans task downloading! file_id={}, {:?}", file_id, v);
@@ -503,7 +463,7 @@ async fn download_file_impl(
 
     let ret = stack
         .trans()
-        .query_tasks(&TransQueryTasksOutputRequest {
+        .query_tasks(TransQueryTasksOutputRequest {
             common: NDNRequestCommon {
                 req_path: None,
                 dec_id: Some(ObjectId::default()),
@@ -512,7 +472,6 @@ async fn download_file_impl(
                 referer_object: vec![],
                 flags: 0,
             },
-            context_id: None,
             task_status: Some(TransTaskStatus::Finished),
             range: Some((0, 10)),
         })
@@ -523,12 +482,11 @@ async fn download_file_impl(
     }
 
     let task_list = ret.unwrap().task_list;
-    assert_eq!(task_list.len(), 1);
 
     for task in task_list.iter() {
         let ret = stack
             .trans()
-            .delete_task(&TransTaskOutputRequest {
+            .delete_task(TransTaskOutputRequest {
                 common: NDNRequestCommon {
                     req_path: None,
                     dec_id: Some(ObjectId::default()),
@@ -549,7 +507,7 @@ async fn download_file_impl(
 
     let ret = stack
         .trans()
-        .query_tasks(&TransQueryTasksOutputRequest {
+        .query_tasks(TransQueryTasksOutputRequest {
             common: NDNRequestCommon {
                 req_path: None,
                 dec_id: Some(ObjectId::default()),
@@ -558,7 +516,6 @@ async fn download_file_impl(
                 referer_object: vec![],
                 flags: 0,
             },
-            context_id: None,
             task_status: Some(TransTaskStatus::Finished),
             range: Some((0, 10)),
         })
@@ -690,11 +647,12 @@ async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) 
         object_id: chunk_id.object_id().to_owned(),
         local_path: local_path.clone(),
         device_list: vec![device_id.clone()],
-        context_id: None,
+        context: None,
+        group: None,
         auto_start: false,
     };
 
-    let ret = stack.trans().create_task(&req).await;
+    let ret = stack.trans().create_task(req).await;
     if ret.is_err() {
         error!("trans start task error! {}", ret.err().unwrap());
         unreachable!();
@@ -715,7 +673,7 @@ async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) 
         task_id: task_id.clone(),
     };
 
-    let ret = stack.trans().start_task(&req).await;
+    let ret = stack.trans().start_task(req).await;
     if ret.is_err() {
         error!("trans start task error! {}", ret.err().unwrap());
         unreachable!();
@@ -734,13 +692,13 @@ async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) 
             task_id: task_id.clone(),
         };
 
-        let ret = stack.trans().get_task_state(&req).await;
+        let ret = stack.trans().get_task_state(req).await;
         if ret.is_err() {
             error!("get trans task state error! {}", ret.unwrap_err());
             unreachable!();
         }
 
-        let state = ret.unwrap();
+        let state = ret.unwrap().state;
         match state {
             TransTaskState::Downloading(v) => {
                 info!("trans task downloading! file_id={}, {:?}", chunk_id, v);

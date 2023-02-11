@@ -50,6 +50,18 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
             self.inner_path.as_ref(),
         );
 
+        JsonCodecHelper::encode_option_string_field(
+            &mut obj,
+            "context",
+            self.context.as_ref(),
+        );
+
+        JsonCodecHelper::encode_option_string_field(
+            &mut obj,
+            "group",
+            self.group.as_ref(),
+        );
+
         obj
     }
 
@@ -63,6 +75,8 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
             data_type: JsonCodecHelper::decode_string_field(obj, "data_type")?,
             range,
             inner_path: JsonCodecHelper::decode_option_string_field(obj, "inner_path")?,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
         })
     }
 }
@@ -78,6 +92,7 @@ impl JsonCodec<NDNGetDataInputResponse> for NDNGetDataInputResponse {
             "attr",
             self.attr.as_ref().map(|v| v.flags()),
         );
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group", self.group.as_ref());
         JsonCodecHelper::encode_option_field(&mut obj, "range", self.range.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "length", &self.length);
 
@@ -96,6 +111,7 @@ impl JsonCodec<NDNGetDataInputResponse> for NDNGetDataInputResponse {
             owner_id: JsonCodecHelper::decode_option_string_field(obj, "owner_id")?,
             attr,
             range: JsonCodecHelper::decode_option_field(obj, "range")?,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
             length: JsonCodecHelper::decode_int_field(obj, "length")?,
             data,
         })

@@ -1,8 +1,8 @@
-use crate::app::app_status::{AppStatus};
+use crate::app::app_status::AppStatus;
+use crate::codec::*;
 use crate::coreobj::CoreObjectType;
 use crate::{AppStatusObj, DecAppId};
 use cyfs_base::*;
-use crate::codec::*;
 
 use serde::Serialize;
 
@@ -53,13 +53,14 @@ impl ProtobufTransform<protos::AppListContent> for AppListContent {
             let status = AppStatus::clone_from_slice(item.app_status.as_slice())?;
             let app_id = DecAppId::clone_from_slice(item.app_id.as_slice())?;
             if let Some(old) = source.insert(app_id, status) {
-                error!("decode AppListContent source but got repeated item: {}", old.desc().calculate_id());
+                error!(
+                    "decode AppListContent source but got repeated item: {}",
+                    old.desc().calculate_id()
+                );
             }
         }
 
-        Ok(Self {
-            source
-        })
+        Ok(Self { source })
     }
 }
 impl ProtobufTransform<&AppListContent> for protos::AppListContent {
@@ -67,11 +68,16 @@ impl ProtobufTransform<&AppListContent> for protos::AppListContent {
         let mut ret = Self { source: vec![] };
         let mut list = Vec::new();
         for (key, value) in &value.source {
-            let mut item = protos::AppListSourceItem { app_id: vec![], app_status: vec![] };
+            let mut item = protos::AppListSourceItem {
+                app_id: vec![],
+                app_status: vec![],
+            };
             item.app_id = key.to_vec()?;
             item.app_status = value.to_vec()?;
             list.push(item);
         }
+        list.sort_by(|left, right| left.app_id.partial_cmp(&right.app_id).unwrap());
+
         ret.source = list;
 
         Ok(ret)

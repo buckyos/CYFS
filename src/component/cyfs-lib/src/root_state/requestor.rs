@@ -4,6 +4,7 @@ use super::processor::*;
 use crate::base::*;
 use crate::non::NONRequestorHelper;
 use crate::stack::SharedObjectStackDecID;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
@@ -18,23 +19,6 @@ pub struct GlobalStateRequestor {
 }
 
 impl GlobalStateRequestor {
-    pub fn new_default_tcp(
-        category: GlobalStateCategory,
-        dec_id: Option<SharedObjectStackDecID>,
-    ) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(category, dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(
-        category: GlobalStateCategory,
-        dec_id: Option<SharedObjectStackDecID>,
-        service_addr: &str,
-    ) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(category, dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new_root_state(
         dec_id: Option<SharedObjectStackDecID>,
         requestor: HttpRequestorRef,
@@ -956,23 +940,6 @@ pub struct GlobalStateAccessorRequestor {
 }
 
 impl GlobalStateAccessorRequestor {
-    pub fn new_default_tcp(
-        category: GlobalStateCategory,
-        dec_id: Option<SharedObjectStackDecID>,
-    ) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(category, dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(
-        category: GlobalStateCategory,
-        dec_id: Option<SharedObjectStackDecID>,
-        service_addr: &str,
-    ) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(category, dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new_root_state(
         dec_id: Option<SharedObjectStackDecID>,
         requestor: HttpRequestorRef,
@@ -1209,7 +1176,7 @@ fn test_url() {
         cyfs_base::CYFS_OP_ENV_PATH,
         &value,
     );
-    let header =
+    let header: String =
         RequestorHelper::decode_header_with_utf8_decoding(&http_req, cyfs_base::CYFS_OP_ENV_PATH)
             .unwrap();
     assert_eq!(header, value);
@@ -1220,7 +1187,7 @@ fn test_url() {
         cyfs_base::CYFS_OP_ENV_PATH,
         &value,
     );
-    let header =
+    let header: String =
         RequestorHelper::decode_header_with_utf8_decoding(&http_req, cyfs_base::CYFS_OP_ENV_PATH)
             .unwrap();
     assert_eq!(header, value);

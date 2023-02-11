@@ -5,7 +5,8 @@ use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use cyfs_task_manager::*;
 use cyfs_util::*;
-use futures::future::AbortHandle;
+
+use futures::future::{AbortHandle, Aborted};
 use sha2::Digest;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ pub struct BuildDirParams {
     pub dec_id: ObjectId,
     pub chunk_size: u32,
     pub device_id: ObjectId,
+    pub access: Option<u32>,
 }
 
 pub struct BuildDirTaskFactory {
@@ -45,6 +47,7 @@ impl TaskFactory for BuildDirTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
             self.noc.clone(),
@@ -66,6 +69,7 @@ impl TaskFactory for BuildDirTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
             self.noc.clone(),
@@ -384,6 +388,7 @@ pub struct BuildDirTask {
     dec_id: ObjectId,
     chunk_size: u32,
     device_id: DeviceId,
+    access: Option<u32>,
     noc: NamedObjectCacheRef,
     task_state: Arc<Mutex<TaskState>>,
     task_manager: Weak<TaskManager>,
@@ -396,6 +401,7 @@ impl BuildDirTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
         noc: NamedObjectCacheRef,
@@ -414,6 +420,7 @@ impl BuildDirTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             device_id,
             noc,
             task_state: Arc::new(Mutex::new(TaskState::new())),
@@ -427,6 +434,7 @@ impl BuildDirTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
         noc: NamedObjectCacheRef,
@@ -439,6 +447,7 @@ impl BuildDirTask {
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_DIR_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
+
         Self {
             task_id,
             task_store: None,
@@ -446,6 +455,7 @@ impl BuildDirTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             device_id,
             noc,
             task_state: Arc::new(Mutex::new(TaskState::new2(task_state))),
@@ -500,6 +510,7 @@ impl BuildDirTask {
                 owner: self.owner.clone(),
                 dec_id: self.dec_id.clone(),
                 chunk_size: self.chunk_size,
+                access: self.access.clone(),
             };
 
             let task_id = task_manager
@@ -631,7 +642,11 @@ impl BuildDirTask {
         }
 
         let map_id = object_map.object_id();
-        cache.put_object_map(&map_id, object_map)?;
+        cache.put_object_map(
+            &map_id,
+            object_map,
+            self.access.map(|v| AccessString::new(v)),
+        )?;
         cache.commit().await?;
 
         Ok(map_id)
@@ -874,16 +889,20 @@ impl Task for BuildDirTask {
                                 }
                             }
                         },
-                        Err(_) => {
+                        Err(Aborted) => {
                             {
+                                let msg = format!("build dir task been aborted! task={}", task_id);
+                                warn!("{}", msg);
+                                let err = BuckyError::new(BuckyErrorCode::UserCanceled, msg);
+
                                 let mut tmp_data = task_state.lock().unwrap();
-                                tmp_data.task_status = BuildDirTaskStatus::Stopped;
+                                tmp_data.task_status = BuildDirTaskStatus::Failed(err);
                             }
                             if task_store.is_some() {
                                 task_store
                                     .as_ref()
                                     .unwrap()
-                                    .save_task_status(&task_id, TaskStatus::Stopped)
+                                    .save_task_status(&task_id, TaskStatus::Failed)
                                     .await?;
                             }
                         }

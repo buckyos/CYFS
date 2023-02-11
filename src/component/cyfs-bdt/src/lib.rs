@@ -15,7 +15,7 @@ mod datagram;
 mod dht;
 mod stack;
 pub mod ndn;
-mod utils;
+pub mod utils;
 pub mod debug;
 
 pub use types::*;

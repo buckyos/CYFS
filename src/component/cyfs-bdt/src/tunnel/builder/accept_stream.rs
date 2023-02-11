@@ -341,6 +341,7 @@ impl AcceptStreamBuilder {
             first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone_with_data())]);
             let first_box = Arc::new(first_box);
 
+            info!("{} build with key {}", self, first_box.key());
             for udp_interface in net_listener.udp() {
                 for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local())) {
                     if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {

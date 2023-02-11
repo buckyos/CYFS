@@ -246,11 +246,20 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
         );
         JsonCodecHelper::encode_string_field(&mut obj, "owner", &self.owner);
         JsonCodecHelper::encode_number_field(&mut obj, "chunk_size", self.chunk_size);
+
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+        
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<UtilBuildFileOutputRequest> {
         let common: UtilOutputRequestCommon = JsonCodecHelper::decode_field(obj, "common")?;
+
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
+
         Ok(Self {
             common,
             local_path: PathBuf::from(JsonCodecHelper::decode_string_field::<String>(
@@ -259,6 +268,7 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
             )?),
             owner: JsonCodecHelper::decode_string_field(obj, "owner")?,
             chunk_size: JsonCodecHelper::decode_int_field(obj, "chunk_size")?,
+            access,
         })
     }
 }

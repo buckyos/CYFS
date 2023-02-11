@@ -16,8 +16,9 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateMetaLocalService {
-    root_state_meta: GlobalStatePathMetaManagerRef,
+    device_id: DeviceId,
 
+    root_state_meta: GlobalStatePathMetaManagerRef,
     local_cache_meta: GlobalStatePathMetaManagerRef,
 }
 
@@ -27,6 +28,7 @@ impl GlobalStateMetaLocalService {
         root_state: GlobalStateOutputProcessorRef,
         root_state_service: GlobalStateLocalService,
         noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
         // root_state
         let root_state_meta = GlobalStatePathMetaManager::new(
@@ -35,6 +37,7 @@ impl GlobalStateMetaLocalService {
             root_state_service.clone(),
             GlobalStateCategory::RootState,
             noc.clone(),
+            device_id.clone(),
         );
 
         let root_state_meta = Arc::new(root_state_meta);
@@ -46,11 +49,13 @@ impl GlobalStateMetaLocalService {
             root_state_service,
             GlobalStateCategory::LocalCache,
             noc,
+            device_id.clone(),
         );
 
         let local_cache_meta = Arc::new(local_cache_meta);
 
         Self {
+            device_id,
             root_state_meta,
             local_cache_meta,
         }
@@ -107,7 +112,7 @@ impl GlobalStateMetaLocalService {
             .get_option_global_state_meta(target_dec_id, false)
             .await?;
         if ret.is_none() {
-            let msg = format!("global state check access but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
+            let msg = format!("global state check access but target dec rmeta not found! device={}, target_dec={}, req_path={}", self.device_id, target_dec_id, req_path);
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }

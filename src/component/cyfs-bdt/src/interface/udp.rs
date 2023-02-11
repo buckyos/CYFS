@@ -225,6 +225,7 @@ impl Interface {
     pub fn start(&self, stack: WeakStack) {
         let ci = self.clone();
         thread::spawn(move || {
+            info!("{} start on thread {:?}", ci, thread::current().id());
             ci.recv_loop(stack);
         });
     }
@@ -333,7 +334,7 @@ impl Interface {
             }
             Err(err) => {
                 // do nothing
-                error!("{} decode failed, len={}, e={}", self, recv.len(), &err);
+                error!("{} decode failed, from={}, len={}, e={}", self, from, recv.len(), &err);
             }
         }
     }
@@ -379,6 +380,7 @@ impl Interface {
         } 
         BOX_CRYPTO_BUFFER.with(|thread_crypto_buf| {
             let crypto_buf = &mut thread_crypto_buf.borrow_mut()[..];
+           
             let buf_len = crypto_buf.len();
             let next_ptr = package_box
                 .raw_encode_with_context(crypto_buf, context, &None)
@@ -718,7 +720,7 @@ impl<'de>
                 None => {
                     let mut enc_key = AesKey::default();
                     let (remain, _) = context.local_secret().decrypt_aeskey(buf, enc_key.as_mut_slice()).map_err(|e|{
-                        error!("decrypt aeskey err={}. (maybe: 1. local or remote device time incorrect 2. the packet is broken 3. the packet not contains Exchange info etc.. )", e);
+                        error!("decrypt aeskey err={}. (maybe: 1. local/remote device time is not correct 2. the packet is broken 3. the packet not contains Exchange info etc.. )", e);
                         e
                     })?;
                     let encrypted = Vec::from(&buf[..buf.len() - remain.len()]);

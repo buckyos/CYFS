@@ -351,7 +351,7 @@ impl Config {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub enum StreamState {
     Connecting,
     Establish(Timestamp),
@@ -862,6 +862,18 @@ impl StreamContainerImpl {
         &self.tunnel
     }
 
+    pub fn remote_id(&self) -> IncreaseId {
+        match &*self.state.read().unwrap() {
+            StreamStateImpl::Establish(est) => {
+                est.provider.remote_id()
+            }
+            StreamStateImpl::Closing(est) => {
+                est.provider.remote_id()
+            },
+            _ => IncreaseId::default(),
+        }
+    }
+
     pub fn state(&self) -> StreamState {
         match &*self.state.read().unwrap() {
             StreamStateImpl::Initial => unreachable!(),
@@ -926,6 +938,10 @@ impl StreamContainerImpl {
 pub struct StreamContainer(Arc<StreamContainerImpl>);
 
 impl StreamContainer {
+    pub fn remote_id(&self) -> IncreaseId {
+        self.0.remote_id()
+    }
+
     pub async fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
         if answer.len() > ANSWER_MAX_LEN {
             return Err(BuckyError::new(
@@ -967,7 +983,8 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s) => Ok(s.provider.clone_as_provider()),
+                StreamStateImpl::Establish(s) => Ok(Some(s.provider.clone_as_provider())),
+                StreamStateImpl::Closed => Ok(None),
                 _ => {
                     //TODO 其他状态暂时不支持shutdown
                     Err(std::io::Error::new(
@@ -981,7 +998,12 @@ impl StreamContainer {
             error!("{} shutdown failed for {}", self.as_ref(), e);
             e
         })?;
-        provider.shutdown(which, &self)
+
+        if let Some(provider) = provider {
+            provider.shutdown(which, &self)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn readable(&self) -> StreamReadableFuture {

@@ -7,8 +7,7 @@ use crate::meta::ObjectFailHandler;
 use crate::trans::TransInputProcessorRef;
 use crate::trans_api::{LocalTransService, TransServiceRouter, TransStore};
 use crate::zone::ZoneManagerRef;
-use crate::AclManagerRef;
-use cyfs_chunk_cache::ChunkManager;
+use crate::{AclManagerRef, NamedDataComponents};
 use cyfs_task_manager::TaskManager;
 use std::sync::Arc;
 
@@ -22,10 +21,8 @@ impl TransService {
     pub(crate) fn new(
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         ood_resolver: OodResolver,
-        chunk_manager: Arc<ChunkManager>,
         task_manager: Arc<TaskManager>,
         _acl: AclManagerRef,
         forward: ForwardProcessorManager,
@@ -36,10 +33,8 @@ impl TransService {
         let local_service = LocalTransService::new(
             noc.clone(),
             bdt_stack.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components,
             ood_resolver.clone(),
-            chunk_manager.clone(),
             task_manager.clone(),
             trans_store,
         );

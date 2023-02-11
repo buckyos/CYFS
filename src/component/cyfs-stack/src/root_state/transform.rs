@@ -125,6 +125,7 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
             common: self.convert_common(req.common),
 
             target: req.target,
+            inner_path: req.inner_path,
         };
 
         self.processor.load(in_req).await
@@ -442,6 +443,7 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
             common: self.convert_common(req.common),
 
             target: req.target,
+            inner_path: req.inner_path
         };
 
         self.processor.load(in_req).await

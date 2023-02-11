@@ -87,7 +87,7 @@ impl<T: ObjectType> Default for NamedObjectId<T> {
             hash_value[0] = 0b_01000000 | type_code << 4 >> 2;
         };
 
-        let id = ObjectId::clone_from_slice(&hash_value);
+        let id = ObjectId::clone_from_slice(&hash_value).unwrap();
 
         Self(id, None)
     }

@@ -129,6 +129,13 @@ impl SingleOpEnvStub {
 
         self.processor.load(req).await
     }
+    pub async fn load_with_inner_path(&self, target: ObjectId, inner_path: impl Into<String>) -> BuckyResult<()> {
+        let mut req = OpEnvLoadOutputRequest::new_with_inner_path(target, inner_path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.load(req).await
+    }
     pub async fn load_by_path(&self, path: impl Into<String>) -> BuckyResult<()> {
         let mut req = OpEnvLoadByPathOutputRequest::new(path.into());
         req.common.target = self.target.clone();
