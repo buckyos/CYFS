@@ -12,6 +12,7 @@ mod crypto;
 mod events;
 mod ndn;
 mod non;
+mod noc;
 mod non_file;
 mod non_handlers;
 mod perf;
@@ -48,6 +49,7 @@ pub async fn test() {
 
     // crypto::test().await;
 
+    noc::test().await;
     non::test().await;
     codec::test().await;
     meta::test().await;
