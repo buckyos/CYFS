@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.6.9"
+version = "0.7.0"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1759,7 +1759,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-core"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1830,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "async-h1",
  "async-std",
