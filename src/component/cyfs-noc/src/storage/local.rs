@@ -64,9 +64,7 @@ impl NamedObjectLocalStorage {
     }
 
     fn init_meta(root: &Path) -> BuckyResult<NamedObjectMetaRef> {
-        let meta = SqliteMetaStorage::new(root)?;
-        let ret = Arc::new(Box::new(meta) as Box<dyn NamedObjectMeta>);
-        Ok(ret)
+        create_meta(root)
     }
 
     async fn put_object(
