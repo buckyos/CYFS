@@ -2,8 +2,8 @@ use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::path::{Path, PathBuf};
 use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
     root: PathBuf,
@@ -122,7 +122,8 @@ impl BlobStorage for FileBlobStorage {
 
         info!(
             "save object blob to file success! object={}, size={}bytes",
-            data.object_id, data.object_raw.len(),
+            data.object_id,
+            data.object_raw.len(),
         );
         Ok(())
     }
@@ -207,5 +208,35 @@ impl BlobStorage for FileBlobStorage {
         };
 
         Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cyfs_core::*;
+    use cyfs_util::get_cyfs_root_path;
+
+    async fn test_dir() {
+        let root = get_cyfs_root_path().join("tmp").join("test_blob_storage");
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = FileBlobStorage::new(root);
+
+        let count: usize = 1024 * 1024;
+        for i in 0..count {
+            let obj = Text::create(&format!("test{}", i), "", "");
+            let id = obj.desc().calculate_id();
+            storage.get_full_path(&id, true).await.unwrap();
+            if i % 1024 == 0 {
+                println!("gen dir index: {}", i);
+            }
+        }
+    }
+
+    #[test]
+    fn main() {
+        async_std::task::block_on(async move {
+            test_dir().await;
+        });
     }
 }
