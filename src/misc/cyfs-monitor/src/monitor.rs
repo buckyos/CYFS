@@ -56,7 +56,7 @@ impl MonitorCase {
     }
 
     fn set_interval(&mut self, new_interval: u64) {
-        info!("set case {} interval from {} to {} minutes", self.runner.name(), self.interval_minutes, new_interval)
+        info!("set case {} interval from {} to {} minutes", self.runner.name(), self.interval_minutes, new_interval);
         self.interval_minutes = new_interval;
         self.remain_minutes = self.interval_minutes - 1;
     }
