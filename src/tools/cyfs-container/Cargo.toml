@@ -19,4 +19,4 @@ cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
-# im-service = {path="../../product/cyim/im-service", features = ["http"]}
+# im-service = { path="../../product/cyim/im-service", features = ["http"] }
