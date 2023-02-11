@@ -7,7 +7,7 @@ use zip;
 use fs_extra::dir;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_util::{get_app_acl_dir, get_app_dir, get_app_web_dir, get_temp_path};
+use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, get_temp_path};
 use cyfs_client::NamedCacheClient;
 use cyfs_core::DecAppId;
 use ood_daemon::get_system_config;
@@ -26,9 +26,6 @@ pub struct AppPackage {
 }
 
 impl AppPackage {
-    pub fn get_package_path(app_id: &DecAppId) -> PathBuf {
-
-    }
     pub async fn install(app_id: &DecAppId, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient) -> BuckyResult<()> {
         // 先下载到/cyfs/tmp/app/{appid}下
         let tmp_path = get_temp_path().join("app").join(app_id.to_string());
@@ -54,7 +51,7 @@ impl AppPackage {
         }
 
         // 下载webdir, /cyfs/tmp/app/{appid}/web
-        Self::download_web_2(dir, owner, client, &target_path.join("web")).await?;
+        Self::download_web(dir, owner, client, &target_path.join("web")).await?;
         Ok(())
     }
 
@@ -62,6 +59,7 @@ impl AppPackage {
         let app_str = app_id.to_string();
         let service_path = get_app_dir(&app_str);
         let acl_path = get_app_acl_dir(&app_str);
+        let dep_path = get_app_dep_dir(&app_str)
         // 拷贝acl
         Self::copy_dir_contents(&local_path.join("acl"), &acl_path)?;
         // 拷贝service

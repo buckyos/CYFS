@@ -982,28 +982,25 @@ impl AppManager {
         // info!("get stack version:{:?}", version);
 
         //获取需要检查的列表：appid, version
-        let mut check_list: Vec<(DecAppId, String, bool)> = vec![];
+        let mut check_list: Vec<(DecAppId, bool)> = vec![];
         let status_list = self.status_list.read().unwrap().clone();
         for (app_id, status) in status_list {
             let status_code;
-            let version;
             {
                 let status = status.lock().unwrap();
-                version = status.version().map_or(None, |v| Some(v.to_string()));
                 status_code = status.status();
             }
 
-            if version.is_some()
-                && status_code != AppLocalStatusCode::Init
+            if status_code != AppLocalStatusCode::Init
                 && status_code != AppLocalStatusCode::Uninstalled
             {
-                check_list.push((app_id.clone(), version.unwrap(), false));
+                check_list.push((app_id.clone(), false));
             }
         }
 
         for item in check_list.iter_mut() {
             match self
-                .check_app_compatibility(stack_version, &item.0, &item.1)
+                .check_app_compatibility(stack_version, &item.0)
                 .await
             {
                 Err(e) => {
@@ -1028,20 +1025,15 @@ impl AppManager {
         &self,
         stack_version: &str,
         app_id: &DecAppId,
-        app_version: &str,
     ) -> BuckyResult<bool> {
         info!(
             "will check app compatibility, stack version: {}, appId: {}, app_version:{}",
             stack_version, app_id, app_version
         );
         let stack_ver = Version::from(stack_version).unwrap();
-        let dec_app = self
-            .non_helper
-            .get_dec_app(app_id.object_id(), None)
-            .await?;
         let ver_dep = self
             .app_controller
-            .query_app_version_dep(app_id, app_version, &dec_app)
+            .get_app_version_dep(app_id)
             .await?;
         if ver_dep.0 != "*" {
             let min_ver = Version::from(&ver_dep.0).unwrap();
