@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.6.8"
+version = "0.6.9"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.6.8"
+version = "0.6.9"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1684,7 +1684,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-chunk-lib"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-core"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-debug"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "async-h1",
  "async-std",
@@ -1831,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "async-h1",
  "async-std",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-task-manager"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-util"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "async-h1",
  "async-std",
