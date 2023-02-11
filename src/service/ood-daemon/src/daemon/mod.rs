@@ -2,10 +2,8 @@ pub mod daemon;
 mod gateway_monitor;
 mod control;
 mod stop;
-mod status;
 
 pub use daemon::Daemon;
 pub use gateway_monitor::GATEWAY_MONITOR;
 pub use control::start_control;
 pub use stop::ServicesStopController;
-pub use status::OOD_STATUS_MANAGER;
