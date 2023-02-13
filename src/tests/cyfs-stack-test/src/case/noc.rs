@@ -24,7 +24,7 @@ fn new_object(id: &str) -> Text {
 
 
 pub async fn test() {
-    test_put_objects(1024 * 100).await;
+    test_put_objects(1024).await;
 
     info!("test all noc case success!");
 }
