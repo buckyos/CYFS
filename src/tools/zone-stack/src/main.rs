@@ -72,5 +72,5 @@ async fn main() {
         }
     });
 
-    async_std::task::sleep(std::time::Duration::from_millis(u64::MAX)).await;
+    async_std::future::pending::<()>().await;
 }
