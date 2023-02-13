@@ -9,8 +9,10 @@ use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
 
 use super::service::Service;
+use super::service_info::ServicePackageLocalState;
 use crate::config::*;
 use crate::daemon::GATEWAY_MONITOR;
+use crate::status::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
 
@@ -26,11 +28,11 @@ impl ServiceItem {
             true => match GATEWAY_MONITOR.zone_role() {
                 ZoneRole::ActiveOOD => self.config.target_state,
                 _ => match self.config.name.as_str() {
-                    GATEWAY_SERVICE => ServiceState::RUN,
-                    _ => ServiceState::STOP,
+                    GATEWAY_SERVICE => ServiceState::Run,
+                    _ => ServiceState::Stop,
                 },
             },
-            false => ServiceState::STOP,
+            false => ServiceState::Stop,
         }
     }
 }
@@ -241,7 +243,7 @@ impl ServiceManager {
         let service_info = service_info.unwrap();
 
         let service = service_info.service.unwrap();
-        service.sync_state(ServiceState::STOP);
+        service.sync_state(ServiceState::Stop);
         service.remove();
     }
 
@@ -288,12 +290,13 @@ impl ServiceManager {
         let service_path = self.service_root.join(&service_config.name);
         if !service_path.is_dir() {
             if let Err(e) = std::fs::create_dir_all(service_path.as_path()) {
-                error!(
+                let msg = format!(
                     "create service dir error! dir={}, err={}",
                     service_path.display(),
                     e
                 );
-                return Err(BuckyError::from(e));
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
             }
         }
 
@@ -419,7 +422,7 @@ impl ServiceManager {
 
         // 首先停止老的服务
         if let Some(old_service) = old_service {
-            old_service.sync_state(ServiceState::STOP);
+            old_service.sync_state(ServiceState::Stop);
         }
 
         // 尝试启动新的服务
@@ -471,7 +474,7 @@ impl ServiceManager {
                 continue;
             }
 
-            if service_info.target_state() == ServiceState::RUN {
+            if service_info.target_state() == ServiceState::Run {
                 futures.push(Self::sync_service_package(service_info));
             }
         }
@@ -501,6 +504,36 @@ impl ServiceManager {
 
         let service = service_item.service.as_ref().unwrap();
         service.sync_state(target_state);
+    }
+
+    pub fn collect_status(&self) -> Vec<OODServiceStatusItem> {
+        let mut list = vec![];
+        let services = self.service_list.lock().unwrap();
+        for (_name, item) in services.iter() {
+            let package_state = match &item.service {
+                Some(service) => service.package_local_status(),
+                None => ServicePackageLocalState::Init,
+            };
+
+            let process_state = match &item.service {
+                Some(service) => service.state(),
+                None => ServiceState::Stop,
+            };
+
+            let item = OODServiceStatusItem {
+                id: item.config.id.clone(),
+                name: item.config.name.clone(),
+                version: item.config.version.clone(),
+                enable: item.config.enable,
+                target_state: item.config.target_state,
+                package_state,
+                process_state,
+            };
+
+            list.push(item);
+        }
+
+        list
     }
 }
 
