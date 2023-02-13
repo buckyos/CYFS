@@ -4492,7 +4492,6 @@ dependencies = [
  "cyfs-base-meta",
  "cyfs-debug",
  "cyfs-meta-lib",
- "cyfs-stack-loader",
  "cyfs-util",
  "desc-tool",
  "futures-util",

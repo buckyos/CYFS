@@ -137,18 +137,13 @@ impl LeafDownloadTask for ChunkListTask {
 
     fn abs_group_path(&self) -> Option<String> {
         self.0.state.read().unwrap().abs_path.clone()
-
     }
 
-    }
-}
-
-#[async_trait::async_trait]
-impl LeafDownloadTask for ChunkListTask {
-    fn clone_as_leaf_task(&self) -> Box<dyn LeafDownloadTask> {
-        Box::new(self.clone())
+    fn context(&self) -> &dyn DownloadContext {
+        self.0.context.as_ref()
     }
 
+    fn finish(&self) {
         let mut state = self.0.state.write().unwrap();
 
         match &mut state.task_state {
