@@ -52,7 +52,7 @@ impl NONObjectMapLoader {
         }
 
         // load target object with inner_path
-        let path = ObjectMapPath::new(req.object_id.clone(), self.op_env_cache.clone());
+        let path = ObjectMapPath::new(req.object_id.clone(), self.op_env_cache.clone(), false);
         let ret = path.get_by_path(&inner_path).await?;
         if ret.is_none() {
             let msg = format!(

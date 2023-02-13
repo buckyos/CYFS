@@ -110,7 +110,7 @@ impl RevisionList {
     // FIXME 启动时候，加载dec_root和global_root的关系，需要注意这个可能会随着global_root的增长而变动
     // 如果需要确切的映射关系，revision list需要持久化
     pub async fn update_dec_relation(&self, root: &ObjectMapRootManager) -> BuckyResult<()> {
-        let op_env = root.create_op_env(None).await?;
+        let op_env = root.create_op_env(None)?;
         let global_root = op_env.root();
         let dec_list = op_env.list("/").await?;
 
