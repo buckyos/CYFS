@@ -164,7 +164,7 @@ pub trait DownloadTask: NdnTask {
 
 
 #[async_trait::async_trait]
-pub trait LeafDownloadTask: DownloadTask {
+pub trait LeafDownloadTask: DownloadTask + std::fmt::Display {
     fn priority(&self) -> DownloadTaskPriority {
         DownloadTaskPriority::default()
     }
