@@ -10,18 +10,17 @@ pub const OOD_DAEMON_SERVICE: &str = "ood-daemon";
 // gateway服务，需要特殊处理
 pub const GATEWAY_SERVICE: &str = "gateway";
 
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum ServiceState {
-    RUN,
-    STOP,
+    Run,
+    Stop,
 }
 
 impl fmt::Display for ServiceState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let state = match &self {
-            ServiceState::RUN => "run",
-            ServiceState::STOP => "stop",
+            ServiceState::Run => "run",
+            ServiceState::Stop => "stop",
         };
 
         write!(f, "{}", state)
@@ -33,8 +32,8 @@ impl FromStr for ServiceState {
 
     fn from_str(s: &str) -> BuckyResult<Self> {
         match s.to_lowercase().as_str() {
-            "run" => Ok(ServiceState::RUN),
-            "stop" => Ok(ServiceState::STOP),
+            "run" => Ok(ServiceState::Run),
+            "stop" => Ok(ServiceState::Stop),
             _ => {
                 let msg = format!("unknown service state: {}", s);
                 error!("{}", msg);
@@ -44,7 +43,6 @@ impl FromStr for ServiceState {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceConfig {
@@ -66,7 +64,7 @@ impl ServiceConfig {
             fid: String::from(""),
             version: String::from(""),
             enable: false,
-            target_state: ServiceState::STOP,
+            target_state: ServiceState::Stop,
         }
     }
 
@@ -152,7 +150,7 @@ impl ServiceConfig {
                     match ServiceState::from_str(v) {
                         Ok(state) => self.target_state = state,
                         Err(_) => {
-                            self.target_state = ServiceState::STOP;
+                            self.target_state = ServiceState::Stop;
                         }
                     }
                 }

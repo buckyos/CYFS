@@ -9,6 +9,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use cyfs_debug::Mutex;
 
+pub trait ExternalServerEndPoint: Send + Sync {
+    fn register(&self, server: &mut ::tide::Server<()>);
+}
 
 pub(crate) struct ControllerImpl {
     desc_file: PathBuf,
@@ -24,6 +27,8 @@ pub(crate) struct ControllerImpl {
     check_status: Mutex<HashMap<String, CheckStatus>>,
 
     access_info: OnceCell<ControlInterfaceAccessInfo>,
+
+    external_servers: Mutex<Vec<Box<dyn ExternalServerEndPoint>>>,
 }
 
 impl ControllerImpl {
@@ -53,6 +58,8 @@ impl ControllerImpl {
             check_status: Mutex::new(check_status),
 
             access_info: OnceCell::new(),
+
+            external_servers: Mutex::new(vec![]),
         }
     }
 
@@ -372,6 +379,19 @@ impl Controller {
 
     pub fn init_access_info(&self, access_info: ControlInterfaceAccessInfo) {
         self.0.init_access_info(access_info)
+    }
+
+    // external http server
+    pub fn register_external_server(&self, server: Box<dyn ExternalServerEndPoint>) {
+        self.0.external_servers.lock().unwrap().push(server);
+    }
+
+    pub fn fetch_all_external_servers(&self) -> Vec<Box<dyn ExternalServerEndPoint>> {
+        let mut ret = vec![];
+        let mut list = self.0.external_servers.lock().unwrap();
+        std::mem::swap(&mut ret, &mut list);
+
+        ret
     }
 }
 
