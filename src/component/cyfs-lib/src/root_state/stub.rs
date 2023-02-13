@@ -92,6 +92,24 @@ impl GlobalStateStub {
         let op_env = SingleOpEnvStub::new(resp, self.target.clone(), self.target_dec_id.clone());
         Ok(op_env)
     }
+
+    pub async fn create_isolate_path_op_env(&self) -> BuckyResult<IsolatePathOpEnvStub> {
+        self.create_isolate_path_op_env_with_access(None).await
+    }
+
+    pub async fn create_isolate_path_op_env_with_access(
+        &self,
+        access: Option<RootStateOpEnvAccess>,
+    ) -> BuckyResult<IsolatePathOpEnvStub> {
+        let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::IsolatePath);
+        req.access = access;
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.create_op_env(req).await?;
+        let op_env = IsolatePathOpEnvStub::new(resp, self.target.clone(), self.target_dec_id.clone());
+        Ok(op_env)
+    }
 }
 
 #[derive(Clone)]
@@ -385,6 +403,326 @@ impl PathOpEnvStub {
     }
 
     pub async fn create_new(
+        &self,
+        path: impl Into<String>,
+        key: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> BuckyResult<()> {
+        let mut req = OpEnvCreateNewOutputRequest::new_with_path_and_key(path, key, content_type);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.create_new(req).await?;
+        Ok(())
+    }
+
+    pub async fn insert_with_key(
+        &self,
+        path: impl Into<String>,
+        key: impl Into<String>,
+        value: &ObjectId,
+    ) -> BuckyResult<()> {
+        let mut req =
+            OpEnvInsertWithKeyOutputRequest::new_path_and_key_value(path, key, value.to_owned());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.insert_with_key(req).await?;
+        Ok(())
+    }
+
+    pub async fn set_with_key(
+        &self,
+        path: impl Into<String>,
+        key: impl Into<String>,
+        value: &ObjectId,
+        prev_value: Option<ObjectId>,
+        auto_insert: bool,
+    ) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvSetWithKeyOutputRequest::new_path_and_key_value(
+            path,
+            key,
+            value.to_owned(),
+            prev_value,
+            auto_insert,
+        );
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.set_with_key(req).await?;
+        Ok(resp.prev_value)
+    }
+
+    pub async fn remove_with_key(
+        &self,
+        path: impl Into<String>,
+        key: impl Into<String>,
+        prev_value: Option<ObjectId>,
+    ) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvRemoveWithKeyOutputRequest::new_path_and_key(path, key, prev_value);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.remove_with_key(req).await?;
+        Ok(resp.value)
+    }
+
+    // map methods with full_path
+    pub async fn get_by_path(&self, full_path: impl Into<String>) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvGetByKeyOutputRequest::new_full_path(full_path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.get_by_key(req).await?;
+        Ok(resp.value)
+    }
+
+    pub async fn create_new_with_path(
+        &self,
+        full_path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> BuckyResult<()> {
+        let mut req = OpEnvCreateNewOutputRequest::new_with_full_path(full_path, content_type);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.create_new(req).await?;
+        Ok(())
+    }
+
+    pub async fn insert_with_path(
+        &self,
+        full_path: impl Into<String>,
+        value: &ObjectId,
+    ) -> BuckyResult<()> {
+        let mut req =
+            OpEnvInsertWithKeyOutputRequest::new_full_path_and_value(full_path, value.to_owned());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.insert_with_key(req).await?;
+        Ok(())
+    }
+
+    pub async fn set_with_path(
+        &self,
+        full_path: impl Into<String>,
+        value: &ObjectId,
+        prev_value: Option<ObjectId>,
+        auto_insert: bool,
+    ) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvSetWithKeyOutputRequest::new_full_path_and_value(
+            full_path,
+            value.to_owned(),
+            prev_value,
+            auto_insert,
+        );
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.set_with_key(req).await?;
+        Ok(resp.prev_value)
+    }
+
+    pub async fn remove_with_path(
+        &self,
+        full_path: impl Into<String>,
+        prev_value: Option<ObjectId>,
+    ) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvRemoveWithKeyOutputRequest::new_full_path(full_path, prev_value);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.remove_with_key(req).await?;
+        Ok(resp.value)
+    }
+
+    // set methods
+    pub async fn contains(
+        &self,
+        path: impl Into<String>,
+        object_id: &ObjectId,
+    ) -> BuckyResult<bool> {
+        let mut req = OpEnvContainsOutputRequest::new_path(path, object_id.to_owned());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.contains(req).await?;
+        Ok(resp.result)
+    }
+
+    pub async fn insert(&self, path: impl Into<String>, object_id: &ObjectId) -> BuckyResult<bool> {
+        let mut req = OpEnvInsertOutputRequest::new_path(path, object_id.to_owned());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.insert(req).await?;
+        Ok(resp.result)
+    }
+
+    pub async fn remove(&self, path: impl Into<String>, object_id: &ObjectId) -> BuckyResult<bool> {
+        let mut req = OpEnvRemoveOutputRequest::new_path(path, object_id.to_owned());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.remove(req).await?;
+        Ok(resp.result)
+    }
+
+    // transcation
+    pub async fn update(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvCommitOutputRequest::new_update();
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
+    }
+
+    pub async fn commit(self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvCommitOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
+    }
+
+    pub async fn abort(self) -> BuckyResult<()> {
+        let mut req = OpEnvAbortOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.abort(req).await?;
+        Ok(())
+    }
+
+    // list
+    pub async fn list(&self, path: impl Into<String>) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = OpEnvListOutputRequest::new_path(path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
+    }
+
+    // metadata
+    pub async fn metadata(&self, path: impl Into<String>) -> BuckyResult<ObjectMapMetaData> {
+        let mut req = OpEnvMetadataOutputRequest::new(Some(path.into()));
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.metadata(req).await?;
+        let metadata = ObjectMapMetaData {
+            content_mode: resp.content_mode,
+            content_type: resp.content_type,
+            count: resp.count,
+            size: resp.size,
+            depth: resp.depth,
+        };
+
+        Ok(metadata)
+    }
+}
+
+
+#[derive(Clone)]
+pub struct IsolatePathOpEnvStub {
+    processor: OpEnvOutputProcessorRef,
+    target: Option<ObjectId>,
+    target_dec_id: Option<ObjectId>,
+}
+
+impl IsolatePathOpEnvStub {
+    pub(crate) fn new(
+        processor: OpEnvOutputProcessorRef,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            processor,
+            target,
+            target_dec_id,
+        }
+    }
+
+    // init methods
+    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType) -> BuckyResult<()> {
+        let mut req = OpEnvCreateNewOutputRequest::new(content_type);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.create_new(req).await
+    }
+    pub async fn load(&self, target: ObjectId) -> BuckyResult<()> {
+        let mut req = OpEnvLoadOutputRequest::new(target);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.load(req).await
+    }
+    pub async fn load_with_inner_path(&self, target: ObjectId, inner_path: impl Into<String>) -> BuckyResult<()> {
+        let mut req = OpEnvLoadOutputRequest::new_with_inner_path(target, inner_path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.load(req).await
+    }
+    pub async fn load_by_path(&self, path: impl Into<String>) -> BuckyResult<()> {
+        let mut req = OpEnvLoadByPathOutputRequest::new(path.into());
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.load_by_path(req).await
+    }
+
+    // get_current_root
+    pub async fn get_current_root(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvGetCurrentRootOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.get_current_root(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
+    }
+
+    // map methods
+    pub async fn get_by_key(
+        &self,
+        path: impl Into<String>,
+        key: impl Into<String>,
+    ) -> BuckyResult<Option<ObjectId>> {
+        let mut req = OpEnvGetByKeyOutputRequest::new_path_and_key(path, key);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.get_by_key(req).await?;
+        Ok(resp.value)
+    }
+
+    pub async fn create_new_with_key(
         &self,
         path: impl Into<String>,
         key: impl Into<String>,

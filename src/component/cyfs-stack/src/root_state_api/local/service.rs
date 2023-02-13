@@ -134,10 +134,9 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
         let sid = match req.op_env_type {
             ObjectMapOpEnvType::Path => {
                 let env = dec_root_manager
-                    .create_managed_op_env(access, Some(req.common.source.clone().into()))
-                    .await?;
+                    .create_managed_op_env(access, Some(req.common.source.clone().into()))?;
                 info!(
-                    "create_path_op_env success! source={}, sid={}",
+                    "create path_op_env success! source={}, sid={}",
                     req.common.source,
                     env.sid()
                 );
@@ -148,7 +147,20 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
                 let env = dec_root_manager
                     .create_managed_single_op_env(access, Some(req.common.source.clone().into()))?;
                 info!(
-                    "create_single_op_env success! dec_id={}, sid={}",
+                    "create single_op_env success! dec_id={}, sid={}",
+                    req.common.source,
+                    env.sid()
+                );
+                env.sid()
+            }
+
+            ObjectMapOpEnvType::IsolatePath => {
+                let env = dec_root_manager.create_managed_isolate_path_op_env(
+                    access,
+                    Some(req.common.source.clone().into()),
+                )?;
+                info!(
+                    "create isolate_path_op_env success! dec_id={}, sid={}",
                     req.common.source,
                     env.sid()
                 );
@@ -167,7 +179,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         self.global_state.category()
     }
 
-    // single_op_env methods
+    // isolate_path_op_env and single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_op_env_target_dec_id(&req.common)?;
 
@@ -175,14 +187,42 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .global_state
             .get_dec_root_manager(dec_id, false)
             .await?;
-        let op_env = dec_root_manager
-            .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
-        if req.inner_path.is_some() {
-            op_env.load_with_inner_path(&req.target, req.inner_path).await
-        } else {
-            op_env.load(&req.target).await
+        match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Single => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
+
+                if req.inner_path.is_some() {
+                    op_env
+                        .load_with_inner_path(&req.target, req.inner_path)
+                        .await
+                } else {
+                    op_env.load(&req.target).await
+                }
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+
+                if req.inner_path.is_some() {
+                    op_env
+                        .load_with_inner_path(&req.target, req.inner_path)
+                        .await
+                } else {
+                    op_env.load(&req.target).await
+                }
+            }
+            ObjectMapOpEnvType::Path => {
+                let msg = format!(
+                    "load method not support for path_op_env! sid={}",
+                    req.common.sid
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+            }
         }
     }
 
@@ -193,14 +233,33 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .global_state
             .get_dec_root_manager(dec_id, false)
             .await?;
-        let op_env = dec_root_manager
-            .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
+        match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Single => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
-        op_env.load_by_path(&req.path).await
+                op_env.load_by_path(&req.path).await
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+
+                op_env.load_by_path(&req.path).await
+            }
+            ObjectMapOpEnvType::Path => {
+                let msg = format!(
+                    "load_by_path method not support for path_op_env! sid={}",
+                    req.common.sid
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+            }
+        }
     }
 
-    // for single and path
+    // for all
     async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_op_env_target_dec_id(&req.common)?;
 
@@ -225,6 +284,23 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 match req.path {
                     Some(path) => op_env.create_new(&path, &key, req.content_type).await?,
                     None => op_env.create_new_with_path(&key, req.content_type).await?,
+                }
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+
+                match req.key {
+                    Some(key) => match req.path {
+                        Some(path) => {
+                            op_env
+                                .create_new_with_key(&path, &key, req.content_type)
+                                .await?
+                        }
+                        None => op_env.create_new_with_path(&key, req.content_type).await?,
+                    },
+                    None => op_env.create_new(req.content_type).await?,
                 }
             }
             ObjectMapOpEnvType::Single => {
@@ -281,11 +357,13 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     dec_root,
                 }
             }
-            ObjectMapOpEnvType::Single => OpEnvCommitInputResponse {
-                root: dec_root.clone(),
-                revision: 0,
-                dec_root,
-            },
+            ObjectMapOpEnvType::Single | ObjectMapOpEnvType::IsolatePath => {
+                OpEnvCommitInputResponse {
+                    root: dec_root.clone(),
+                    revision: 0,
+                    dec_root,
+                }
+            }
         };
 
         Ok(resp)
@@ -324,11 +402,13 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     dec_root,
                 }
             }
-            ObjectMapOpEnvType::Single => OpEnvCommitInputResponse {
-                root: dec_root.clone(),
-                revision: 0,
-                dec_root,
-            },
+            ObjectMapOpEnvType::Single | ObjectMapOpEnvType::IsolatePath => {
+                OpEnvCommitInputResponse {
+                    root: dec_root.clone(),
+                    revision: 0,
+                    dec_root,
+                }
+            }
         };
 
         Ok(resp)
@@ -367,6 +447,15 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     None => op_env.get_by_path(&req.key).await?,
                 }
             }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                match req.path {
+                    Some(path) => op_env.get_by_key(&path, &req.key).await?,
+                    None => op_env.get_by_path(&req.key).await?,
+                }
+            }
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
@@ -392,6 +481,15 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 let op_env = dec_root_manager
                     .managed_envs()
                     .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                match req.path {
+                    Some(path) => op_env.insert_with_key(&path, &req.key, &req.value).await?,
+                    None => op_env.insert_with_path(&req.key, &req.value).await?,
+                }
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => op_env.insert_with_key(&path, &req.key, &req.value).await?,
                     None => op_env.insert_with_path(&req.key, &req.value).await?,
@@ -423,6 +521,29 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 let op_env = dec_root_manager
                     .managed_envs()
                     .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                match req.path {
+                    Some(path) => {
+                        op_env
+                            .set_with_key(
+                                &path,
+                                &req.key,
+                                &req.value,
+                                &req.prev_value,
+                                req.auto_insert,
+                            )
+                            .await?
+                    }
+                    None => {
+                        op_env
+                            .set_with_path(&req.key, &req.value, &req.prev_value, req.auto_insert)
+                            .await?
+                    }
+                }
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => {
                         op_env
@@ -481,6 +602,19 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     None => op_env.remove_with_path(&req.key, &req.prev_value).await?,
                 }
             }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                match req.path {
+                    Some(path) => {
+                        op_env
+                            .remove_with_key(&path, &req.key, &req.prev_value)
+                            .await?
+                    }
+                    None => op_env.remove_with_path(&req.key, &req.prev_value).await?,
+                }
+            }
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
@@ -516,6 +650,22 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 None => {
                     let msg = format!(
                         "call contains on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
+            ObjectMapOpEnvType::IsolatePath => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.contains(&path, &req.value).await?
+                }
+                None => {
+                    let msg = format!(
+                        "call contains on isolate_path_op_env but path param not found! req={}",
                         req
                     );
                     error!("{}", msg);
@@ -559,6 +709,22 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
                 }
             },
+            ObjectMapOpEnvType::IsolatePath => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.insert(&path, &req.value).await?
+                }
+                None => {
+                    let msg = format!(
+                        "call insert on isolate_path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
@@ -590,6 +756,22 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 None => {
                     let msg = format!(
                         "call contains on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
+            ObjectMapOpEnvType::IsolatePath => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.remove(&path, &req.value).await?
+                }
+                None => {
+                    let msg = format!(
+                        "call contains on isolate_path_op_env but path param not found! req={}",
                         req
                     );
                     error!("{}", msg);
@@ -665,6 +847,21 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.list(req.path.as_ref().unwrap()).await
             }
+            ObjectMapOpEnvType::IsolatePath => {
+                if req.path.is_none() {
+                    let msg = format!(
+                        "call list on isolate_path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                op_env.list(req.path.as_ref().unwrap()).await
+            }
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
@@ -697,6 +894,20 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
                 if req.path.is_none() {
                     let msg = format!("get metadata for path_op_env but path not specified!");
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+                }
+
+                op_env.metadata(req.path.as_ref().unwrap()).await?
+            }
+            ObjectMapOpEnvType::IsolatePath => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_isolate_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+
+                if req.path.is_none() {
+                    let msg =
+                        format!("get metadata for isolate_path_op_env but path not specified!");
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
                 }
