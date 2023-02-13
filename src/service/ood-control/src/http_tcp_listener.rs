@@ -12,14 +12,14 @@ use cyfs_debug::Mutex;
 pub(super) struct HttpTcpListenerInner {
     listen: SocketAddr,
 
-    server: HttpServer,
+    server: Arc<tide::Server<()>>,
 
     // 用以停止
     abort_handle: Option<AbortHandle>,
 }
 
 impl HttpTcpListenerInner {
-    pub fn new(listen: SocketAddr, server: HttpServer) -> Self {
+    pub fn new(listen: SocketAddr, server: Arc<tide::Server<()>>) -> Self {
         Self {
             listen,
             server,
@@ -29,11 +29,15 @@ impl HttpTcpListenerInner {
 }
 
 #[derive(Clone)]
-pub(super) struct HttpTcpListener(Arc<Mutex<HttpTcpListenerInner>>);
+pub struct HttpTcpListener(Arc<Mutex<HttpTcpListenerInner>>);
 
 
 impl HttpTcpListener {
     pub fn new(addr: SocketAddr, server: HttpServer) -> Self {
+        Self::new_with_raw_server(addr, server.server().clone())
+    }
+
+    pub fn new_with_raw_server(addr: SocketAddr, server: Arc<tide::Server<()>>) -> Self {
         let inner = HttpTcpListenerInner::new(addr, server);
 
         Self(Arc::new(Mutex::new(inner)))
@@ -165,7 +169,7 @@ impl HttpTcpListener {
     }
 
     async fn accept(
-        server: &HttpServer,
+        server: &Arc<tide::Server<()>>,
         addr: String,
         stream: TcpStream,
     ) -> BuckyResult<()> {

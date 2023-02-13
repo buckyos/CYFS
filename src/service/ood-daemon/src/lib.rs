@@ -5,6 +5,7 @@ mod config_repo;
 mod service;
 mod daemon;
 mod monitor;
+mod status;
 
 pub use config::{DEVICE_CONFIG_MANAGER, init_system_config, get_system_config, ServiceState, PATHS};
 pub use service::{ServiceMode, SERVICE_MANAGER};

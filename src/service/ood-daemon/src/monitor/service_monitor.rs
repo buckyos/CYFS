@@ -43,9 +43,7 @@ impl ServiceMonitor {
             Some(Some(service)) => service
                 .get_script("start")
                 .map(|v| format!("{} --as-monitor", v)),
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 
@@ -151,7 +149,7 @@ impl ServiceMonitor {
     fn check(&mut self) -> Result<(), BuckyError> {
         if self.service.is_some() {
             self.service.as_mut().unwrap().update_state();
-            if self.service.as_ref().unwrap().state() == ServiceState::RUN {
+            if self.service.as_ref().unwrap().state() == ServiceState::Run {
                 return Ok(());
             }
 
@@ -165,7 +163,7 @@ impl ServiceMonitor {
 
         let service = self.new_service(&self.version)?;
 
-        service.direct_sync_state(ServiceState::RUN);
+        service.direct_sync_state(ServiceState::Run);
 
         self.service = Some(service);
 
@@ -209,7 +207,7 @@ impl ServiceMonitor {
             fid: version.to_owned(),
             version: "0.0.1".to_owned(),
             enable: true,
-            target_state: ServiceState::RUN,
+            target_state: ServiceState::Run,
         };
         let mut service = Service::new(&service_config);
         service.mark_ood_daemon(false);

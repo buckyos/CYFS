@@ -30,9 +30,8 @@ pub const CYFS_RUNTIME_NON_STACK_HTTP_PORT: u16 = 1322;
 // TODO 目前tide+async_h1还不支持websocket协议，所以只能使用独立端口
 pub const CYFS_RUNTIME_NON_STACK_WS_PORT: u16 = 1323;
 
-// nginx的本地绑定端口
-pub const NON_STACK_NGINX_SERVER_PORT: u16 = 1330;
-pub const CYFS_RUNTIME_NON_STACK_NGINX_SERVER_PORT: u16 = 1331;
+// ood-daemon's local status service port
+pub const OOD_DAEMON_LOCAL_STATUS_PORT: u16 = 1330;
 
 // bdt协议栈的默认绑定端口
 pub const OOD_BDT_STACK_PORT: u16 = 8050;
