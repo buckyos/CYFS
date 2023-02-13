@@ -403,7 +403,7 @@ mod build_file_task_test {
     impl NamedObjectCache for MemoryNoc {
         async fn put_object(
             &self,
-            req: &NamedObjectCachePutObjectRequest,
+            _req: &NamedObjectCachePutObjectRequest,
         ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
             Ok(NamedObjectCachePutObjectResponse {
                 result: NamedObjectCachePutObjectResult::Accept,
@@ -414,34 +414,34 @@ mod build_file_task_test {
 
         async fn get_object_raw(
             &self,
-            req: &NamedObjectCacheGetObjectRequest,
+            _req: &NamedObjectCacheGetObjectRequest,
         ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
             todo!();
         }
 
         async fn delete_object(
             &self,
-            req: &NamedObjectCacheDeleteObjectRequest,
+            _req: &NamedObjectCacheDeleteObjectRequest,
         ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
             todo!();
         }
 
         async fn exists_object(
             &self,
-            req: &NamedObjectCacheExistsObjectRequest,
+            _req: &NamedObjectCacheExistsObjectRequest,
         ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
             todo!();
         }
 
         async fn update_object_meta(
             &self,
-            req: &NamedObjectCacheUpdateObjectMetaRequest,
+            _req: &NamedObjectCacheUpdateObjectMetaRequest,
         ) -> BuckyResult<()> {
             todo!();
         }
 
         async fn check_object_access(&self,
-            req: &NamedObjectCacheCheckObjectAccessRequest
+            _req: &NamedObjectCacheCheckObjectAccessRequest
         ) -> BuckyResult<Option<()>> {
             todo!();
         }
@@ -463,94 +463,94 @@ mod build_file_task_test {
             todo!()
         }
 
-        async fn insert_file(&self, req: &InsertFileRequest) -> BuckyResult<()> {
+        async fn insert_file(&self, _req: &InsertFileRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn remove_file(&self, req: &RemoveFileRequest) -> BuckyResult<usize> {
+        async fn remove_file(&self, _req: &RemoveFileRequest) -> BuckyResult<usize> {
             todo!()
         }
 
         async fn file_update_quick_hash(
             &self,
-            req: &FileUpdateQuickhashRequest,
+            _req: &FileUpdateQuickhashRequest,
         ) -> BuckyResult<()> {
             todo!()
         }
 
         async fn get_file_by_hash(
             &self,
-            req: &GetFileByHashRequest,
+            _req: &GetFileByHashRequest,
         ) -> BuckyResult<Option<FileCacheData>> {
             Ok(None)
         }
 
         async fn get_file_by_file_id(
             &self,
-            req: &GetFileByFileIdRequest,
+            _req: &GetFileByFileIdRequest,
         ) -> BuckyResult<Option<FileCacheData>> {
             todo!()
         }
 
         async fn get_files_by_quick_hash(
             &self,
-            req: &GetFileByQuickHashRequest,
+            _req: &GetFileByQuickHashRequest,
         ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
         async fn get_files_by_chunk(
             &self,
-            req: &GetFileByChunkRequest,
+            _req: &GetFileByChunkRequest,
         ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
         async fn get_dirs_by_file(
             &self,
-            req: &GetDirByFileRequest,
+            _req: &GetDirByFileRequest,
         ) -> BuckyResult<Vec<FileDirRef>> {
             todo!()
         }
 
-        async fn insert_chunk(&self, req: &InsertChunkRequest) -> BuckyResult<()> {
+        async fn insert_chunk(&self, _req: &InsertChunkRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn remove_chunk(&self, req: &RemoveChunkRequest) -> BuckyResult<usize> {
+        async fn remove_chunk(&self, _req: &RemoveChunkRequest) -> BuckyResult<usize> {
             todo!()
         }
 
         async fn update_chunk_state(
             &self,
-            req: &UpdateChunkStateRequest,
+            _req: &UpdateChunkStateRequest,
         ) -> BuckyResult<ChunkState> {
             todo!()
         }
 
-        async fn update_chunk_ref_objects(&self, req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
+        async fn update_chunk_ref_objects(&self, _req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn get_chunk(&self, req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>> {
+        async fn get_chunk(&self, _req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>> {
             todo!()
         }
 
         async fn get_chunks(
             &self,
-            req: &Vec<GetChunkRequest>,
+            _req: &Vec<GetChunkRequest>,
         ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
             todo!()
         }
 
         async fn get_chunk_ref_objects(
             &self,
-            req: &GetChunkRefObjectsRequest,
+            _req: &GetChunkRefObjectsRequest,
         ) -> BuckyResult<Vec<ChunkObjectRef>> {
             todo!()
         }
 
-        async fn exists_chunks(&self, req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
+        async fn exists_chunks(&self, _req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
             todo!();
         }
     }
