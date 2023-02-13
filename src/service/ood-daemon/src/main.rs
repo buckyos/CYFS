@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 mod config;
 mod config_repo;
@@ -7,6 +7,7 @@ mod monitor;
 mod package;
 mod repo;
 mod service;
+mod status;
 
 use clap::{App, Arg};
 use std::str::FromStr;
