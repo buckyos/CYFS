@@ -10,6 +10,7 @@ mod desc_gen;
 mod desc_upload;
 mod ood_daemon_init;
 mod repo_downloader;
+mod app_repo_downloader;
 #[cfg(unix)]
 mod sys_service;
 mod system_config_gen;
@@ -325,6 +326,18 @@ async fn main_run() {
                 std::process::exit(0);
             }
         }
+    }
+
+    if matches.is_present("sync_app_repo") {
+        let mut downloader = app_repo_downloader::AppRepoDownloader::new();
+        if let Err(_e) = downloader.init().await {
+            std::process::exit(-1);
+        }
+        if let Err(_e) = downloader.download(&asset).await {
+            std::process::exit(-1);
+        }
+
+        std::process::exit(0);
     }
 
     let mut ood_daemon_init = OodDaemonInit::new();

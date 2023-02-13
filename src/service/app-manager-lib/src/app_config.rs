@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /*
 [config]
 sandbox = "default"    // default\no\docker
-repo_mode = "local:/cyfs/app_repo"     // named_data/local:{local_path}
+repo_mode = "local"     // named_data/local
 
 [app]
 include = []

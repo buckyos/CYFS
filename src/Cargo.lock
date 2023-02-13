@@ -4460,11 +4460,14 @@ dependencies = [
 name = "ood-installer"
 version = "0.5.0"
 dependencies = [
+ "app-manager",
  "async-std",
  "async-trait",
  "clap",
  "cyfs-base",
  "cyfs-base-meta",
+ "cyfs-client",
+ "cyfs-core",
  "cyfs-debug",
  "cyfs-meta-lib",
  "cyfs-util",

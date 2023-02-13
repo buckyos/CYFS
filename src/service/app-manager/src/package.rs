@@ -1,14 +1,12 @@
 use log::*;
 use std::fs;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
-use zip;
+use std::path::{Path};
 
 use fs_extra::dir;
 use app_manager_lib::RepoMode;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, get_temp_path};
+use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, get_cyfs_root_path, get_temp_path};
 use cyfs_client::NamedCacheClient;
 use cyfs_core::DecAppId;
 use ood_daemon::get_system_config;
@@ -32,11 +30,11 @@ impl AppPackage {
             RepoMode::NamedData => {
                 // 先下载到/cyfs/tmp/app/{appid}下
                 let tmp_path = get_temp_path().join("app").join(app_id.to_string());
-                Self::download(dir, owner, client, &tmp_path);
+                Self::download(dir, owner, client, &tmp_path).await?;
                 Self::install_from_local(app_id, &tmp_path, true)
             }
-            RepoMode::Local(local_path) => {
-                let repo_path = local_path.join(dir.to_string());
+            RepoMode::Local => {
+                let repo_path = get_cyfs_root_path().join("app_repo");
                 Self::install_from_local(app_id, &repo_path, false)
             }
         }
@@ -51,11 +49,12 @@ impl AppPackage {
         Self::download_acl(dir, owner, client, &target_path.join("acl")).await?;
         Self::download_dep(dir, owner, client, &target_path.join("dep")).await?;
         let service_path = target_path.join("service");
-        // 下载service文件，/cyfs/tmp/app/{appid}/service/{dir_id}.dl
-        let service_pkg_path = service_path.join(dir.to_string()).with_extension("dl");
+        // 下载service文件，/cyfs/tmp/app/{appid}/service.dl
+        let service_pkg_path = target_path.join("service").with_extension("dl");
         let service_file_num = Self::download_service(dir, owner, client, &service_pkg_path).await?;
         if service_file_num > 0 {
             // 解压service zip文件到tmp目录,/cyfs/tmp/app/{appid}/service
+            info!("extract app service {} to {}", service_pkg_path.display(), service_path.display());
             Self::extract(&service_pkg_path, &service_path)?;
         }
 
@@ -108,17 +107,12 @@ impl AppPackage {
 
     // 下载一个文件夹
     async fn download_files(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, inner_path: &str, target_path: &Path) -> BuckyResult<usize> {
-        let mut created = false;
-        if !target_path.exists() {
-            fs::create_dir_all(target_path)?;
-            created = true;
-        }
-        let (_, num) = client.get_dir_by_obj(dir, Some(owner.clone()), Some(inner_path), target_path).await?;
+        let (_, num) = client.get_dir_by_obj(dir, Some(owner.clone()), Some(inner_path), target_path).await.map_err(|e| {
+            error!("download {}/{} to {} err {}", dir, inner_path, target_path.display(), e);
+            e
+        })?;
         if num == 0 {
             info!("not found any file in {}/{}/{}", owner, dir, inner_path);
-            if created {
-                fs::remove_dir_all(target_path)?;
-            }
         } else {
             info!("download {}/{}/{} to {} finish", owner, dir, inner_path, target_path.display());
         }
@@ -132,25 +126,23 @@ impl AppPackage {
             fs::remove_dir_all(target_folder).map_err(|e| {
                 error!(
                     "remove target_folder failed! path={}, err={}",
-                    tmp_dir.display(),
+                    target_folder.display(),
                     e
                 );
                 e
             })?;
-            info!("remove exists target_folder success! dir={}", tmp_dir.display());
+            info!("remove exists target_folder success! dir={}", target_folder.display());
         }
 
-        // 创建临时目录
         fs::create_dir_all(target_folder).map_err(|e| {
             error!(
                 "create target_folder failed! path={}, err={}",
-                tmp_dir.display(),
+                target_folder.display(),
                 e
             );
             e
         })?;
 
-        // 尝试下载包
         let file = fs::File::open(pkg_path)?;
 
         // 解压到临时目录
@@ -161,22 +153,25 @@ impl AppPackage {
                 target_folder.display(),
                 e
             );
-            Err(BuckyError::new(BuckyErrorCode::ZipError, e.to_string()))
+            BuckyError::new(BuckyErrorCode::ZipError, e.to_string())
         })?;
+        let _ = fs::remove_file(pkg_path);
         Ok(())
     }
 
     fn copy_dir_contents(from: &Path, to: &Path) -> BuckyResult<()> {
         if !from.exists() {
             info!("{} not exist, skip copy", from.display());
-            Ok(0)
+            return Ok(());
         }
         if !to.exists() {
             info!("dir {} not exist, create", to.display());
             fs::create_dir_all(to)?;
         }
-        let mut file_options = fs_extra::file::CopyOptions::new();
-        file_options.overwrite = true;
+        let mut options = dir::CopyOptions::new();
+        options.overwrite = true;
+        options.copy_inside = true;
+        options.content_only = true;
         dir::copy(from, to, &options).map_err(|e| {
             error!(
                 "copy folder error! from={}, to={}, err={}",
@@ -184,7 +179,7 @@ impl AppPackage {
                 to.display(),
                 e
             );
-            e
+            BuckyError::new(BuckyErrorCode::IoError, e.to_string())
         })?;
 
         Ok(())

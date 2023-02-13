@@ -1,10 +1,8 @@
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
 use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 use cyfs_base::*;
 use log::*;
-use cyfs_util::get_cyfs_root_path;
 
 pub const CONFIG_FILE_NAME: &str = "app-manager.toml";
 
@@ -18,9 +16,11 @@ pub enum SandBoxMode {
     Docker
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RepoMode {
     NamedData,
-    Local(PathBuf)
+    Local
 }
 
 impl Default for RepoMode {
@@ -36,20 +36,11 @@ impl FromStr for RepoMode {
         if s == "named_data" {
             return Ok(Self::NamedData);
         } else if s == "local" {
-            return Ok(Self::Local(get_cyfs_root_path().join("app_repo")));
-        }
-
-        let parts: Vec<&str> = s.splitn(2, ":").collect();
-        if parts.len() == 2 {
-            if parts[0] == "local" {
-                return Ok(Self::Local(PathBuf::from(parts[1])));
-            } else {
-                error!("invalid repo mode: {}", parts[0]);
-            }
+            return Ok(Self::Local);
         }
 
         let msg = format!("invalid repo str {}", s);
-        error!(msg);
+        error!("{}", msg);
         return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
     }
 }
