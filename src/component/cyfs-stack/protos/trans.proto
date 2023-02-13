@@ -41,11 +41,13 @@ message PublishLocalFile {
     bytes owner = 2;
     bytes dec_id = 3;
     bytes file = 4;
-    uint32 chunk_size = 5;
+    uint32 chunk_size = 5; 
+    optional int32 chunk_method = 6;
 }
 
 message PublishLocalDir {
     string local_path = 1;
     bytes root_id = 2;
     bytes dec_id = 3;
+    optional int32 chunk_method = 4;
 }

@@ -58,7 +58,6 @@ enum NagleState {
 
 struct ValueCache {
     flight: usize, 
-    earliest_send_time: Timestamp
 }
 
 pub struct SendQueue {
@@ -81,7 +80,6 @@ impl SendQueue {
             blocks: LinkedList::new(), 
             value_cache: ValueCache {
                 flight: 0, 
-                earliest_send_time: u64::MAX
             }
         }
     }
@@ -346,9 +344,16 @@ impl SendQueue {
         self.value_cache.flight = flight;
     }
 
-    pub fn check_timeout(&self, now: Timestamp, timeout: Duration) -> bool {
-        now > self.value_cache.earliest_send_time 
-            && Duration::from_micros(now - self.value_cache.earliest_send_time) > timeout
+    pub fn check_timeout(&self, now: Timestamp, timeout: Duration) -> usize {
+        let mut lost = 0;
+        for block in &self.blocks {
+            if let BlockState::OnAir(send_time) = &block.state {
+                if now > *send_time && Duration::from_micros(now - *send_time) > timeout {
+                    lost += block.data.len();
+                }
+            }
+        }
+        lost 
     }
 }
 

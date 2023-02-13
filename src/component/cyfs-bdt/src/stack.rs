@@ -78,7 +78,7 @@ impl StackConfig {
                     sim_loss_rate: 0, 
                     recv_buffer: 52428800
                 }
-            }, 
+            },
             sn_client: sn::client::Config {
                 atomic_interval: Duration::from_millis(100),
                 ping: sn::client::ping::PingConfig {
@@ -95,7 +95,7 @@ impl StackConfig {
                         resend_interval: Duration::from_millis(500),
                     }
                 }
-            },     
+            },
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
                 retry_sn_timeout: Duration::from_secs(2), 
@@ -335,7 +335,6 @@ impl Stack {
             None
         };
 
-
         {
             let components = StackLazyComponents {
                 sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
@@ -348,7 +347,7 @@ impl Stack {
             
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.lazy_components = Some(components);
-    
+
             let mut chunk_store = None;
             std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
@@ -358,7 +357,9 @@ impl Stack {
             let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.ndn = Some(ndn);
-        }   
+
+        }
+        
 
         let mut known_device = vec![];
         if params.known_device.is_some() {

@@ -112,7 +112,6 @@ impl DeviceCache {
         }
     }
 
-
     pub fn get_inner(&self, id: &DeviceId) -> Option<Device> {
         self.cache.lock().unwrap().get(id).cloned()
     }

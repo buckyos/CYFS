@@ -868,6 +868,18 @@ impl StreamContainer {
         }
     }
 
+    pub fn remote_id(&self) -> IncreaseId {
+        match &*self.state.read().unwrap() {
+            StreamStateImpl::Establish(est) => {
+                est.provider.remote_id()
+            }
+            StreamStateImpl::Closing(est) => {
+                est.provider.remote_id()
+            },
+            _ => IncreaseId::default(),
+        }
+    }
+
     pub fn state(&self) -> StreamState {
         match &*self.0.state.read().unwrap() {
             StreamStateImpl::Initial(_) => unreachable!(),
