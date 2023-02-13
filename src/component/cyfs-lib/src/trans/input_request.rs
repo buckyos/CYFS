@@ -1,11 +1,12 @@
 use super::output_request::*;
 use crate::{NDNInputRequestCommon, TransTaskControlAction, TransTaskInfo, TransTaskStatus};
-use cyfs_base::{BuckyResult, DeviceId, ObjectId, AccessString};
+use cyfs_base::{*};
 use cyfs_core::TransContext;
 use cyfs_util::cache::FileDirRef;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 pub struct TransGetContextInputRequest {
     pub common: NDNInputRequestCommon,
@@ -60,6 +61,71 @@ pub struct TransGetTaskStateInputRequest {
 
 pub type TransGetTaskStateInputResponse = TransGetTaskStateOutputResponse;
 
+// method how to deal with chunk position tracker record 
+#[derive(Debug, Clone, Copy)]
+pub enum TransPublishChunkMethod {
+    // track local postion 
+    Track, 
+    // copy to chunk cache path
+    Copy, 
+    // do nothing
+    None
+}
+
+impl Default for TransPublishChunkMethod {
+    fn default() -> Self {
+        Self::Track
+    }
+}
+
+impl TryFrom<u8> for TransPublishChunkMethod {
+    type Error = BuckyError;
+
+    fn try_from(v: u8) -> BuckyResult<Self> {
+        match v {
+            0 => Ok(Self::Track), 
+            1 => Ok(Self::Copy), 
+            2 => Ok(Self::None), 
+            _ => Err(BuckyError::new(BuckyErrorCode::InvalidInput, format!("invalid track chunk method {}", v)))
+        }
+    }
+}
+
+impl Into<u8> for TransPublishChunkMethod {
+    fn into(self) -> u8 {
+        match self {
+            Self::Track => 0, 
+            Self::Copy => 1, 
+            Self::None => 2
+        }
+    }
+}
+
+impl FromStr for TransPublishChunkMethod {
+    type Err = BuckyError;
+
+    fn from_str(str: &str) -> BuckyResult<Self> {
+        match str {
+            "Track" => Ok(Self::Track), 
+            "Copy" => Ok(Self::Copy), 
+            "None" => Ok(Self::None),
+            _ => Err(BuckyError::new(BuckyErrorCode::InvalidInput, format!("invalid chunk method {}", str)))
+        }
+    }
+}
+
+impl ProtobufTransform<TransPublishChunkMethod> for i32 {
+    fn transform(value: TransPublishChunkMethod) -> BuckyResult<Self> {
+        Ok(Into::<u8>::into(value) as i32)
+    }
+}
+
+impl ProtobufTransform<Option<i32>> for TransPublishChunkMethod {
+    fn transform(value: Option<i32>) -> BuckyResult<Self> {
+        value.map(|v|  Self::try_from(v as u8)).unwrap_or(Ok(Self::Track))
+    }
+}
+
 #[derive(Debug)]
 pub struct TransPublishFileInputRequest {
     // 用以处理acl
@@ -71,6 +137,8 @@ pub struct TransPublishFileInputRequest {
     pub local_path: PathBuf,
     // chunk大小
     pub chunk_size: u32,
+    // how to deal with chunk position tracker record 
+    pub chunk_method: TransPublishChunkMethod, 
 
     pub access: Option<AccessString>,
     
@@ -104,7 +172,7 @@ pub struct TransQueryTasksInputResponse {
 #[derive(Debug)]
 pub struct TransGetTaskGroupStateInputRequest {
     pub common: NDNInputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub speed_when: Option<u64>,
 }
@@ -115,7 +183,7 @@ pub type TransGetTaskGroupStateInputResponse = TransGetTaskGroupStateOutputRespo
 #[derive(Debug)]
 pub struct TransControlTaskGroupInputRequest {
     pub common: NDNInputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub action: TransTaskGroupControlAction,
 }

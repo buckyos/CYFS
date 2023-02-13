@@ -189,8 +189,16 @@ impl NdnEventHandler for BdtNDNEventHandler {
                 InterestHandlerResponse::Default => {
                     self.call_default_with_acl(stack, interest, from).await
                 }
-                InterestHandlerResponse::Upload(groups) => {
-                    match cyfs_bdt::start_upload_task(stack, interest, from, groups).await {
+                InterestHandlerResponse::Upload { source, groups } => {
+                    let result = match source {
+                        InterestUploadSource::ChunkStore => cyfs_bdt::start_upload_task(stack, interest, from, groups).await, 
+                        InterestUploadSource::File { path, offset } => {
+                            let cache = FileCache::from_path(path, offset..offset + interest.chunk.len() as u64);
+                            cyfs_bdt::start_upload_task_from_cache(stack, interest, from, groups, cache).await
+                        }
+                    };
+                    
+                    match result {
                         Ok(_) => {},
                         Err(err) => {
                             from.resp_interest(RespInterest {

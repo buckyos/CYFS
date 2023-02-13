@@ -24,7 +24,7 @@ pub async fn start_upload_task(
     
     let _ = stack.ndn().root_task().upload().add_task(owners, &session)?;
   
-    Ok(session.clone_as_task())
+    Ok(session.clone_as_upload_task())
 }
 
 pub async fn start_upload_task_from_cache<T: RawCache + 'static>(
@@ -49,7 +49,7 @@ pub async fn start_upload_task_from_cache<T: RawCache + 'static>(
     
     let _ = stack.ndn().root_task().upload().add_task(owners, &session)?;
   
-    Ok(session.clone_as_task())
+    Ok(session.clone_as_upload_task())
 }
 
 

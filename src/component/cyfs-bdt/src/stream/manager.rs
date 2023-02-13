@@ -162,6 +162,16 @@ impl StreamManager {
             .map_err(|err| {error!("{} listen on {} failed for {}", self, port, err); err})
     } 
 
+    fn stream_of_remoteid(&self, remote_id: &IncreaseId) -> Option<StreamContainer> {
+        let id_entries = &self.0.stream_entries.read().unwrap().id_entries;
+        for (_, stream) in id_entries {
+            if stream.remote_id() == *remote_id {
+                return Some(stream.clone())
+            }
+        }
+        None
+    }
+
     fn stream_of_id(&self, id: &IncreaseId) -> Option<StreamContainer> {
         self.0.stream_entries.read().unwrap().stream_of_id(id)
             .or_else(|| self.0.reserving_entries.lock().unwrap().stream_of_id(id))
@@ -282,6 +292,12 @@ impl OnPackage<SessionData, &TunnelContainer> for StreamManager {
                 debug!("{} on {} from {}", self, pkg, tunnel.remote());
                 let to_session_id = pkg.to_session_id.as_ref().unwrap();
                 self.stream_of_id(to_session_id)
+            } else if pkg.is_rest() {
+                if pkg.to_session_id.is_some() && !pkg.session_id.is_valid() {
+                    self.stream_of_remoteid(&pkg.to_session_id.unwrap())
+                } else {
+                    self.stream_of_id(&pkg.session_id)
+                }
             } else {
                 self.stream_of_id(&pkg.session_id)
             }
@@ -291,6 +307,16 @@ impl OnPackage<SessionData, &TunnelContainer> for StreamManager {
             },
             None => {
                 debug!("{} ingore {} for no valid stream", self, pkg);
+
+                if !pkg.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+                    let mut rst_pkg = SessionData::new();
+                    rst_pkg.flags_add(SESSIONDATA_FLAG_RESET);
+                    rst_pkg.to_session_id = Some(pkg.session_id);
+                    rst_pkg.send_time = bucky_time_now();
+
+                    let _ = tunnel.send_package(DynamicPackage::from(rst_pkg), false);
+                }
+
                 Err(BuckyError::new(BuckyErrorCode::NotFound, "stream of id not found"))
             }
         }

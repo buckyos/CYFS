@@ -126,6 +126,10 @@ impl PackageStream {
 
 #[async_trait]
 impl StreamProvider for PackageStream {
+    fn remote_id(&self) -> IncreaseId {
+        self.0.remote_id
+    }
+
     fn local_ep(&self) -> &Endpoint {
         self.0.tunnel.local()
     }

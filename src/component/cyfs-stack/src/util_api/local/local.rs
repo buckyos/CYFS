@@ -303,7 +303,8 @@ impl UtilLocalService {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
-                chunk_size: req.chunk_size,
+                chunk_size: req.chunk_size, 
+                chunk_method: req.chunk_method, 
                 access: req.access.map(|v| v.value()),
             };
             let task_id = self
@@ -338,7 +339,8 @@ impl UtilLocalService {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
-                chunk_size: req.chunk_size,
+                chunk_size: req.chunk_size, 
+                chunk_method: req.chunk_method, 
                 access: req.access.map(|v|v.value()),
                 device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };

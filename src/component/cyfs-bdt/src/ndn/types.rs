@@ -3,8 +3,11 @@ use std::{
     time::Duration, 
     collections::LinkedList, 
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::{Map, Value};
-use serde::Serialize;
 use cyfs_base::*;
 use crate::{
     types::*
@@ -513,4 +516,47 @@ impl ProgressCounter {
     pub fn cur_speed(&self) -> u32 {
         self.cur_speed
     }
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NdnTaskState {
+    Running,
+    Paused,
+    Error(BuckyError/*被cancel的原因*/), 
+    Finished
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NdnTaskControlState {
+    Normal, 
+    Paused, 
+    Canceled, 
+}
+
+pub trait NdnTask: Send + Sync {
+    fn clone_as_task(&self) -> Box<dyn NdnTask>;
+    fn state(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
+
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        self.cancel_by_error(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))
+	}
+    fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    
+    fn close(&self, _recursion: bool) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    fn cur_speed(&self) -> u32;
+    fn history_speed(&self) -> u32;
+    fn transfered(&self) -> u64;
 }

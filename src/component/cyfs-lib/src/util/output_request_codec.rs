@@ -246,6 +246,7 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
         );
         JsonCodecHelper::encode_string_field(&mut obj, "owner", &self.owner);
         JsonCodecHelper::encode_number_field(&mut obj, "chunk_size", self.chunk_size);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "chunk_method", Some(format!("{:?}", self.chunk_method)).as_ref());
 
         if let Some(access) = &self.access {
             JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
@@ -267,7 +268,8 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
                 "local_path",
             )?),
             owner: JsonCodecHelper::decode_string_field(obj, "owner")?,
-            chunk_size: JsonCodecHelper::decode_int_field(obj, "chunk_size")?,
+            chunk_size: JsonCodecHelper::decode_int_field(obj, "chunk_size")?, 
+            chunk_method: JsonCodecHelper::decode_option_string_field(&obj, "chunk_method")?.unwrap_or_default(), 
             access,
         })
     }

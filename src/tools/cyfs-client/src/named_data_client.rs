@@ -194,6 +194,7 @@ impl NamedCacheClient {
         }
 
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
+
         if let Some(sn_list) = &self.config.sn_list {
             info!("named data client use param`s sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()

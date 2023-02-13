@@ -80,7 +80,6 @@ async fn call_sn_without_ping() {
         rn_secret, 
         rn_params).await.unwrap();
 
-
     assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
@@ -461,4 +460,3 @@ async fn sn_with_ipv6() {
 
     assert_eq!(sample_hash, recv_hash);
 
-}

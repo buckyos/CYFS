@@ -5,15 +5,45 @@ use cyfs_util::*;
 use sha2::Digest;
 use std::sync::Arc;
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::util_proto::BuildFileParams)]
 pub struct BuildFileParams {
     pub local_path: String,
     pub owner: ObjectId,
     pub dec_id: ObjectId,
-    pub chunk_size: u32,
+    pub chunk_size: u32, 
+    pub chunk_method: TransPublishChunkMethod, 
     pub access: Option<u32>,
 }
+
+impl ProtobufTransform<super::util_proto::BuildFileParams> for BuildFileParams {
+    fn transform(
+        value: super::util_proto::BuildFileParams,
+    ) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            owner: ObjectId::clone_from_slice(value.owner.as_slice())?,
+            dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice())?,
+            chunk_size: value.chunk_size, 
+            chunk_method: value.chunk_method.map(|v| TransPublishChunkMethod::try_from(v as u8)).unwrap_or(Ok(TransPublishChunkMethod::default()))?, 
+            access: value.access
+        })
+    }
+}
+
+impl ProtobufTransform<&BuildFileParams> for super::util_proto::BuildFileParams {
+    fn transform(value: &BuildFileParams) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            owner: value.owner.as_slice().to_vec(),
+            dec_id: value.dec_id.as_slice().to_vec(),
+            chunk_size: value.chunk_size, 
+            chunk_method: Some(Into::<u8>::into(value.chunk_method) as i32), 
+            access: value.access
+        })
+    }
+}
+
 
 pub struct BuildFileTaskFactory {
     noc: NamedObjectCacheRef,
@@ -39,6 +69,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.chunk_method, 
             params.access,
             self.noc.clone(),
             self.ndc.clone(),
@@ -62,7 +93,8 @@ impl TaskFactory for BuildFileTaskFactory {
             params.local_path,
             params.owner,
             params.dec_id,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             params.access,
             task_state,
             self.noc.clone(),
@@ -191,7 +223,8 @@ pub struct BuildFileTask {
     local_path: String,
     owner: ObjectId,
     dec_id: ObjectId,
-    chunk_size: u32,
+    chunk_size: u32, 
+    chunk_method: TransPublishChunkMethod, 
     access: Option<u32>,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
@@ -202,7 +235,8 @@ impl BuildFileTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -225,7 +259,8 @@ impl BuildFileTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             noc,
             ndc,
@@ -236,7 +271,8 @@ impl BuildFileTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
@@ -257,7 +293,8 @@ impl BuildFileTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             noc,
             ndc,

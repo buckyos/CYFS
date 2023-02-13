@@ -309,6 +309,8 @@ impl PingClient {
                 &SignatureSource::RefIndex(0),
             ).await;
 
+           
+
             let updated = {
                 let mut store = self.0.local_device.write().unwrap();
                 if store.body().as_ref().unwrap().update_time() < local_dev.body().as_ref().unwrap().update_time() {
@@ -446,6 +448,7 @@ impl PingClient {
                                 }
 
                                 info!("{} online", self);
+
                                 next.update_cache = Some(Some(resp.from));
                                 state.ipv4 = Ipv4ClientState::Active {
                                     waiter: StateWaiter::new(), 
