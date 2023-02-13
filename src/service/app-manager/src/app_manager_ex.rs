@@ -1008,7 +1008,7 @@ impl AppManager {
                 }
                 Ok(pass) => {
                     info!("check app compatibility complete, pass: {}", pass);
-                    item.2 = pass;
+                    item.1 = pass;
                 }
             }
         }
@@ -1027,8 +1027,8 @@ impl AppManager {
         app_id: &DecAppId,
     ) -> BuckyResult<bool> {
         info!(
-            "will check app compatibility, stack version: {}, appId: {}, app_version:{}",
-            stack_version, app_id, app_version
+            "will check app compatibility, stack version: {}, appId: {}",
+            stack_version, app_id
         );
         let stack_ver = Version::from(stack_version).unwrap();
         let ver_dep = self

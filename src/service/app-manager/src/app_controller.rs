@@ -140,8 +140,11 @@ impl AppController {
             );
             SubErrorCode::DownloadFailed
         })?;
-        let owner_id = self.get_owner_id(&app_id).await?;
-        AppPackage::install(&app_id, &source_id, &owner_id, self.named_cache_client.get().unwrap())
+        let owner_id = self.get_owner_id(&app_id).await.map_err(|e| {
+            error!("get app {} owner id failed", &app_id);
+            SubErrorCode::LoadFailed
+        })?;
+        AppPackage::install(&app_id, &source_id, &owner_id, self.named_cache_client.get().unwrap(), self.config.config.repo_mode.clone())
             .await
             .map_err(|e| {
                 error!("install app:{} failed, {}", app_id, e);
