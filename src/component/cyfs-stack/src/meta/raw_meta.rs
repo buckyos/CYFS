@@ -1,3 +1,4 @@
+use super::cache::{MetaMemoryCacheForObject, MetaMemoryCacheForName};
 use super::fail_cache::*;
 use super::meta_cache::*;
 use cyfs_base::*;
@@ -7,13 +8,22 @@ use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 use async_trait::async_trait;
 use std::sync::Arc;
 
+
+// FIXME: Choose a more appropriate cache duration, theoretically it should be longer!
+const OBJECT_CACHE_TIMEOUT_IN_SECS: u64 = 60 * 15;
+const NAME_CACHE_TIMEOUT_IN_SECS: u64 = 60 * 15;
+
 #[derive(Clone)]
 pub(crate) struct RawMetaCache {
     noc: NamedObjectCacheRef,
     meta_client: Arc<MetaClient>,
     device_id: DeviceId,
 
-    // 错误缓存，避免快速向链发起查询操作
+    // Cache in memory
+    object_memory_cache: MetaMemoryCacheForObject,
+    name_memory_cache: MetaMemoryCacheForName,
+
+    // Error cache, avoid quickly initiating query operations to the chain in short time
     fail_cache: MetaFailCache,
 }
 
@@ -27,6 +37,11 @@ impl RawMetaCache {
             noc,
             meta_client: Arc::new(meta_client),
             device_id: DeviceId::default(),
+
+            
+            object_memory_cache: MetaMemoryCacheForObject::new(OBJECT_CACHE_TIMEOUT_IN_SECS),
+            name_memory_cache: MetaMemoryCacheForName::new(NAME_CACHE_TIMEOUT_IN_SECS),
+
             fail_cache: MetaFailCache::new(),
         };
 
@@ -117,14 +132,41 @@ impl RawMetaCache {
         }
     }
 
+    fn get_object_from_cache(&self, object_id: &ObjectId) -> Option<MetaObjectCacheData> {
+        match self.object_memory_cache.get(object_id) {
+            Some(object_raw) => match AnyNamedObject::raw_decode(&object_raw) {
+                Ok((object, _)) => {
+                    let object = Arc::new(object);
+                    let resp = MetaObjectCacheData { object, object_raw };
+                    Some(resp)
+                }
+                Err(e) => {
+                    error!("invalid cached object format! obj={} err={}", object_id, e);
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
     pub async fn get_object(
         &self,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<MetaObjectCacheData>> {
+        // First lookup in memory
+        if let Some(ret) = self.get_object_from_cache(object_id) {
+            return Ok(Some(ret));
+        }
+
+        // Then try get from meta chain via network
         let resp = self.get_from_meta(object_id).await?;
 
+        // Cache the result if success
         if let Some(data) = &resp {
-            // 这里保存到noc
+            // cache in memory for later use
+            self.object_memory_cache.add(object_id.to_owned(), data.object_raw.clone());
+
+            // save to noc
             let _r = self.update_noc(object_id, data).await;
         }
 
@@ -144,13 +186,19 @@ impl RawMetaCache {
         }
     }
 
+
     async fn get_name(&self, name: &str) -> BuckyResult<Option<(NameInfo, NameState)>> {
+        if let Some(ret) = self.name_memory_cache.get(name) {
+            return Ok(ret);
+        }
+
         match self.get_name_impl(name).await {
             Ok(v) => {
                 if v.is_none() {
                     warn!("get name from meta chain but not found! name={}", name);
                 }
 
+                self.name_memory_cache.add(name.to_owned(), v.clone());
                 Ok(v)
             }
             Err(e) => {
@@ -165,7 +213,7 @@ impl RawMetaCache {
                     let msg = format!("get name from meta chain failed! name={} err={}", name, e);
                     error!("{}", msg);
 
-                    Err(BuckyError::from(msg))
+                    Err(BuckyError::new(e.code(), msg))
                 }
             }
         }
