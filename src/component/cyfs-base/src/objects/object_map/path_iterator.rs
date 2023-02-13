@@ -355,7 +355,7 @@ mod test {
         cache.put_object_map(&root_id, root).unwrap();
         info!("new root: {}", root_id);
 
-        let path = ObjectMapPath::new(root_id.clone(), cache.clone());
+        let path = ObjectMapPath::new(root_id.clone(), cache.clone(), true);
         let path_root = gen_path(&path).await;
         info!("generated path root: {}", path_root);
 

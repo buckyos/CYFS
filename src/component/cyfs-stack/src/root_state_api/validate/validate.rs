@@ -283,7 +283,7 @@ impl GlobalStateValidator {
             CheckRoot::None => {}
         }
 
-        let path = ObjectMapPath::new(key.root.clone(), self.op_env_cache.clone());
+        let path = ObjectMapPath::new(key.root.clone(), self.op_env_cache.clone(), false);
         path.get_by_path(&key.inner_path).await
     }
 
