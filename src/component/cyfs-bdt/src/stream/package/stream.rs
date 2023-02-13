@@ -126,10 +126,6 @@ impl PackageStream {
 
 #[async_trait]
 impl StreamProvider for PackageStream {
-    fn remote_id(&self) -> IncreaseId {
-        self.0.remote_id
-    }
-
     fn local_ep(&self) -> &Endpoint {
         self.0.tunnel.local()
     }
@@ -147,14 +143,14 @@ impl StreamProvider for PackageStream {
                 let mut packages = Vec::new(); 
                 let write_result = stream.write_provider().on_time_escape(&stream, now, &mut packages);
                 if write_result.is_err() {
-                    owner.break_with_error(write_result.unwrap_err());
+                    owner.break_with_error(write_result.unwrap_err(), true);
                     stream.read_provider().break_with_error(BuckyError::new(BuckyErrorCode::ErrorState, "stream broken"));
                     break;
                 } 
                 let write_result = write_result.unwrap();
                 let read_result = stream.read_provider().on_time_escape(&stream, now, &mut packages);
                 if write_result.is_err() && read_result.is_err() {
-                    owner.on_shutdown();
+                    owner.on_shutdown(true);
                     break;
                 }
                 let _ = stream.send_packages(packages);

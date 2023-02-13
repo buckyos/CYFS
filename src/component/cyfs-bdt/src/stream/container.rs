@@ -870,18 +870,6 @@ impl StreamContainer {
         }
     }
 
-    pub fn remote_id(&self) -> IncreaseId {
-        match &*self.0.state.read().unwrap() {
-            StreamStateImpl::Establish(est, _) => {
-                est.provider.remote_id()
-            }
-            StreamStateImpl::Closing(est, _) => {
-                est.provider.remote_id()
-            },
-            _ => IncreaseId::default(),
-        }
-    }
-
     pub fn state(&self) -> StreamState {
         match &*self.0.state.read().unwrap() {
             StreamStateImpl::Initial(_) => unreachable!(),
@@ -916,7 +904,7 @@ impl StreamContainer {
         Stack::from(&self.0.stack)
     }
 
-    pub(crate) fn break_with_error(&self, err: BuckyError) {
+    pub(crate) fn break_with_error(&self, err: BuckyError, reserving: bool) {
         error!("{} break with err {}", self, err);
         let state_dump = {
             let state = &mut *self.0.state.write().unwrap();
@@ -934,12 +922,12 @@ impl StreamContainer {
             debug!("{} mark tunnel dead for break", self);
             let _ = tunnel.mark_dead(remote_timestamp, start_at);
         }
-        self.stack().stream_manager().remove_stream(self);
+        self.stack().stream_manager().remove_stream(self, reserving);
     }
 
-    pub(super) fn on_shutdown(&self) {
+    pub(super) fn on_shutdown(&self, reserving: bool) {
         *self.0.state.write().unwrap() = StreamStateImpl::Closed;
-        self.stack().stream_manager().remove_stream(self);
+        self.stack().stream_manager().remove_stream(self, reserving);
     }
 
     pub async fn confirm(&self, answer: &[u8]) -> BuckyResult<()> {
@@ -983,7 +971,7 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s, _) => Ok(s.provider.clone_as_provider()),
+                StreamStateImpl::Establish(s, _) => Ok(Some(s.provider.clone_as_provider())),
 				StreamStateImpl::Closed => Ok(None),
                 _ => {
                     //TODO 其他状态暂时不支持shutdown

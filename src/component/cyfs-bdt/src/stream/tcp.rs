@@ -759,7 +759,7 @@ impl TcpStream {
         if result.is_err() {
             let _ = self.close_write(None);
             self.close_read();
-            self.0.owner.break_with_error(result.unwrap_err().into())
+            self.0.owner.break_with_error(result.unwrap_err().into(), false)
         }
     }
 
@@ -824,10 +824,6 @@ impl TcpStream {
 
 #[async_trait]
 impl StreamProvider for TcpStream {
-    fn remote_id(&self) -> IncreaseId {
-        IncreaseId::default()
-    }
-
     fn local_ep(&self) -> &Endpoint {
         &self.0.local
     }
@@ -851,7 +847,7 @@ impl StreamProvider for TcpStream {
             Shutdown::Both => {
                 let _ = self.close_write(None);
                 self.close_read();
-                owner.on_shutdown();
+                owner.on_shutdown(false);
             }
         }
         Ok(())
