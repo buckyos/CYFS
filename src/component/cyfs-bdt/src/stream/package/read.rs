@@ -49,16 +49,8 @@ struct ReadProviderImpl {
 }
 
 impl ReadProviderImpl {
-    fn check_close_waiting(&self, now: Timestamp, msl: Duration) -> bool {
-        if let Some(when) = self.remote_closed.as_ref() {
-            //FIXME: 2 * msl
-            if self.queue.stream_len() == 0 
-                && now >= *when 
-                && Duration::from_micros(now - *when) > 2 * msl {
-                return true;
-            }  
-        }
-        false
+    fn check_close_waiting(&self) -> bool {
+        self.remote_closed.is_some() && self.queue.stream_len() == 0
     }
 
     fn check_timeout(&mut self, stream: &PackageStream, stub_time: u64) -> Option<Waker> {
@@ -222,7 +214,7 @@ impl ReadProvider {
                         // do nothing
                     }
                 };
-                if provider.check_close_waiting(now, stream.config().package.msl) {
+                if provider.check_close_waiting() {
                     *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0));
                 }
                 Ok(())
@@ -290,7 +282,7 @@ impl ReadProvider {
                         Poll::Ready(r) => {
                             if let Ok(0) = r {
                                 debug!("{} close recv queue for remote closed and no pending read", stream);
-                                if provider.check_close_waiting(bucky_time_now(), stream.config().package.msl) {
+                                if provider.check_close_waiting() {
                                     *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0));
                                 }
                             }
