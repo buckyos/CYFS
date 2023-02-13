@@ -14,6 +14,7 @@ use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_bdt_ext::{ContextManager, NDNTaskCancelStrategy, TransContextHolder};
 use cyfs_lib::*;
+use cyfs_bdt_ext::{ContextManager, TransContextHolder, NDNTaskCancelStrategy};
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
@@ -171,15 +172,7 @@ impl NDNRouter {
         match &req.context {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).encode_string();
-                let context = self
-                    .context_manager
-                    .create_download_context_from_trans_context(
-                        &req.common.source.dec,
-                        referer,
-                        context.as_str(),
-                        NDNTaskCancelStrategy::AutoCancel,
-                    )
-                    .await?;
+                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source.dec, referer, context.as_str(), NDNTaskCancelStrategy::AutoCancel).await?;
                 let processor = self.get_data_forward(context).await?;
                 Ok(processor)
             }

@@ -344,7 +344,8 @@ impl ConnectStreamBuilder {
         let mut actions = vec![];
 
         let connect_info = remote.connect_info();
-        for udp_interface in net_listener.udp() {
+        // FIXME: ipv6 udp frame may not support supper frame, simply ignore it now
+        for udp_interface in net_listener.udp().iter().filter(|ui| ui.local().addr().is_ipv4()) {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && filter(ep)) {
                 if let Ok((tunnel, newly_created)) = self.tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
                     if newly_created {
