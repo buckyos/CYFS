@@ -29,7 +29,7 @@ impl Listener {
                         match HotstuffPackage::raw_decode(datagram.data.as_slice()) {
                             Ok((pkg, remain)) => {
                                 log::debug!(
-                                    "[group-listener] {:?}-{} recv message from {:?}, msg: {:?}, len: {}",
+                                    "[group-listener] {:?}-{} recv group message from {:?}, msg: {:?}, len: {}",
                                     pkg.rpath(),
                                     local_device_id,
                                     remote,

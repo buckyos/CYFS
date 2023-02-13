@@ -636,7 +636,32 @@ impl HotstuffRunner {
              * */
             self.cleanup_proposal(&header_block).await;
 
-            self.notify_block_committed(header_block).await;
+            let (_, qc_block) = self
+                .store
+                .pre_commits()
+                .iter()
+                .next()
+                .expect("the pre-commit block must exist.");
+
+            self.notify_block_committed(header_block.clone(), qc_block).await;
+            
+            let leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, get leader in round {} failed {:?}",
+                    self, self.round, err
+                );
+
+                err
+            });
+
+            // notify by leader
+            if let Ok(leader) = leader {
+                if self.local_device_id == leader {
+                    self.state_pusher
+                        .notify_block_commit(header_block, qc_block.clone())
+                        .await;
+                }
+            }
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -675,7 +700,7 @@ impl HotstuffRunner {
 
             let next_leader = self.committee.get_leader(None, self.round + 1).await.map_err(|err| {
                 log::warn!(
-                    "[hotstuff] local: {:?}, get leader in round {} failed {:?}",
+                    "[hotstuff] local: {:?}, get next leader in round {} failed {:?}",
                     self, self.round + 1, err
                 );
 
@@ -698,15 +723,8 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn notify_block_committed(&self, new_header: GroupConsensusBlock) -> BuckyResult<()> {
-        let (_, qc_block) = self
-            .store
-            .pre_commits()
-            .iter()
-            .next()
-            .expect("the pre-commit block must exist.");
-
-        let pre_state_id = match new_header.prev_block_id() {
+    async fn notify_block_committed(&self, new_header: GroupConsensusBlock, qc_block: &GroupConsensusBlock) -> BuckyResult<()> {
+        let mut pre_state_id = match new_header.prev_block_id() {
             Some(block_id) => self
                 .non_driver
                 .get_block(block_id, None)
@@ -754,18 +772,16 @@ impl HotstuffRunner {
                     &proposal_obj,
                     pre_state_id,
                     &ExecuteResult {
-                        result_state_id: new_header.result_state_id().clone(),
+                        result_state_id: proposal.result_state.clone(),
                         receipt,
                         context: proposal.context.clone(),
                     },
                     &new_header,
                 )
                 .await;
+            
+            pre_state_id = proposal.result_state.clone();
         }
-
-        self.state_pusher
-            .notify_block_commit(new_header, qc_block.clone())
-            .await;
 
         Ok(())
     }
@@ -820,10 +836,10 @@ impl HotstuffRunner {
             .proposals()
             .iter()
             .map(|proposal| proposal.proposal)
-            .collect();
+            .collect::<Vec<_>>();
 
         log::debug!("[hotstuff] local: {:?}, remove proposals: {:?}",
-            self, proposals);
+            self, proposals.len());
 
         self.proposal_consumer.remove_proposals(proposals).await
     }
@@ -1573,8 +1589,8 @@ impl HotstuffRunner {
             self.local_id,
         );
 
-        log::debug!(
-            "[hotstuff] local: {:?}, generate_block new block {}/{}/{}, proposals: {}",
+        log::info!(
+            "[hotstuff] local: {:?}, generate_block new block {}/{}/{}, with proposals: {}",
             self,
             block.block_id(), block.height(), block.round(), proposal_count
         );

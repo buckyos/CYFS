@@ -19,3 +19,5 @@ pub const SYNCHRONIZER_TRY_TIMES: usize = 3;
 pub const CLIENT_POLL_TIMEOUT: Duration = Duration::from_millis(1000);
 pub const STATE_NOTIFY_COUNT_PER_ROUND: usize = 8;
 pub const NET_PROTOCOL_VPORT: u16 = 2048;
+pub const MEMORY_CACHE_SIZE: usize = 1024;
+pub const MEMORY_CACHE_DURATION: Duration = Duration::from_secs(300);

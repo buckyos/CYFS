@@ -1,5 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
+use async_std::sync::RwLock;
 use cyfs_base::{
     AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject,
     ObjectDesc, ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode, RawFrom,
@@ -8,6 +9,8 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 use cyfs_lib::NONObjectInfo;
+
+use crate::{MEMORY_CACHE_DURATION, MEMORY_CACHE_SIZE};
 
 #[async_trait::async_trait]
 pub trait NONDriver: Send + Sync {
@@ -32,11 +35,16 @@ pub trait NONDriver: Send + Sync {
 pub(crate) struct NONDriverHelper {
     driver: Arc<Box<dyn NONDriver>>,
     dec_id: ObjectId,
+    cache: NONObjectCache,
 }
 
 impl NONDriverHelper {
     pub fn new(driver: Arc<Box<dyn NONDriver>>, dec_id: ObjectId) -> Self {
-        Self { driver, dec_id }
+        Self {
+            driver,
+            dec_id,
+            cache: NONObjectCache::new(),
+        }
     }
 
     pub async fn get_object(
@@ -44,7 +52,20 @@ impl NONDriverHelper {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo> {
-        self.driver.get_object(&self.dec_id, object_id, from).await
+        if let Some(obj) = self.cache.find_in_cache(object_id).await {
+            return Ok(obj);
+        }
+
+        {
+            let result = self
+                .driver
+                .get_object(&self.dec_id, object_id, from)
+                .await?;
+
+            self.cache.insert_cache(&result).await;
+
+            Ok(result)
+        }
     }
 
     pub async fn put_object(&self, obj: NONObjectInfo) -> BuckyResult<()> {
@@ -192,5 +213,58 @@ impl NONDriverHelper {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct NONObjectCache {
+    cache: Arc<RwLock<(HashMap<ObjectId, NONObjectInfo>, Instant)>>,
+    cache_1: Arc<RwLock<HashMap<ObjectId, NONObjectInfo>>>,
+}
+
+impl NONObjectCache {
+    fn new() -> Self {
+        Self {
+            cache: Arc::new(RwLock::new((HashMap::new(), Instant::now()))),
+            cache_1: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    async fn find_in_cache(&self, object_id: &ObjectId) -> Option<NONObjectInfo> {
+        {
+            let cache = self.cache.read().await;
+            if let Some(obj) = cache.0.get(object_id) {
+                return Some(obj.clone());
+            }
+        }
+
+        {
+            let cache = self.cache_1.read().await;
+            cache.get(object_id).cloned()
+        }
+    }
+
+    async fn insert_cache(&self, obj: &NONObjectInfo) {
+        let new_cache_1 = {
+            let mut cache = self.cache.write().await;
+            let now = Instant::now();
+            if now.duration_since(cache.1) > MEMORY_CACHE_DURATION
+                || cache.0.len() > MEMORY_CACHE_SIZE
+            {
+                let mut new_cache = HashMap::new();
+                std::mem::swap(&mut new_cache, &mut cache.0);
+                cache.1 = now;
+                cache.0.insert(obj.object_id, obj.clone());
+                new_cache
+            } else {
+                cache.0.insert(obj.object_id, obj.clone());
+                return;
+            }
+        };
+
+        {
+            let mut cache_1 = self.cache_1.write().await;
+            *cache_1 = new_cache_1;
+        }
     }
 }

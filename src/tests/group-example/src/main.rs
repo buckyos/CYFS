@@ -565,8 +565,8 @@ mod GroupDecService {
                 self.local_name
             );
 
-            let has_finished = self.finished_proposals.lock().await.insert(proposal_id);
-            assert!(!has_finished);
+            let is_new_finished = self.finished_proposals.lock().await.insert(proposal_id);
+            assert!(is_new_finished);
         }
 
         async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
@@ -686,7 +686,7 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 10 == 0 {
+        if i % 50 == 0 {
             async_std::task::sleep(Duration::from_millis(1000)).await;
         }
     }

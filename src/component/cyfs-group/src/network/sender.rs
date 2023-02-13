@@ -63,7 +63,7 @@ impl Sender {
         assert_eq!(remain.len(), 0);
 
         log::debug!(
-            "[group-sender] {:?}-{} post message to {:?}, pkg: {:?}, len: {}",
+            "[group-sender] {:?}-{} post group message to {:?}, pkg: {:?}, len: {}",
             pkg.rpath(),
             self.local_device_id,
             remote,
