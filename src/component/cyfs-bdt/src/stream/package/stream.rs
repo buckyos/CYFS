@@ -143,7 +143,7 @@ impl StreamProvider for PackageStream {
                 let mut packages = Vec::new(); 
                 let write_result = stream.write_provider().on_time_escape(&stream, now, &mut packages);
                 if write_result.is_err() {
-                    owner.break_with_error(write_result.unwrap_err(), true);
+                    owner.break_with_error(write_result.unwrap_err(), true, true);
                     stream.read_provider().break_with_error(BuckyError::new(BuckyErrorCode::ErrorState, "stream broken"));
                     break;
                 } 

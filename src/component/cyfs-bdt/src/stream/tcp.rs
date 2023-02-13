@@ -759,7 +759,7 @@ impl TcpStream {
         if result.is_err() {
             let _ = self.close_write(None);
             self.close_read();
-            self.0.owner.break_with_error(result.unwrap_err().into(), false)
+            self.0.owner.break_with_error(result.unwrap_err().into(), false, false)
         }
     }
 

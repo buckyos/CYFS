@@ -904,14 +904,18 @@ impl StreamContainer {
         Stack::from(&self.0.stack)
     }
 
-    pub(crate) fn break_with_error(&self, err: BuckyError, reserving: bool) {
+    pub(crate) fn break_with_error(&self, err: BuckyError, reserving: bool, marking: bool) {
         error!("{} break with err {}", self, err);
         let state_dump = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
                 StreamStateImpl::Establish(establish, tunnel) => {
                     let tunnel = tunnel.clone();
-                    let state_dump = Some((tunnel, establish.remote_timestamp, establish.start_at));
+                    let state_dump = if marking {
+                        Some((tunnel, establish.remote_timestamp, establish.start_at))
+                    } else {
+                        None
+                    };
                     *state = StreamStateImpl::Closed;
                     state_dump
                 }
