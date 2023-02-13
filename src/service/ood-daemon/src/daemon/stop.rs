@@ -23,13 +23,13 @@ impl ServicesStopController {
         let mut list = self.device_config_manager.load_config()?;
 
         info!("service list: {:?}", list);
-        
+
         list.iter_mut().for_each(|service| {
             if service.name == OOD_DAEMON_SERVICE {
                 // rename ood-daemon service to force stop!
                 service.name = format!("{}/", OOD_DAEMON_SERVICE);
             }
-            service.target_state = ServiceState::STOP;
+            service.target_state = ServiceState::Stop;
         });
 
         SERVICE_MANAGER.load(list).await?;
