@@ -987,19 +987,15 @@ impl SPVTxStorage {
         if end.is_some() {
             sql = sql + " and height < ?";
         }
-        info!("get objects sql {}", &sql);
         let mut conn = self.get_conn().await?;
         let mut query = sqlx::query(&sql).bind(object_id);
         if let Some(body_hash) = body_hash {
-            info!("bind body hash {}", &body_hash);
             query = query.bind(body_hash);
         }
         if let Some(begin) = begin {
-            info!("bind begin {}", &begin);
             query = query.bind(begin);
         }
         if let Some(end) = end {
-            info!("bind end {}", &end);
             query = query.bind(end);
         }
         let ret = conn.query_all(query).await?;
