@@ -57,6 +57,10 @@ impl GlobalState {
         Ok(ret)
     }
 
+    pub fn clone_processor(&self) -> GlobalStateRawProcessorRef {
+        Arc::new(Box::new(self.clone()))
+    }
+
     pub fn category(&self) -> GlobalStateCategory {
         self.category
     }
@@ -288,3 +292,45 @@ impl ObjectMapRootEvent for GlobalState {
 }
 
 pub type GlobalStateRef = Arc<GlobalState>;
+
+#[async_trait::async_trait]
+impl GlobalStateRawProcessor for GlobalState {
+    fn category(&self) -> GlobalStateCategory {
+        Self::category(self)
+    }
+
+    fn access_mode(&self) -> GlobalStateAccessMode {
+        Self::access_mode(self)
+    }
+
+    fn get_current_root(&self) -> (ObjectId, u64) {
+        Self::get_current_root(&self)
+    }
+
+    fn get_root_revision(&self, root: &ObjectId) -> Option<u64> {
+        Self::get_root_revision(&self, root)
+    }
+
+    fn root_cache(&self) -> &ObjectMapRootCacheRef {
+        Self::root_cache(&self)
+    }
+
+    fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
+        Self::is_dec_exists(&self, dec_id)
+    }
+
+    async fn get_dec_root(
+        &self,
+        dec_id: &ObjectId,
+    ) -> BuckyResult<Option<(ObjectId, u64, ObjectId)>> {
+        Self::get_dec_root(&self, dec_id).await
+    }
+
+    async fn get_dec_root_manager(
+        &self,
+        dec_id: &ObjectId,
+        auto_create: bool,
+    ) -> BuckyResult<ObjectMapRootManagerRef> {
+        Self::get_dec_root_manager(&self, dec_id, auto_create).await
+    }
+}

@@ -40,10 +40,14 @@ impl GlobalStateManager {
         }
     }
 
+    pub fn clone_processor(&self) -> GlobalStateManagerRawProcessorRef {
+        Arc::new(Box::new(self.clone()))
+    }
+
     pub async fn load(&self) -> BuckyResult<()> {
         self.index.load().await
     }
-    
+
     fn select_list(
         &self,
         category: GlobalStateCategory,
@@ -150,5 +154,30 @@ impl GlobalStateManager {
             .await?;
 
         Ok(Some(state))
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateManagerRawProcessor for GlobalStateManager {
+    async fn get_global_state(
+        &self,
+        category: GlobalStateCategory,
+        isolate_id: &ObjectId,
+    ) -> Option<GlobalStateRawProcessorRef> {
+        Self::get_global_state(&self, category, isolate_id)
+            .await
+            .map(|item| item.clone_processor())
+    }
+
+    async fn load_global_state(
+        &self,
+        category: GlobalStateCategory,
+        isolate_id: &ObjectId,
+        owner: Option<ObjectId>,
+        auto_create: bool,
+    ) -> BuckyResult<Option<GlobalStateRawProcessorRef>> {
+        Self::load_global_state(&self, category, isolate_id, owner, auto_create)
+            .await
+            .map(|ret| ret.map(|item| item.clone_processor()))
     }
 }

@@ -27,19 +27,24 @@ impl GlobalStateLocalService {
             .await?
             .unwrap();
 
-        let accessor_service =
-            GlobalStateAccessorService::new(device_id.to_owned(), global_state.clone(), noc);
+        Ok(Self::new(global_state, noc))
+    }
 
-        let ret = Self {
+    fn new(global_state: GlobalStateRef, noc: NamedObjectCacheRef) -> Self {
+        let accessor_service = GlobalStateAccessorService::new(global_state.clone(), noc);
+
+        Self {
             global_state,
             accessor_service: Arc::new(accessor_service),
-        };
-
-        Ok(ret)
+        }
     }
 
     pub fn state(&self) -> &GlobalStateRef {
         &self.global_state
+    }
+
+    pub fn into_global_state_processor(self) -> GlobalStateInputProcessorRef {
+        Arc::new(Box::new(self))
     }
 
     pub fn clone_global_state_processor(&self) -> GlobalStateInputProcessorRef {
