@@ -120,7 +120,7 @@ impl GlobalRootIndex {
             if prev_root_id.is_some() {
                 if root_info.root_state != prev_root_id {
                     let msg = format!(
-                        "direct set global root but unmatch! category={}, prev={:?}, current={:?}, new={:?}",
+                        "direct set global state root but unmatch! category={}, prev={:?}, current={:?}, new={:?}",
                         self.category, prev_root_id, root_info.root_state, new_root_info
                     );
                     error!("{}", msg);
@@ -129,7 +129,7 @@ impl GlobalRootIndex {
             }
 
             info!(
-                "direct set global root! category={}, current={:?}, new={:?}",
+                "direct set global state root! category={}, current={:?}, new={:?}",
                 self.category, root_info, new_root_info
             );
             prev_root_info = root_info.clone();
@@ -140,7 +140,7 @@ impl GlobalRootIndex {
         self.storage.save(&new_root_info).await.map_err(|e| {
             let mut root_info = self.root.write().unwrap();
             error!(
-                "save global root to noc failed! category={}, state={:?}, {}",
+                "save global state root to noc failed! category={}, state={:?}, {}",
                 self.category, root_info.root_state, e
             );
 

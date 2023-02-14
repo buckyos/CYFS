@@ -3,6 +3,7 @@ mod root_index;
 mod state_manager;
 mod revision;
 mod global_state;
+mod state_list_index;
 
 #[cfg(test)]
 mod test;

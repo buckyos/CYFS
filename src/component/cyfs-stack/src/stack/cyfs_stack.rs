@@ -133,6 +133,11 @@ impl CyfsStackImpl {
 
         // init global state manager
         let global_state_manager = GlobalStateManager::new(noc.clone(), config.clone());
+        global_state_manager.load().await.map_err(|e| {
+            let msg = format!("init global state manager failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
 
         // load current zone's global_state
         let (local_root_state, local_cache) = Self::load_global_state(
@@ -1088,7 +1093,7 @@ impl CyfsStack {
     pub fn global_state_manager(&self) -> &GlobalStateManager {
         &self.stack.global_state_manager
     }
-    
+
     pub fn root_state(&self) -> &GlobalStateService {
         &self.stack.root_state
     }
