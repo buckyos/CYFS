@@ -58,7 +58,7 @@ pub(crate) struct GlobalStateRoot {
 impl GlobalStateRoot {
     pub async fn load(
         category: GlobalStateCategory,
-        device_id: &DeviceId,
+        isolate_id: &ObjectId,
         owner: Option<ObjectId>,
         noc: NamedObjectCacheRef,
         noc_cache: ObjectMapNOCCacheRef,
@@ -67,7 +67,7 @@ impl GlobalStateRoot {
         let revision = RevisionList::new();
 
         // 首先从noc加载global root的id
-        let root_index = GlobalRootIndex::new(category.clone(), device_id, noc, revision.clone());
+        let root_index = GlobalRootIndex::new(category.clone(), isolate_id, noc, revision.clone());
         let root_index = Arc::new(root_index);
         root_index.load().await?;
 

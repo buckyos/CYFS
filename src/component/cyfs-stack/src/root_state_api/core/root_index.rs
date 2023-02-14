@@ -37,18 +37,11 @@ pub(crate) struct GlobalRootIndex {
 impl GlobalRootIndex {
     pub fn new(
         category: GlobalStateCategory,
-        device_id: &DeviceId,
+        isolate_id: &ObjectId,
         noc: NamedObjectCacheRef,
         revision: RevisionList,
     ) -> Self {
-        let id = match category {
-            GlobalStateCategory::RootState => {
-                format!("cyfs-global-root-state-{}", device_id.to_string())
-            }
-            GlobalStateCategory::LocalCache => {
-                format!("cyfs-global-local-cache-{}", device_id.to_string())
-            }
-        };
+        let id = Self::make_id(category, isolate_id);
 
         Self {
             category,
@@ -57,6 +50,26 @@ impl GlobalRootIndex {
             storage: NOCStorageWrapper::new(&id, noc),
             revision,
         }
+    }
+
+    fn make_id(category: GlobalStateCategory, isolate_id: &ObjectId) -> String {
+        match category {
+            GlobalStateCategory::RootState => {
+                format!("cyfs-global-root-state-{}", isolate_id.to_string())
+            }
+            GlobalStateCategory::LocalCache => {
+                format!("cyfs-global-local-cache-{}", isolate_id.to_string())
+            }
+        }
+    }
+
+    pub async fn exists(
+        category: GlobalStateCategory,
+        isolate_id: &ObjectId,
+        noc: &NamedObjectCacheRef,
+    ) -> BuckyResult<bool> {
+        let id = Self::make_id(category, isolate_id);
+        NOCStorageWrapper::exists(&id, noc).await
     }
 
     pub async fn load(&self) -> BuckyResult<()> {

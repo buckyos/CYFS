@@ -181,7 +181,7 @@ impl FromStr for GlobalStateAccessorAction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum GlobalStateCategory {
     RootState,
     LocalCache,
