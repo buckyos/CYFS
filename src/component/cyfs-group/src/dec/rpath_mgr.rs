@@ -419,8 +419,15 @@ impl GroupRPathMgr {
                         IsCreateRPath::Yes(init_state) => init_state,
                         _ => unreachable!(),
                     };
-                    GroupStorage::create(group_id, dec_id, rpath, init_state, non_driver.clone())
-                        .await?
+                    GroupStorage::create(
+                        group_id,
+                        dec_id,
+                        rpath,
+                        init_state,
+                        non_driver.clone(),
+                        local_device_id.object_id().clone(),
+                    )
+                    .await?
                 }
             };
 

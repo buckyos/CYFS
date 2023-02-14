@@ -18,15 +18,17 @@ use crate::{network::NONDriverHelper, HotstuffBlockQCVote, HotstuffTimeoutVote};
 pub(crate) struct Committee {
     group_id: ObjectId,
     non_driver: NONDriverHelper,
+    local_device_id: ObjectId,
     group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_chunk_id, group)
 }
 
 impl Committee {
-    pub fn new(group_id: ObjectId, non_driver: NONDriverHelper) -> Self {
+    pub fn new(group_id: ObjectId, non_driver: NONDriverHelper, local_device_id: ObjectId) -> Self {
         Committee {
             group_id,
             non_driver,
             group_cache: Arc::new(RwLock::new(HashMap::new())),
+            local_device_id,
         }
     }
 
@@ -80,6 +82,12 @@ impl Committee {
             )
         }
 
+        log::debug!(
+            "[group committee] {} verify block {} step1",
+            self.local_device_id,
+            block.block_id()
+        );
+
         let group = self
             .check_group(Some(block.group_chunk_id()), Some(&from))
             .await?;
@@ -95,6 +103,12 @@ impl Committee {
             ));
         }
 
+        log::debug!(
+            "[group committee] {} verify block {} step2",
+            self.local_device_id,
+            block.block_id()
+        );
+
         let prev_block = if let Some(qc) = block.qc() {
             let prev_block = self.non_driver.get_block(&qc.block_id, None).await?;
             self.verify_qc(qc, &prev_block).await?;
@@ -103,9 +117,21 @@ impl Committee {
             None
         };
 
+        log::debug!(
+            "[group committee] {} verify block {} step3",
+            self.local_device_id,
+            block.block_id()
+        );
+
         if let Some(tc) = block.tc() {
             self.verify_tc(tc, prev_block.as_ref()).await?;
         }
+
+        log::debug!(
+            "[group committee] {} verify block {} step4",
+            self.local_device_id,
+            block.block_id()
+        );
 
         Ok(())
     }

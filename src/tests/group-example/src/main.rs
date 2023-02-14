@@ -69,7 +69,7 @@ mod Common {
             endpoint.set_protocol(Protocol::Udp);
             endpoint
                 .mut_addr()
-                .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)));
+                .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 100, 120)));
             endpoint.mut_addr().set_port(port_begin + i as u16);
             endpoint.set_area(EndpointArea::Wan);
 
@@ -640,7 +640,12 @@ async fn main_run() {
 
     async_std::task::sleep(Duration::from_millis(30000)).await;
 
-    for i in 1..100000000 {
+    let mut proposals: Vec<GroupProposal> = vec![];
+
+    log::info!("proposals will be prepared.");
+
+    let PROPOSAL_COUNT = 1000usize;
+    for i in 1..PROPOSAL_COUNT {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
         let owner = &EXAMPLE_ADMINS.get(i % EXAMPLE_ADMINS.len()).unwrap().0 .0;
         let proposal = create_proposal(i as u64, owner.desc().object_id());
@@ -658,36 +663,58 @@ async fn main_run() {
 
         let noc = stack.noc_manager().clone();
 
-        async_std::task::spawn(async move {
-            let buf = proposal.to_vec().unwrap();
-            let proposal_any = Arc::new(AnyNamedObject::Core(
-                TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
-            ));
-            noc.put_object(&NamedObjectCachePutObjectRequest {
-                source: RequestSourceInfo {
-                    protocol: RequestProtocol::DatagramBdt,
-                    zone: DeviceZoneInfo {
-                        device: None,
-                        zone: None,
-                        zone_category: DeviceZoneCategory::CurrentDevice,
-                    },
-                    dec: EXAMPLE_DEC_APP_ID.object_id().clone(),
-                    verified: None,
+        let buf = proposal.to_vec().unwrap();
+        let proposal_any = Arc::new(AnyNamedObject::Core(
+            TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
+        ));
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo {
+                protocol: RequestProtocol::DatagramBdt,
+                zone: DeviceZoneInfo {
+                    device: None,
+                    zone: None,
+                    zone_category: DeviceZoneCategory::CurrentDevice,
                 },
-                object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
-                storage_category: NamedObjectStorageCategory::Storage,
-                context: None,
-                last_access_rpath: None,
-                access_string: None,
-            })
+                dec: EXAMPLE_DEC_APP_ID.object_id().clone(),
+                verified: None,
+            },
+            object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
+        };
+        noc.put_object(&req).await;
+        proposals.push(proposal);
+    }
+
+    // futures::future::join_all(prepare_futures).await;
+
+    log::info!("proposals prepared.");
+
+    for i in 0..(PROPOSAL_COUNT - 1) {
+        let proposal = proposals.get(i).unwrap().clone();
+        let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
+
+        let control = stack
+            .group_mgr()
+            .find_rpath_control(
+                &EXAMPLE_GROUP.desc().object_id(),
+                EXAMPLE_DEC_APP_ID.object_id(),
+                &EXAMPLE_RPATH,
+                IsCreateRPath::Yes(None),
+            )
             .await
             .unwrap();
 
+        async_std::task::spawn(async move {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 50 == 0 {
-            async_std::task::sleep(Duration::from_millis(1000)).await;
+        if i % 10 == 0 {
+            async_std::task::sleep(Duration::from_millis(200)).await;
+            log::info!("will push new proposals, i: {}", i);
         }
     }
 }

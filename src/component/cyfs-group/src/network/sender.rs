@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicU32, Arc};
+use std::{
+    sync::{atomic::AtomicU32, Arc},
+    time::Instant,
+};
 
 use cyfs_base::{DeviceId, ObjectId, PeopleId, RawEncode};
 use cyfs_bdt::{DatagramOptions, DatagramTunnelGuard};
@@ -72,6 +75,7 @@ impl Sender {
         );
 
         let mut options = DatagramOptions::default();
+        options.create_time = Some(Instant::now().elapsed().as_millis() as u64);
         options.sequence = Some(cyfs_bdt::TempSeq::from(
             self.sequence
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst),

@@ -31,7 +31,11 @@ impl RPathControl {
         store: GroupStorage,
     ) -> BuckyResult<Self> {
         let (pending_proposal_handle, pending_proposal_consumer) = PendingProposalMgr::new();
-        let committee = Committee::new(rpath.group_id().clone(), non_driver.clone());
+        let committee = Committee::new(
+            rpath.group_id().clone(),
+            non_driver.clone(),
+            local_device_id,
+        );
         let hotstuff = Hotstuff::new(
             local_id,
             local_device_id,

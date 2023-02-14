@@ -28,6 +28,7 @@ pub struct GroupStorage {
     group_id: ObjectId,
     dec_id: ObjectId,
     rpath: String,
+    local_device_id: ObjectId,
     non_driver: NONDriverHelper,
 
     dec_state_id: Option<ObjectId>, // commited/header state id
@@ -48,6 +49,7 @@ impl GroupStorage {
         rpath: &str,
         init_state_id: Option<ObjectId>,
         non_driver: NONDriverHelper,
+        local_device_id: ObjectId,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
         let group_chunk = ChunkMeta::from(&group);
@@ -67,6 +69,7 @@ impl GroupStorage {
             prepares: HashMap::new(),
             pre_commits: HashMap::new(),
             storage_engine: StorageEngineMock::new(),
+            local_device_id,
         })
     }
 
@@ -315,6 +318,12 @@ impl GroupStorage {
     }
 
     pub async fn block_linked(&self, block: &GroupConsensusBlock) -> BuckyResult<BlockLinkState> {
+        log::debug!(
+            "[group storage] {} block_linked {} step1",
+            self.local_device_id,
+            block.block_id()
+        );
+
         let header_height = self.header_height();
         if block.height() <= header_height {
             return Ok(BlockLinkState::Expired);
@@ -345,6 +354,12 @@ impl GroupStorage {
                 ));
             }
         }
+
+        log::debug!(
+            "[group storage] {} block_linked {} step2",
+            self.local_device_id,
+            block.block_id()
+        );
 
         let prev_block = match block.prev_block_id() {
             Some(prev_block_id) => match self.find_block_in_cache(prev_block_id) {
@@ -386,6 +401,12 @@ impl GroupStorage {
             }
         };
 
+        log::debug!(
+            "[group storage] {} block_linked {} step3",
+            self.local_device_id,
+            block.block_id()
+        );
+
         let mut proposals = HashMap::new();
         for proposal_result in block.proposals().as_slice() {
             if proposals.get(&proposal_result.proposal).is_some() {
@@ -421,6 +442,12 @@ impl GroupStorage {
 
             proposals.insert(proposal_result.proposal, proposal);
         }
+
+        log::debug!(
+            "[group storage] {} block_linked {} step4",
+            self.local_device_id,
+            block.block_id()
+        );
 
         Ok(BlockLinkState::Link(prev_block, proposals))
     }

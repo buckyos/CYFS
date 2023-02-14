@@ -308,6 +308,10 @@ impl HotstuffRunner {
          */
         Self::check_block_result_state(block)?;
 
+        log::debug!("[hotstuff] local: {:?}, handle_block-step2: {:?}",
+            self,
+            block.block_id());
+
         {
             // check leader
             let leader_owner = self.get_leader_owner(Some(block.group_chunk_id()), block.round()).await?;
@@ -328,6 +332,10 @@ impl HotstuffRunner {
             Err(err) => return err
         };
 
+        log::debug!("[hotstuff] local: {:?}, handle_block-step3: {:?}",
+            self,
+            block.block_id());
+
         self.committee
             .verify_block(block, remote)
             .await
@@ -340,6 +348,10 @@ impl HotstuffRunner {
                 );
                 err
             })?;
+
+        log::debug!("[hotstuff] local: {:?}, handle_block-step4: {:?}",
+            self,
+            block.block_id());
 
         self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
             .await?;
@@ -636,6 +648,11 @@ impl HotstuffRunner {
              * */
             self.cleanup_proposal(&header_block).await;
 
+            log::debug!(
+                "[hotstuff] local: {:?}, process_block-step1 {:?}",
+                self, block.block_id()
+            );
+
             let (_, qc_block) = self
                 .store
                 .pre_commits()
@@ -644,7 +661,12 @@ impl HotstuffRunner {
                 .expect("the pre-commit block must exist.");
 
             self.notify_block_committed(header_block.clone(), qc_block).await;
-            
+
+            log::debug!(
+                "[hotstuff] local: {:?}, process_block-step2 {:?}",
+                self, block.block_id()
+            );
+
             let leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, get leader in round {} failed {:?}",
@@ -662,6 +684,11 @@ impl HotstuffRunner {
                         .await;
                 }
             }
+
+            log::debug!(
+                "[hotstuff] local: {:?}, process_block-step3 {:?}",
+                self, block.block_id()
+            );
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -684,6 +711,11 @@ impl HotstuffRunner {
             }
             VoteThresholded::None => {}
         }
+
+        log::debug!(
+            "[hotstuff] local: {:?}, process_block-step4 {:?}",
+            self, block.block_id()
+        );
 
         if block.round() != self.round {
             log::debug!(

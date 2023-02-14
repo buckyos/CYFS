@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use cyfs_base::{ObjectId, RawDecode};
 use cyfs_bdt::DatagramTunnelGuard;
 
@@ -29,12 +31,13 @@ impl Listener {
                         match HotstuffPackage::raw_decode(datagram.data.as_slice()) {
                             Ok((pkg, remain)) => {
                                 log::debug!(
-                                    "[group-listener] {:?}-{} recv group message from {:?}, msg: {:?}, len: {}",
+                                    "[group-listener] {:?}-{} recv group message from {:?}, msg: {:?}, len: {}, delay: {}",
                                     pkg.rpath(),
                                     local_device_id,
                                     remote,
                                     pkg,
-                                    datagram.data.len()
+                                    datagram.data.len(),
+                                    Instant::now().elapsed().as_millis() as u64 - datagram.options.create_time.unwrap()
                                 );
                                 assert_eq!(remain.len(), 0);
                                 processor.on_message(pkg, remote).await;
