@@ -10,7 +10,10 @@ use crate::{
 };
 use cyfs_base::*;
 use cyfs_bdt::{
-    ndn::channel::{protocol::v0::*, Channel, DownloadSession},
+    ndn::{
+        chunk::FileCache, 
+        channel::{protocol::v0::*, Channel, DownloadSession}
+    }, 
     NdnEventHandler, Stack,
 };
 use cyfs_lib::*;

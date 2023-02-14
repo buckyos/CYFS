@@ -498,8 +498,8 @@ impl LocalTransService {
             history_speed: task.history_speed(),
         };
 
-        if let Some(tm) = req.speed_when {
-            resp.speed = Some(task.calc_speed(tm));
+        if let Some(_tm) = req.speed_when {
+            resp.speed = Some(task.cur_speed());
         }
 
         Ok(resp)
