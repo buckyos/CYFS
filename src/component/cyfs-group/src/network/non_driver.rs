@@ -183,12 +183,32 @@ impl NONDriverHelper {
         let non_driver = self.clone();
         let block_owner = block.owner().clone();
 
+        let remote = match block_owner.obj_type_code() {
+            cyfs_base::ObjectTypeCode::Device => DeviceId::try_from(block_owner).unwrap(),
+            cyfs_base::ObjectTypeCode::People => {
+                let people_id = PeopleId::try_from(block_owner).unwrap();
+                match self.get_ood(&people_id).await {
+                    Ok(device_id) => device_id,
+                    Err(e) => {
+                        log::warn!(
+                            "[non driver] load_all_proposals_for_block get ood of {}, failed err: {:?}",
+                            block_owner,
+                            e
+                        );
+                        return Err(e);
+                    }
+                }
+            }
+            _ => panic!("invalid remote type: {:?}", block_owner.obj_type_code()),
+        };
+
         let load_futs = block.proposals().iter().map(|proposal| {
             let proposal_id = proposal.proposal;
             let non_driver = non_driver.clone();
+            let remote = remote.clone();
             async move {
                 non_driver
-                    .get_proposal(&proposal_id, Some(&block_owner))
+                    .get_proposal(&proposal_id, Some(remote.object_id()))
                     .await
             }
         });

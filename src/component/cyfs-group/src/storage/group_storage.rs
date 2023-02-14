@@ -408,39 +408,56 @@ impl GroupStorage {
         );
 
         let mut proposals = HashMap::new();
-        for proposal_result in block.proposals().as_slice() {
-            if proposals.get(&proposal_result.proposal).is_some() {
-                return Ok(BlockLinkState::DuplicateProposal);
-            }
-
-            if let Some(prev_block_id) = block.prev_block_id() {
-                if self
-                    .is_proposal_finished(&proposal_result.proposal, prev_block_id)
-                    .await?
-                {
-                    return Ok(BlockLinkState::DuplicateProposal);
+        let check_proposal_results =
+            futures::future::join_all(block.proposals().iter().map(|proposal_result| async {
+                if let Some(prev_block_id) = block.prev_block_id() {
+                    if self
+                        .is_proposal_finished(&proposal_result.proposal, prev_block_id)
+                        .await?
+                    {
+                        return Ok(BlockLinkState::DuplicateProposal);
+                    }
                 }
+
+                let proposal = self
+                    .non_driver
+                    .get_proposal(&proposal_result.proposal, Some(block.owner()))
+                    .await?;
+
+                let proposal_time = bucky_time_to_system_time(proposal.desc().create_time());
+                if block_time
+                    .duration_since(proposal_time)
+                    .or(proposal_time.duration_since(block_time))
+                    .unwrap()
+                    > TIME_PRECISION
+                {
+                    return Err(BuckyError::new(
+                        BuckyErrorCode::ErrorTimestamp,
+                        "error timestamp",
+                    ));
+                }
+
+                Ok(BlockLinkState::Link(
+                    None,
+                    HashMap::from([(proposal_result.proposal, proposal)]),
+                ))
+            }))
+            .await;
+
+        for check_result in check_proposal_results {
+            match check_result {
+                Ok(result) => match result {
+                    BlockLinkState::Link(_, proposal) => {
+                        let (proposal_id, proposal) = proposal.into_iter().next().unwrap();
+                        if proposals.get(&proposal_id).is_some() {
+                            return Ok(BlockLinkState::DuplicateProposal);
+                        }
+                        proposals.insert(proposal_id, proposal);
+                    }
+                    _ => return Ok(result),
+                },
+                _ => return check_result,
             }
-
-            let proposal = self
-                .non_driver
-                .get_proposal(&proposal_result.proposal, Some(block.owner()))
-                .await?;
-
-            let proposal_time = bucky_time_to_system_time(proposal.desc().create_time());
-            if block_time
-                .duration_since(proposal_time)
-                .or(proposal_time.duration_since(block_time))
-                .unwrap()
-                > TIME_PRECISION
-            {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::ErrorTimestamp,
-                    "error timestamp",
-                ));
-            }
-
-            proposals.insert(proposal_result.proposal, proposal);
         }
 
         log::debug!(

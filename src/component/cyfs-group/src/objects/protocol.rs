@@ -653,9 +653,26 @@ impl HotstuffBlockQCVote {
     ) -> BuckyResult<Self> {
         let block_id = block.block_id().object_id();
         let round = block.round();
+
+        log::debug!(
+            "[block vote] local: {:?}, vote hash {}, round: {}",
+            local_device_id,
+            block.block_id(),
+            block.round()
+        );
+
+        let hash = Self::hash_content(block_id, block.prev_block_id(), round);
+
+        log::debug!(
+            "[block vote] local: {:?}, vote sign {}, round: {}",
+            local_device_id,
+            block.block_id(),
+            block.round()
+        );
+
         let signature = signer
             .sign(
-                Self::hash_content(block_id, block.prev_block_id(), round).as_slice(),
+                hash.as_slice(),
                 &SignatureSource::Object(ObjectLink {
                     obj_id: local_device_id,
                     obj_owner: None,

@@ -204,6 +204,8 @@ struct HotstuffRunner {
     non_driver: crate::network::NONDriverHelper,
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
     rx_message: Receiver<(HotstuffMessage, ObjectId)>,
+    tx_block_gen: Sender<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
+    rx_block_gen: Receiver<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     proposal_consumer: PendingProposalConsumer,
     delegate: Arc<Box<dyn RPathDelegate>>,
     synchronizer: Synchronizer,
@@ -254,6 +256,8 @@ impl HotstuffRunner {
             tx_message.clone(),
         );
 
+        let (tx_block_gen, rx_block_gen) = async_std::channel::bounded(1);
+
         Self {
             local_id,
             local_device_id,
@@ -275,6 +279,8 @@ impl HotstuffRunner {
             rx_proposal_waiter: None,
             tc: None,
             state_pusher,
+            tx_block_gen,
+            rx_block_gen,
         }
     }
 
@@ -740,7 +746,7 @@ impl HotstuffRunner {
             })?;
 
             if self.local_device_id == next_leader {
-                self.handle_vote(&vote, Some(block), remote).await?;
+                self.handle_vote(&vote, Some(block), self.local_device_id).await?;
             } else {
                 self.network_sender
                     .post_message(
@@ -940,8 +946,16 @@ impl HotstuffRunner {
             }
         }
 
+        log::debug!("[hotstuff] local: {:?}, make-vote before sign {}, round: {}",
+            self, block.block_id(), block.round());
+
         let vote = match HotstuffBlockQCVote::new(block, self.local_device_id, &self.signer).await {
-            Ok(vote) => vote,
+            Ok(vote) => {
+                log::debug!("[hotstuff] local: {:?}, make-vote after sign {}, round: {}",
+                    self, block.block_id(), block.round());
+    
+                vote
+            },
             Err(e) => {
                 log::warn!(
                     "[hotstuff] local: {:?}, signature for block-vote failed, block: {}, err: {}",
@@ -1226,7 +1240,6 @@ impl HotstuffRunner {
             })?;
 
             self.broadcast(HotstuffMessage::Timeout(tc), &latest_group)
-                .await
         }
     }
 
@@ -1368,10 +1381,8 @@ impl HotstuffRunner {
 
         self.store.set_last_vote_round(self.round).await?;
 
-        self.handle_timeout(&timeout, self.local_id).await;
-
-        self.broadcast(HotstuffMessage::TimeoutVote(timeout), &latest_group)
-            .await;
+        self.broadcast(HotstuffMessage::TimeoutVote(timeout.clone()), &latest_group);
+        self.tx_message.send((HotstuffMessage::TimeoutVote(timeout), self.local_device_id)).await;
 
         Ok(())
     }
@@ -1486,14 +1497,15 @@ impl HotstuffRunner {
             return Ok(());
         }
 
+        let proposals_map = HashMap::from_iter(
+            executed_proposals.iter()
+                .map(|(proposal, _)| (proposal.desc().object_id(), proposal.clone()))
+        );
+
         let block = self.package_block_with_proposals(executed_proposals, &latest_group, result_state_id, &prev_block, tc).await?;
 
-        self.tx_message
-            .send((HotstuffMessage::Block(block.clone()), self.local_id))
-            .await;
-
-        self.broadcast(HotstuffMessage::Block(block), &latest_group)
-            .await;
+        self.broadcast(HotstuffMessage::Block(block.clone()), &latest_group);
+        self.tx_block_gen.send((block, proposals_map)).await;
 
         self.rx_proposal_waiter = None;
         Ok(())
@@ -1659,7 +1671,7 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn broadcast(&self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
+    fn broadcast(&self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
         let targets: Vec<ObjectId> = group
             .ood_list()
             .iter()
@@ -1667,9 +1679,12 @@ impl HotstuffRunner {
             .map(|ood_id| ood_id.object_id().clone())
             .collect();
 
-        self.network_sender
-            .broadcast(msg, self.rpath.clone(), targets.as_slice())
-            .await;
+        let network_sender = self.network_sender.clone();
+        let rpath = self.rpath.clone();
+
+        async_std::task::spawn(async move {
+            network_sender.broadcast(msg, rpath.clone(), targets.as_slice()).await
+        });
 
         Ok(())
     }
@@ -1809,8 +1824,7 @@ impl HotstuffRunner {
                         self.broadcast(
                             HotstuffMessage::Block(max_round_block),
                             &latest_group.unwrap(),
-                        )
-                        .await;
+                        );
                     }
                     _ => {
                         self.generate_block(None).await;
@@ -1841,7 +1855,7 @@ impl HotstuffRunner {
             let result = futures::select! {
                 message = self.rx_message.recv().fuse() => match message {
                     Ok((HotstuffMessage::Block(block), remote)) => {
-                        if remote == self.local_id {
+                        if remote == self.local_device_id {
                             self.process_block(&block, remote, &HashMap::new()).await
                         } else {
                             self.handle_block(&block, remote).await
@@ -1860,6 +1874,13 @@ impl HotstuffRunner {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
                     },
+                },
+                block = self.rx_block_gen.recv().fuse() => match block {
+                    Ok((block, proposals)) => self.process_block(&block, self.local_device_id, &proposals).await,
+                    Err(e) => {
+                        log::warn!("[hotstuff] rx_block_gen closed.");
+                        Ok(())
+                    }
                 },
                 () = self.timer.wait_next().fuse() => self.local_timeout_round().await,
                 wait_round = Self::proposal_waiter(self.rx_proposal_waiter.clone()).fuse() => {
