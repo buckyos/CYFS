@@ -498,7 +498,7 @@ impl LocalTransService {
             transfered: task.transfered()
         };
 
-        if let Some(tm) = req.speed_when {
+        if let Some(_tm) = req.speed_when {
             resp.speed = Some(task.cur_speed());
         }
 

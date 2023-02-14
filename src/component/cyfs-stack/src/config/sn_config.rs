@@ -10,7 +10,6 @@ use cyfs_bdt_ext::BdtStackSNHelper;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /*
 sn config priority: local configuration file > meta > buildin
