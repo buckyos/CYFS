@@ -106,6 +106,8 @@ pub type GlobalStateAccessorOutputProcessorRef = Arc<Box<dyn GlobalStateAccessor
 
 #[async_trait::async_trait]
 pub trait GlobalStateRawProcessor: Send + Sync {
+    fn isolate_id(&self) -> &ObjectId;
+
     fn category(&self) -> GlobalStateCategory;
 
     fn access_mode(&self) -> GlobalStateAccessMode;

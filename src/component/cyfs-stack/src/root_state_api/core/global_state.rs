@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalState {
+    isolate_id: ObjectId,
     category: GlobalStateCategory,
 
     owner: Option<ObjectId>,
@@ -46,6 +47,7 @@ impl GlobalState {
         let root = Arc::new(root);
 
         let ret = Self {
+            isolate_id: isolate_id.to_owned(),
             category,
             owner,
             root,
@@ -59,6 +61,10 @@ impl GlobalState {
 
     pub fn clone_processor(&self) -> GlobalStateRawProcessorRef {
         Arc::new(Box::new(self.clone()))
+    }
+
+    pub fn isolate_id(&self) -> &ObjectId {
+        &self.isolate_id
     }
 
     pub fn category(&self) -> GlobalStateCategory {
@@ -295,6 +301,10 @@ pub type GlobalStateRef = Arc<GlobalState>;
 
 #[async_trait::async_trait]
 impl GlobalStateRawProcessor for GlobalState {
+    fn isolate_id(&self) -> &ObjectId {
+        Self::isolate_id(&self)
+    }
+    
     fn category(&self) -> GlobalStateCategory {
         Self::category(self)
     }
