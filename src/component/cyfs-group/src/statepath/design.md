@@ -7,22 +7,18 @@
 |   |--list-->Set<GroupId>
 |   |--option-->GroupOption
 |
-|--.dec-state // for dec；各Group的dec状态放这里
-|   |--${group-id} // ${groupid}/.group/update 留着做group的版本同步
-|       |--${dec-id} | .group // 一个dec管理的${r-path}状态
-|       |   |   // 每个${r-path}管理范围内是串行的
-|           |   // 不同${r-path}范围内的操作是并行的
-|           |   // 且不同${r-path}之间是并列的，不能嵌套
-|           |--${r-path}-->ObjectId // APP控制的实体状态，通常是个map-id
-|           |                      // 最终在APP看到的${r-path}结构是这级物理结构的相对路径
-|           |                      // 其他内部逻辑隐藏掉
-|           |
-|
-|--.link // 区块链结构，记录状态变更链条
-|   |--${group-id}
-|       |--${dec-id} | .group // .group表示group本身的演变共识
+|--${group-id}
+|   |--${dec-id}
+|       |--.dec-state-->ObjectId // for dec；各Group的dec状态放这里
+|       |   // APP控制的实体状态，通常是个map-id
+|       |   // 最终在APP看到的${r-path}结构是这级物理结构的相对路径
+|       |   // 其他内部逻辑隐藏掉
+|       |   // 每个${r-path}管理范围内是串行的
+|       |   // 不同${r-path}范围内的操作是并行的
+|       |   // 且不同${r-path}之间是并列的，不能嵌套
+|       |--.link // 区块链结构，记录状态变更链条
 |           |--${r-path}
-|               |--group-chunk-->Chunk(Group)
+|               |--group-blob-->BLOB(Group)
 |               |--users
 |               |   |--${user-id}
 |               |       |--xxx

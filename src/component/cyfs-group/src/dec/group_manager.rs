@@ -6,6 +6,7 @@ use cyfs_base::{
 };
 use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
+use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
     storage::GroupStorage, DelegateFactory, HotstuffMessage, HotstuffPackage, IsCreateRPath,
@@ -31,6 +32,7 @@ struct LocalInfo {
     non_driver: Arc<Box<dyn NONDriver>>,
     datagram: DatagramTunnelGuard,
     bdt_stack: StackGuard,
+    global_state_mgr: GlobalStateManagerRawProcessorRef,
 }
 
 #[derive(Clone)]
@@ -41,6 +43,7 @@ impl GroupManager {
         signer: RsaCPUObjectSigner,
         non_driver: Box<dyn crate::network::NONDriver>,
         bdt_stack: StackGuard,
+        global_state_mgr: GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<Self> {
         let datagram = bdt_stack.datagram_manager().bind(NET_PROTOCOL_VPORT)?;
         let local_device_id = bdt_stack.local_device_id().object_id().clone();
@@ -50,6 +53,7 @@ impl GroupManager {
             non_driver: Arc::new(non_driver),
             datagram: datagram.clone(),
             bdt_stack,
+            global_state_mgr,
         };
 
         let raw = GroupRPathMgrRaw {
