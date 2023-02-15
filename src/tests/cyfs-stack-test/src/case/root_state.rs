@@ -23,6 +23,7 @@ pub async fn test() {
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
+    test_group_state().await;
     test_load_with_cache(&device_stack).await;
 
     test_storage(&device_stack).await;
@@ -38,6 +39,31 @@ pub async fn test() {
     test_iterator(&stack).await;
 
     info!("test root state all cases success!");
+}
+
+async fn test_group_state() {
+    let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
+
+    let isolate_id = new_dec("test-group");
+    let group_state = stack.global_state_manager().get_global_state(GlobalStateCategory::RootState, &isolate_id).await;
+    let group_state = if group_state.is_none() {
+        let _ret = stack.global_state_manager().load_global_state(GlobalStateCategory::RootState, &isolate_id, None, false).await.unwrap();
+ 
+        let ret = stack.global_state_manager().load_root_state(&isolate_id, None, true).await.unwrap();
+        ret.unwrap()
+    } else {
+        group_state.unwrap().clone_processor()
+    };
+
+    let _ = group_state.get_dec_root(&isolate_id);
+    let dec_manager = group_state.get_dec_root_manager(&isolate_id, true).await.unwrap();
+    let op_env = dec_manager.create_op_env(None).unwrap();
+    op_env.set_with_path("/a/b", &isolate_id, &None, true).await.unwrap();
+    let dec_root = op_env.commit().await.unwrap();
+
+    assert_eq!(dec_root, dec_manager.get_current_root());
+
+    info!("test group state complete!");
 }
 
 async fn test_load_with_cache(stack: &SharedCyfsStack) {
