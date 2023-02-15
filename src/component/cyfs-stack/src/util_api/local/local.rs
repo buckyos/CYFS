@@ -116,9 +116,7 @@ impl UtilLocalService {
                 let obj_type = object_id.obj_type_code();
 
                 let zone = match obj_type {
-                    ObjectTypeCode::Device
-                    | ObjectTypeCode::People
-                    | ObjectTypeCode::SimpleGroup => {
+                    ObjectTypeCode::Device | ObjectTypeCode::People | ObjectTypeCode::Group => {
                         let zone = self
                             .zone_manager
                             .resolve_zone(&object_id, req.object_raw)

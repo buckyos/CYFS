@@ -1,12 +1,16 @@
-use cyfs_base::*;
-use sha2::{Digest, Sha256};
 use crate::contract::*;
-use crate::{MetaExtensionTx, NFTAgreeApplyTx, NFTApplyBuyTx, NFTAuctionTx, NFTBidTx, NFTBuyTx, NFTCancelApplyBuyTx, NFTCancelSellTx, NFTCreateTx, NFTCreateTx2, NFTLikeTx, NFTSellTx, NFTSellTx2, NFTSetNameTx, NFTTransTx, SNService, SPVTx};
+use crate::{
+    MetaExtensionTx, NFTAgreeApplyTx, NFTApplyBuyTx, NFTAuctionTx, NFTBidTx, NFTBuyTx,
+    NFTCancelApplyBuyTx, NFTCancelSellTx, NFTCreateTx, NFTCreateTx2, NFTLikeTx, NFTSellTx,
+    NFTSellTx2, NFTSetNameTx, NFTTransTx, SNService, SPVTx,
+};
 use async_trait::async_trait;
+use cyfs_base::*;
 use cyfs_core::CoreObjectType;
 use generic_array::typenum::U32;
 use generic_array::GenericArray;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug, RawEncode, RawDecode)]
@@ -317,13 +321,14 @@ pub enum SavedMetaObject {
     Device(Device),             //BDT中定义
     People(People),             //BDT中定义
     UnionAccount(UnionAccount), //两人公有账号，用于闪电网络
-    Group(SimpleGroup),         //M*N Group,最常见的Group BDT中定义
+    SimpleGroup,                //M*N Group,最常见的Group BDT中定义
     File(File),
     Data(Data),
-    Org(Org),
+    Org,
     MinerGroup(MinerGroup),
     SNService(SNService),
     Contract(Contract),
+    Group(Group),
 }
 
 impl SavedMetaObject {
@@ -336,16 +341,17 @@ impl SavedMetaObject {
 
     pub fn id(&self) -> ObjectId {
         match self {
-            SavedMetaObject::Device(o) => {o.desc().calculate_id()}
-            SavedMetaObject::People(o) => {o.desc().calculate_id()}
-            SavedMetaObject::UnionAccount(o) => {o.desc().calculate_id()}
-            SavedMetaObject::Group(o) => {o.desc().calculate_id()}
-            SavedMetaObject::File(o) => {o.desc().calculate_id()}
-            SavedMetaObject::Data(o) => {o.id.clone()}
-            SavedMetaObject::Org(o) => {o.desc().calculate_id()}
-            SavedMetaObject::MinerGroup(o) => {o.desc().calculate_id()}
-            SavedMetaObject::SNService(o) => {o.desc().calculate_id()}
-            SavedMetaObject::Contract(o) => {o.desc().calculate_id()}
+            SavedMetaObject::Device(o) => o.desc().calculate_id(),
+            SavedMetaObject::People(o) => o.desc().calculate_id(),
+            SavedMetaObject::UnionAccount(o) => o.desc().calculate_id(),
+            SavedMetaObject::SimpleGroup => panic!("SimpleGroup is deprecated, you can use the Group."),
+            SavedMetaObject::File(o) => o.desc().calculate_id(),
+            SavedMetaObject::Data(o) => o.id.clone(),
+            SavedMetaObject::Org => panic!("Org is deprecated, you can use the Group."),
+            SavedMetaObject::MinerGroup(o) => o.desc().calculate_id(),
+            SavedMetaObject::SNService(o) => o.desc().calculate_id(),
+            SavedMetaObject::Contract(o) => o.desc().calculate_id(),
+            SavedMetaObject::Group(o) => o.desc().calculate_id(),
         }
     }
 }
@@ -370,9 +376,8 @@ impl TryFrom<SavedMetaObject> for StandardObject {
             SavedMetaObject::Device(v) => Ok(Self::Device(v)),
             SavedMetaObject::People(v) => Ok(Self::People(v)),
             SavedMetaObject::UnionAccount(v) => Ok(Self::UnionAccount(v)),
-            SavedMetaObject::Group(v) => Ok(Self::SimpleGroup(v)),
+            SavedMetaObject::Group(v) => Ok(Self::Group(v)),
             SavedMetaObject::File(v) => Ok(Self::File(v)),
-            SavedMetaObject::Org(v) => Ok(Self::Org(v)),
             SavedMetaObject::Contract(v) => Ok(Self::Contract(v)),
             _ => Err(BuckyError::from(BuckyErrorCode::NotSupport)),
         }
@@ -387,9 +392,8 @@ impl TryFrom<StandardObject> for SavedMetaObject {
             StandardObject::Device(v) => Self::Device(v),
             StandardObject::People(v) => Self::People(v),
             StandardObject::UnionAccount(v) => Self::UnionAccount(v),
-            StandardObject::SimpleGroup(v) => SavedMetaObject::Group(v),
+            StandardObject::Group(v) => SavedMetaObject::Group(v),
             StandardObject::File(v) => Self::File(v),
-            StandardObject::Org(v) => Self::Org(v),
             StandardObject::Contract(v) => Self::Contract(v),
             _ => {
                 return Err(BuckyError::from(BuckyErrorCode::NotSupport));
@@ -936,7 +940,6 @@ mod tx_test {
 
     #[test]
     fn test_people_codec() {
-
         for code in OLD_LIST {
             let code = hex::decode(code).unwrap();
             let ret = SavedMetaObject::clone_from_slice(code.as_slice()).unwrap();

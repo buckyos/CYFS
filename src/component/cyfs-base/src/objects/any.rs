@@ -14,8 +14,7 @@ macro_rules! match_any_obj {
             AnyNamedObject::Standard(o) => match o {
                 StandardObject::Device($o) => $body,
                 StandardObject::People($o) => $body,
-                StandardObject::SimpleGroup($o) => $body,
-                StandardObject::Org($o) => $body,
+                StandardObject::Group($o) => $body,
                 StandardObject::AppGroup($o) => $body,
                 StandardObject::UnionAccount($o) => $body,
                 StandardObject::ChunkId($chunk_id) => $chunk_body,
@@ -27,6 +26,10 @@ macro_rules! match_any_obj {
                 StandardObject::Action($o) => $body,
                 StandardObject::ObjectMap($o) => $body,
                 StandardObject::Contract($o) => $body,
+                StandardObject::SimpleGroup => {
+                    panic!("SimpleGroup is deprecated, you can use the Group.")
+                }
+                StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
             },
             AnyNamedObject::Core($o) => $body,
             AnyNamedObject::DECApp($o) => $body,
@@ -392,13 +395,6 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
                     buf,
                 ));
             }
-            ObjectTypeCode::Org => {
-                let (org, buf) = Org::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/org error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
-            }
             ObjectTypeCode::AppGroup => {
                 let (app_group, buf) = AppGroup::raw_decode(buf).map_err(|e| {
                     log::error!("AnyNamedObject::raw_decode/app_group error:{}", e);
@@ -409,15 +405,12 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
                     buf,
                 ));
             }
-            ObjectTypeCode::SimpleGroup => {
-                let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
+            ObjectTypeCode::Group => {
+                let (group, buf) = Group::raw_decode(buf).map_err(|e| {
+                    log::error!("AnyNamedObject::raw_decode/group error:{}", e);
                     e
                 })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
-                    buf,
-                ));
+                return Ok((AnyNamedObject::Standard(StandardObject::Group(group)), buf));
             }
             ObjectTypeCode::UnionAccount => {
                 let (ua, buf) = UnionAccount::raw_decode(buf).map_err(|e| {
@@ -659,5 +652,5 @@ any_for_standard_target!(as_file, into_file, File);
 any_for_standard_target!(as_dir, into_dir, Dir);
 any_for_standard_target!(as_people, into_people, People);
 any_for_standard_target!(as_device, into_device, Device);
-any_for_standard_target!(as_simple_group, into_simple_group, SimpleGroup);
+any_for_standard_target!(as_group, into_group, Group);
 any_for_standard_target!(as_object_map, into_object_map, ObjectMap);

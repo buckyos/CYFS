@@ -32,8 +32,11 @@ use crate::trans_api::{create_trans_store, TransService};
 use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
+use crate::GroupNONDriver;
 use cyfs_base::*;
-use cyfs_bdt::{DeviceCache, SnStatus, StackGuard};
+
+use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
+use cyfs_group::GroupRPathMgr;
 use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
 use cyfs_noc::*;
@@ -100,6 +103,9 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
+
+    // group
+    group_manager: GroupRPathMgr,
 }
 
 impl CyfsStackImpl {
@@ -271,6 +277,11 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
+        let signer = RsaCPUObjectSigner::new(
+            bdt_param.device.desc().public_key().clone(),
+            bdt_param.secret.clone(),
+        );
+
         // 初始化bdt协议栈
         let (bdt_stack, bdt_event) = Self::init_bdt_stack(
             zone_manager.clone(),
@@ -401,7 +412,7 @@ impl CyfsStackImpl {
 
         let services = ObjectServices {
             ndn_service,
-            non_service,
+            non_service: non_service.clone(),
 
             crypto_service,
             util_service,
@@ -416,6 +427,12 @@ impl CyfsStackImpl {
             services.crypto_service.local_service().verifier().clone(),
             config.clone(),
         );
+
+        let group_manager = GroupRPathMgr::new(
+            signer,
+            Box::new(GroupNONDriver::new(non_service.clone())),
+            bdt_stack.clone(),
+        )?;
 
         let mut stack = Self {
             config,
@@ -452,6 +469,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            group_manager,
         };
 
         // init an system-dec router-handler processor for later use
@@ -1138,6 +1157,10 @@ impl CyfsStack {
 
     pub fn root_state(&self) -> &GlobalStateService {
         &self.stack.root_state
+    }
+
+    pub fn group_mgr(&self) -> &GroupRPathMgr {
+        &self.stack.group_manager
     }
 
     // use system dec as default dec

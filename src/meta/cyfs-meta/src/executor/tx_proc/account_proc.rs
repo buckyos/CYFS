@@ -1,18 +1,27 @@
-use cyfs_base::*;
 use crate::executor::context;
+use crate::executor::context::UnionAccountState;
 use crate::executor::transaction::ExecuteContext;
 use crate::executor::tx_executor::TxExecutor;
 use crate::helper::{get_meta_err_code, ArcWeakHelper};
-use std::convert::TryFrom;
-use crate::executor::context::UnionAccountState;
-use cyfs_base_meta::*;
-use crate::{State};
 use crate::meta_backend::MetaBackend;
+use crate::State;
+use cyfs_base::*;
+use cyfs_base_meta::*;
+use std::convert::TryFrom;
 
 impl TxExecutor {
-    pub async fn execute_trans_balance(&self, context: &mut ExecuteContext, fee_counter: &mut context::FeeCounter, tx: &TransBalanceTx, _backend: &mut MetaBackend, _config: &evm::Config) -> BuckyResult<Vec<TxLog>> {
+    pub async fn execute_trans_balance(
+        &self,
+        context: &mut ExecuteContext,
+        fee_counter: &mut context::FeeCounter,
+        tx: &TransBalanceTx,
+        _backend: &mut MetaBackend,
+        _config: &evm::Config,
+    ) -> BuckyResult<Vec<TxLog>> {
         if let context::AccountMethods::Single(methods) = context.caller().methods() {
-            let logs = methods.trans_balance(fee_counter, &tx.ctid, &tx.to/*, backend, config*/).await?;
+            let logs = methods
+                .trans_balance(fee_counter, &tx.ctid, &tx.to /*, backend, config*/)
+                .await?;
 
             // 下边是扣除租金的相关逻辑
             for (to_id, _v) in &tx.to {
@@ -32,16 +41,30 @@ impl TxExecutor {
                 //     }
                 // }
 
-                self.rent_manager.to_rc()?.check_and_deduct_rent_arrears_for_desc(context.block(), &to_id, &tx.ctid).await?;
+                self.rent_manager
+                    .to_rc()?
+                    .check_and_deduct_rent_arrears_for_desc(context.block(), &to_id, &tx.ctid)
+                    .await?;
 
                 let owned_names = self.ref_state.to_rc()?.get_owned_names(to_id).await?;
                 for name in owned_names {
-                    let mut name_state = self.ref_state.to_rc()?.get_name_state(name.as_str()).await?;
+                    let mut name_state = self
+                        .ref_state
+                        .to_rc()?
+                        .get_name_state(name.as_str())
+                        .await?;
                     if name_state == NameState::Lock {
-                        let rent_state = self.rent_manager.to_rc()?.check_and_deduct_rent_arrears_for_name(context.block(), name.as_str()).await?;
+                        let rent_state = self
+                            .rent_manager
+                            .to_rc()?
+                            .check_and_deduct_rent_arrears_for_name(context.block(), name.as_str())
+                            .await?;
                         if rent_state.rent_arrears == 0 {
                             name_state = NameState::Normal;
-                            self.ref_state.to_rc()?.update_name_state(name.as_str(), name_state).await?;
+                            self.ref_state
+                                .to_rc()?
+                                .update_name_state(name.as_str(), name_state)
+                                .await?;
                         }
                     }
                 }
@@ -56,38 +79,30 @@ impl TxExecutor {
                 //         break;
                 //     }
                 // }
-             }
+            }
             Ok(logs)
         } else {
             Err(crate::meta_err!(ERROR_INVALID))
         }
     }
 
-    pub async fn execute_withdraw_to_owner(&self,
-                                            context: &mut ExecuteContext,
-                                            _fee_counter: &mut context::FeeCounter,
-                                            tx: &WithdrawToOwner) -> BuckyResult<()> {
+    pub async fn execute_withdraw_to_owner(
+        &self,
+        context: &mut ExecuteContext,
+        _fee_counter: &mut context::FeeCounter,
+        tx: &WithdrawToOwner,
+    ) -> BuckyResult<()> {
         let beneficiary = self.ref_state.to_rc()?.get_beneficiary(&tx.id).await?;
         let owner = if beneficiary != tx.id {
             Some(beneficiary)
         } else {
             let desc_obj_ret = self.ref_state.to_rc()?.get_obj_desc(&tx.id).await?;
             match desc_obj_ret {
-                SavedMetaObject::Device(device) => {
-                    device.desc().owner().clone()
-                }
-                SavedMetaObject::People(_) => {
-                    None
-                }
-                SavedMetaObject::UnionAccount(_) => {
-                    None
-                }
-                SavedMetaObject::Group(_) => {
-                    None
-                }
-                SavedMetaObject::File(file) => {
-                    file.desc().owner().clone()
-                }
+                SavedMetaObject::Device(device) => device.desc().owner().clone(),
+                SavedMetaObject::People(_) => None,
+                SavedMetaObject::UnionAccount(_) => None,
+                SavedMetaObject::Group(_) => None,
+                SavedMetaObject::File(file) => file.desc().owner().clone(),
                 SavedMetaObject::Data(data) => {
                     let ret = AnyNamedObject::clone_from_slice(data.data.as_slice());
                     if ret.is_ok() {
@@ -96,84 +111,95 @@ impl TxExecutor {
                         None
                     }
                 }
-                SavedMetaObject::Org(_) => {
-                    None
+                SavedMetaObject::MinerGroup(_) => None,
+                SavedMetaObject::SNService(_) => None,
+                SavedMetaObject::Contract(contract) => contract.desc().owner().clone(),
+                SavedMetaObject::SimpleGroup => {
+                    panic!("SimpleGroup is deprecated, you can use the Group.")
                 }
-                SavedMetaObject::MinerGroup(_) => {
-                    None
-                }
-                SavedMetaObject::SNService(_) => {
-                    None
-                }
-                SavedMetaObject::Contract(contract) => {
-                    contract.desc().owner().clone()
-                }
+                SavedMetaObject::Org => panic!("Org is deprecated, you can use the Group."),
             }
         };
         if owner.is_some() && owner.as_ref().unwrap() == context.caller().id() {
-            self.ref_state.to_rc()?.dec_balance(&tx.ctid, &tx.id, tx.value).await?;
-            self.ref_state.to_rc()?.inc_balance(&tx.ctid, &context.caller().id(), tx.value).await?;
-            return Ok(())
+            self.ref_state
+                .to_rc()?
+                .dec_balance(&tx.ctid, &tx.id, tx.value)
+                .await?;
+            self.ref_state
+                .to_rc()?
+                .inc_balance(&tx.ctid, &context.caller().id(), tx.value)
+                .await?;
+            return Ok(());
         }
         Err(crate::meta_err!(ERROR_INVALID))
     }
 
-//理解下面逻辑需了解ffs-meta的闪电网络工作原理
-// 1.双方决定建立union account
-// 2.由任一方执行CreateUnionTX，在Meta上建立union account(需要持续付租金)
-// 3.另一方可按需要执行TransBalanceTX，在union account中增加余额
-// 4.双方进行链下交易，不断地创建有双签名的SetUnionTx,Set操作的left + right的和总是为0
-// 5.任何一方都可以在必要的时候，将有双签名的SetUnionTx上链条，只有最新的SetUnionTx会生效
-//   操作完成后，UnionAccount中的余额状态会公开的改变
-// 6.任何一方，都可以在必要的时候，调用带return flag的SetUnionTx，将UnionAccount中所属自己的余额反还。
-//   改操作在上链后永远不会立刻生效，而是需要等待一定的时间后才会操作UnionAccount
-// 7.当一方发现另一方提交了单签名的SetUnionTx,可以提交最新的,有多签名的SetUnionTx来保障自己的收益
-// 综上：使用闪电网络，需要最少3个操作，创建->使用->返还
-// 问题：union account的租金谁出？ 还是和Address Account一样，是不需要租金，永久保存的特殊存在？
-// 扩展：包含超过2个object的超级union account？
+    //理解下面逻辑需了解ffs-meta的闪电网络工作原理
+    // 1.双方决定建立union account
+    // 2.由任一方执行CreateUnionTX，在Meta上建立union account(需要持续付租金)
+    // 3.另一方可按需要执行TransBalanceTX，在union account中增加余额
+    // 4.双方进行链下交易，不断地创建有双签名的SetUnionTx,Set操作的left + right的和总是为0
+    // 5.任何一方都可以在必要的时候，将有双签名的SetUnionTx上链条，只有最新的SetUnionTx会生效
+    //   操作完成后，UnionAccount中的余额状态会公开的改变
+    // 6.任何一方，都可以在必要的时候，调用带return flag的SetUnionTx，将UnionAccount中所属自己的余额反还。
+    //   改操作在上链后永远不会立刻生效，而是需要等待一定的时间后才会操作UnionAccount
+    // 7.当一方发现另一方提交了单签名的SetUnionTx,可以提交最新的,有多签名的SetUnionTx来保障自己的收益
+    // 综上：使用闪电网络，需要最少3个操作，创建->使用->返还
+    // 问题：union account的租金谁出？ 还是和Address Account一样，是不需要租金，永久保存的特殊存在？
+    // 扩展：包含超过2个object的超级union account？
 
-    pub async fn execute_create_union(&self
-                                , context: &mut ExecuteContext
-                                , fee_counter: &mut context::FeeCounter
-                                , tx: &CreateUnionTx) -> BuckyResult<()> {
+    pub async fn execute_create_union(
+        &self,
+        context: &mut ExecuteContext,
+        fee_counter: &mut context::FeeCounter,
+        tx: &CreateUnionTx,
+    ) -> BuckyResult<()> {
         let union_account = &tx.body.account;
         let mut public_key_list = Vec::new();
-        let ret = context.ref_state().to_rc()?.get_obj_desc(&union_account.desc().content().left()).await;
+        let ret = context
+            .ref_state()
+            .to_rc()?
+            .get_obj_desc(&union_account.desc().content().left())
+            .await;
         if let Err(err) = &ret {
             let err_code = get_meta_err_code(err)?;
             return if err_code == ERROR_NOT_FOUND {
                 Err(crate::meta_err!(ERROR_CANT_FIND_LEFT_USER_DESC))
             } else {
                 Err(crate::meta_err2!(err_code, err.msg()))
-            }
+            };
         }
         let left_account = ret.unwrap();
         match left_account {
-            SavedMetaObject::Device(device) => {
-                public_key_list.push((union_account.desc().content().left().clone(), device.desc().public_key().clone()))
-            }
+            SavedMetaObject::Device(device) => public_key_list.push((
+                union_account.desc().content().left().clone(),
+                device.desc().public_key().clone(),
+            )),
             // SavedMetaObject::People(people) => {
             //     public_key_list.push((union_account.desc().content().right().clone(), people.desc()))
             // }
-            _ => {
-                return Err(crate::meta_err!(ERROR_LEFT_ACCOUNT_TYPE))
-            }
+            _ => return Err(crate::meta_err!(ERROR_LEFT_ACCOUNT_TYPE)),
         }
 
-        let ret = context.ref_state().to_rc()?.get_obj_desc(&union_account.desc().content().right()).await;
+        let ret = context
+            .ref_state()
+            .to_rc()?
+            .get_obj_desc(&union_account.desc().content().right())
+            .await;
         if let Err(err) = &ret {
             let err_code = get_meta_err_code(err)?;
             return if err_code == ERROR_NOT_FOUND {
                 Err(crate::meta_err!(ERROR_CANT_FIND_RIGHT_USER_DESC))
             } else {
                 Err(crate::meta_err2!(err_code, err.msg()))
-            }
+            };
         }
         let right_account = ret.unwrap();
         match right_account {
-            SavedMetaObject::Device(device) => {
-                public_key_list.push((union_account.desc().content().right().clone(), device.desc().public_key().clone()))
-            }
+            SavedMetaObject::Device(device) => public_key_list.push((
+                union_account.desc().content().right().clone(),
+                device.desc().public_key().clone(),
+            )),
             // SavedMetaObject::People(people) => {
             //     public_key_list.push((union_account.desc().content().right().clone(), people.desc()))
             // }
@@ -187,28 +213,71 @@ impl TxExecutor {
         }
 
         let account_id = tx.body.account.desc().calculate_id();
-        context.ref_state().to_rc()?.create_obj_desc(&account_id, &SavedMetaObject::try_from(StandardObject::UnionAccount(tx.body.account.clone()))?).await?;
+        context
+            .ref_state()
+            .to_rc()?
+            .create_obj_desc(
+                &account_id,
+                &SavedMetaObject::try_from(StandardObject::UnionAccount(tx.body.account.clone()))?,
+            )
+            .await?;
 
         //转账
         if tx.body.left_balance > 0 {
-            self.ref_state.to_rc()?.dec_balance(&tx.body.ctid, &union_account.desc().content().left(), tx.body.left_balance).await?;
-            let account_state = UnionAccountState::new(union_account.desc(), &self.ref_state.to_rc()?)?;
-            account_state.deposit(fee_counter, &union_account.desc().content().left(), &tx.body.ctid, tx.body.left_balance).await?;
+            self.ref_state
+                .to_rc()?
+                .dec_balance(
+                    &tx.body.ctid,
+                    &union_account.desc().content().left(),
+                    tx.body.left_balance,
+                )
+                .await?;
+            let account_state =
+                UnionAccountState::new(union_account.desc(), &self.ref_state.to_rc()?)?;
+            account_state
+                .deposit(
+                    fee_counter,
+                    &union_account.desc().content().left(),
+                    &tx.body.ctid,
+                    tx.body.left_balance,
+                )
+                .await?;
         }
         if tx.body.right_balance > 0 {
-            self.ref_state.to_rc()?.dec_balance(&tx.body.ctid, &union_account.desc().content().right(), tx.body.right_balance).await?;
-            let account_state = UnionAccountState::new(union_account.desc(), &self.ref_state.to_rc()?)?;
-            account_state.deposit(fee_counter, &union_account.desc().content().right(), &tx.body.ctid, tx.body.right_balance).await?;
+            self.ref_state
+                .to_rc()?
+                .dec_balance(
+                    &tx.body.ctid,
+                    &union_account.desc().content().right(),
+                    tx.body.right_balance,
+                )
+                .await?;
+            let account_state =
+                UnionAccountState::new(union_account.desc(), &self.ref_state.to_rc()?)?;
+            account_state
+                .deposit(
+                    fee_counter,
+                    &union_account.desc().content().right(),
+                    &tx.body.ctid,
+                    tx.body.right_balance,
+                )
+                .await?;
         }
         Ok(())
     }
 
-    pub async fn execute_deviate_union(&self
-                                 , context: &mut ExecuteContext
-                                 , fee_counter: &mut context::FeeCounter
-                                 , tx: &DeviateUnionTx) -> BuckyResult<()> {
+    pub async fn execute_deviate_union(
+        &self,
+        context: &mut ExecuteContext,
+        fee_counter: &mut context::FeeCounter,
+        tx: &DeviateUnionTx,
+    ) -> BuckyResult<()> {
         //获取联合账户信息
-        let ret = context.ref_state().to_rc()?.get_obj_desc(&tx.body.union).await?;
+        let ret = context
+            .ref_state()
+            .to_rc()?
+            .get_obj_desc(&tx.body.union)
+            .await?;
         let union_account = if let SavedMetaObject::UnionAccount(union_account) = ret {
             union_account
         } else {
@@ -216,42 +285,50 @@ impl TxExecutor {
         };
 
         let mut public_key_list = Vec::new();
-        let ret = context.ref_state().to_rc()?.get_obj_desc(&union_account.desc().content().left()).await;
+        let ret = context
+            .ref_state()
+            .to_rc()?
+            .get_obj_desc(&union_account.desc().content().left())
+            .await;
         if let Err(err) = &ret {
             let err_code = get_meta_err_code(err)?;
             return if err_code == ERROR_NOT_FOUND {
                 Err(crate::meta_err!(ERROR_CANT_FIND_LEFT_USER_DESC))
             } else {
                 Err(crate::meta_err2!(err_code, err.msg()))
-            }
+            };
         }
         let left_account = ret.unwrap();
         match left_account {
-            SavedMetaObject::Device(device) => {
-                public_key_list.push((union_account.desc().content().left().clone(), device.desc().public_key().clone()))
-            }
+            SavedMetaObject::Device(device) => public_key_list.push((
+                union_account.desc().content().left().clone(),
+                device.desc().public_key().clone(),
+            )),
             // SavedMetaObject::People(people) => {
             //     public_key_list.push((union_account.desc().content().right().clone(), people.desc()))
             // }
-            _ => {
-                return Err(crate::meta_err!(ERROR_LEFT_ACCOUNT_TYPE))
-            }
+            _ => return Err(crate::meta_err!(ERROR_LEFT_ACCOUNT_TYPE)),
         }
 
-        let ret = context.ref_state().to_rc()?.get_obj_desc(&union_account.desc().content().right()).await;
+        let ret = context
+            .ref_state()
+            .to_rc()?
+            .get_obj_desc(&union_account.desc().content().right())
+            .await;
         if let Err(err) = &ret {
             let err_code = get_meta_err_code(err)?;
             return if err_code == ERROR_NOT_FOUND {
                 Err(crate::meta_err!(ERROR_CANT_FIND_RIGHT_USER_DESC))
             } else {
                 Err(crate::meta_err2!(err_code, err.msg()))
-            }
+            };
         }
         let right_account = ret.unwrap();
         match right_account {
-            SavedMetaObject::Device(device) => {
-                public_key_list.push((union_account.desc().content().right().clone(), device.desc().public_key().clone()))
-            }
+            SavedMetaObject::Device(device) => public_key_list.push((
+                union_account.desc().content().right().clone(),
+                device.desc().public_key().clone(),
+            )),
             // SavedMetaObject::People(people) => {
             //     public_key_list.push((union_account.desc().content().right().clone(), people.desc()))
             // }
@@ -265,16 +342,19 @@ impl TxExecutor {
         }
 
         let account_state = UnionAccountState::new(union_account.desc(), &self.ref_state.to_rc()?)?;
-        account_state.deviate(fee_counter, &tx.body.ctid, tx.body.deviation, tx.body.seq).await?;
+        account_state
+            .deviate(fee_counter, &tx.body.ctid, tx.body.deviation, tx.body.seq)
+            .await?;
 
         Ok(())
     }
 
-
-    pub async fn execute_withdraw_from_union(&self
-                                       , context: &mut ExecuteContext
-                                       , _fee_counter: &mut context::FeeCounter
-                                       , tx: &WithdrawFromUnionTx) -> BuckyResult<()> {
+    pub async fn execute_withdraw_from_union(
+        &self,
+        context: &mut ExecuteContext,
+        _fee_counter: &mut context::FeeCounter,
+        tx: &WithdrawFromUnionTx,
+    ) -> BuckyResult<()> {
         if let context::AccountMethods::Single(_) = context.caller().methods() {
             //获取联合账户信息
             let ret = context.ref_state().to_rc()?.get_obj_desc(&tx.union).await?;
@@ -285,15 +365,16 @@ impl TxExecutor {
             };
 
             let caller_id = context.caller().id().clone();
-            if union_account.desc().content().right() != &caller_id && union_account.desc().content().left() != &caller_id {
+            if union_account.desc().content().right() != &caller_id
+                && union_account.desc().content().left() != &caller_id
+            {
                 return Err(crate::meta_err!(ERROR_ACCESS_DENIED));
             }
 
-            self.union_withdraw_manager.to_rc()?.withdraw(context.block()
-                                                          , &tx.union
-                                                          , &caller_id
-                                                          , &tx.ctid
-                                                          , tx.value).await
+            self.union_withdraw_manager
+                .to_rc()?
+                .withdraw(context.block(), &tx.union, &caller_id, &tx.ctid, tx.value)
+                .await
             // context::UnionAccountState::load(&tx.union
             //                                  , &context.ref_state().to_rc()?)?
             //     .withdraw(
@@ -308,7 +389,10 @@ impl TxExecutor {
     // 1. caller就是target本身，有权限
     // 2. caller是target的某一层owner，有权限
     // 否则都算无权限
-    async fn check_permission(context: &mut ExecuteContext, target: &ObjectId) -> BuckyResult<bool> {
+    async fn check_permission(
+        context: &mut ExecuteContext,
+        target: &ObjectId,
+    ) -> BuckyResult<bool> {
         let caller = context.caller().id().clone();
         let mut check = target.clone();
         loop {
@@ -321,15 +405,24 @@ impl TxExecutor {
             let obj = AnyNamedObject::try_from(desc)?;
             // 一直找到没有owner的对象为止
             if obj.owner().is_none() {
-                return Ok(false)
+                return Ok(false);
             }
             check = obj.owner().as_ref().unwrap().clone();
         }
     }
 
-    pub async fn execute_set_benefi_tx(&self, context: &mut ExecuteContext, _fee_counter: &mut context::FeeCounter, tx: &SetBenefiTx) -> BuckyResult<()> {
+    pub async fn execute_set_benefi_tx(
+        &self,
+        context: &mut ExecuteContext,
+        _fee_counter: &mut context::FeeCounter,
+        tx: &SetBenefiTx,
+    ) -> BuckyResult<()> {
         // 获取address现在的受益人信息, 没有受益人的情况，benefi是address自己
-        let benefi = context.ref_state().to_rc()?.get_beneficiary(&tx.address).await?;
+        let benefi = context
+            .ref_state()
+            .to_rc()?
+            .get_beneficiary(&tx.address)
+            .await?;
 
         // 检查caller是不是受益人，或者受益人的owner
         let mut permission = Self::check_permission(context, &benefi).await?;
@@ -340,14 +433,20 @@ impl TxExecutor {
         }
 
         if !permission {
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, "caller is not benefi or benefi`s owner"));
+            return Err(BuckyError::new(
+                BuckyErrorCode::PermissionDenied,
+                "caller is not benefi or benefi`s owner",
+            ));
         }
 
         // 修改benefi
-        context.ref_state().to_rc()?.set_beneficiary(&tx.address, &tx.to).await?;
+        context
+            .ref_state()
+            .to_rc()?
+            .set_beneficiary(&tx.address, &tx.to)
+            .await?;
         Ok(())
     }
-
 }
 
 //Ok(feed),Error(errno)
