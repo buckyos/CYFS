@@ -410,7 +410,7 @@ impl Task for DownloadFileTask {
     }
 
     fn get_task_type(&self) -> TaskType {
-        DOWNLOAD_FILE_TASK
+        self.params.task_type
     }
 
     fn get_task_category(&self) -> TaskCategory {
@@ -555,14 +555,14 @@ impl Task for DownloadFileTask {
         let ret = if let Some(session) = session {
             let len = self.params.len();
             let progress = if len > 0 {
-                ((session.downloaded() as f32 / len as f32) * 100.0) as u64
+                ((session.transfered() as f32 / len as f32) * 100.0) as u64
             } else {
                 100
             };
 
             let state = session.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading => {
+                cyfs_bdt::NdnTaskState::Running => {
                     let speed = session.cur_speed();
                     debug!(
                         "task in downloading: task={}, speed={}",
@@ -584,7 +584,7 @@ impl Task for DownloadFileTask {
                         group: self.params.group.clone(),
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Paused => {
+                cyfs_bdt::NdnTaskState::Paused => {
                     if task_status.status != TaskStatus::Paused {
                         warn!("download task state not matched! task={}, session state={:?}, task state={:?}", self.task_id, state, task_status.status);
                     }
@@ -599,7 +599,7 @@ impl Task for DownloadFileTask {
                         group: self.params.group.clone(),
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Finished => {
+                cyfs_bdt::NdnTaskState::Finished => {
                     info!(
                         "download task bdt session finished! task={}, path={:?}",
                         self.task_id,
@@ -640,7 +640,7 @@ impl Task for DownloadFileTask {
                         }
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Error(err) => {
+                cyfs_bdt::NdnTaskState::Error(err) => {
                     self.take_session().await;
 
                     if err.code() == BuckyErrorCode::Interrupted {

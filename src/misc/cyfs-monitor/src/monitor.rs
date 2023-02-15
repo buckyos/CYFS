@@ -37,6 +37,7 @@ impl Default for MontiorConfig {
 struct MonitorCase {
     runner: Arc<Box<dyn MonitorRunner>>,
     timeout_secs: u64,
+    org_interval_minutes: u64,
     interval_minutes: u64,
     remain_minutes: u64,
     fail_times: u8,
@@ -54,13 +55,18 @@ impl MonitorCase {
         }
     }
 
+    fn set_interval(&mut self, new_interval: u64) {
+        info!("set case {} interval from {} to {} minutes", self.runner.name(), self.interval_minutes, new_interval);
+        self.interval_minutes = new_interval;
+        self.remain_minutes = self.interval_minutes - 1;
+    }
+
     fn failed(&mut self) -> bool {
         let mut new_interval = self.interval_minutes / 2;
         if new_interval * 60 <= self.timeout_secs {
             new_interval = self.timeout_secs / 60 + 1;
         }
-        self.interval_minutes = new_interval;
-        self.remain_minutes = self.interval_minutes - 1;
+        self.set_interval(new_interval);
 
         if self.fail_times >= self.report_after_fail_times {
             self.fail_times = 1;
@@ -68,9 +74,8 @@ impl MonitorCase {
             self.fail_times = self.fail_times + 1;
         }
 
-        info!("case {} set new interval_minutes to {} because run err, before report {}/{}",
+        info!("case {} run err, before report {}/{}",
                     self.runner.name(),
-                    self.interval_minutes,
                     self.fail_times,
                     self.report_after_fail_times);
 
@@ -83,6 +88,7 @@ impl MonitorCase {
                     self.runner.name(),
                     self.fail_times);
             self.fail_times = 0;
+            self.set_interval(self.org_interval_minutes);
         }
     }
 
@@ -154,6 +160,7 @@ impl Monitor {
         let case = MonitorCase {
             runner: Arc::new(Box::new(case)),
             timeout_secs: timeout_sec,
+            org_interval_minutes: interval_mintue,
             interval_minutes: interval_mintue,
             remain_minutes: 0,
             fail_times: 0,

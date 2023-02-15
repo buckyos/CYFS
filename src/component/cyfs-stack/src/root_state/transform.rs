@@ -148,6 +148,8 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
             path: req.path,
             key: req.key,
             content_type: req.content_type,
+            owner: req.owner,
+            dec: req.dec,
         };
 
         self.processor.create_new(in_req).await
@@ -466,6 +468,8 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
             path: req.path,
             key: req.key,
             content_type: req.content_type,
+            owner: req.owner,
+            dec: req.dec,
         };
 
         self.processor.create_new(in_req).await

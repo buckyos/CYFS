@@ -2,18 +2,50 @@ const fs = require('fs')
 const child_process = require('child_process');
 const targets = process.argv[2].split(";")
 const type = process.argv[3].split(";")
-const { apps, services } = require('./build_config')
-const path = require('path')
+const { apps, services, step_file } = require('./build_config')
+const path = require('path');
+const assert = require('assert');
 
-const onlyput = process.argv[4] || "put"
-const action = process.argv[5] || "put"
-const buildnumber = process.argv[6] || "0"
-const channel = process.argv[7] || "nightly"
+const buildnumber = process.argv[4] || "0"
+const channel = process.argv[5] || "nightly"
 
 if (!fs.existsSync('Cargo.toml')) {
     console.error('cannot find Cargo.toml in cwd! check working dir')
 }
 
+const PublishStep = {
+    Pack: 1,
+    Upload: 2,
+    SetVersion: 3,
+    Finish: 4
+}
+
+let processing = {};
+if (fs.existsSync(step_file)) {
+    processing = JSON.parse(fs.readFileSync(step_file))
+}
+
+function set_step(service_name, step, arg) {
+    processing[service_name] = {step: step, arg: arg};
+    fs.writeFileSync(step_file, JSON.stringify(processing))
+}
+
+function get_step_arg(service_name, step) {
+    if (processing[service_name].step === step) {
+        return processing[service_name].arg;
+    }
+
+    return undefined;
+}
+
+function need_step(service_name, step) {
+    let old_info = processing[service_name];
+    if (!old_info) {
+        return true
+    }
+
+    return old_info.step < step
+}
 
 const protocols = {
     'http:': require('http'),
@@ -78,7 +110,7 @@ function meta_url(channel) {
     }
 }
 
-let version = `1.0.${version_from_channel(channel)}.${buildnumber}`;
+let version = `1.1.${version_from_channel(channel)}.${buildnumber}`;
 
 let repo_path = process.env.FFS_SERVICE_REPO_DESC;
 if (!repo_path) {
@@ -129,62 +161,21 @@ async function run() {
     }
     console.log(`get file repo account ${file_repo_id} balance ${balance}`)
     
-    if (type.includes("apps")) {
-        try { fs.rmSync('dist/app_config.cfg') } catch (error) { }
-        let app_config = []
-    
-        for (const app of apps) {
-            if (!app.pub) {
-                continue
-            }
-            if (onlyput !== "onlyput") {
-                for (const target of targets) {
-                    if (app.exclude && app.exclude.includes(target)) {
-                        continue
-                    }
-                    if (app.include && !app.include.includes(target)) {
-                        continue
-                    }
-                    let project_path = app.path || `app/${app.name}`
-                    let config_path = app.config_file[target] || app.config_file.default
-                    fs.copyFileSync(`${project_path}/${config_path}`, `dist/apps/${app.name}/${target}/package.cfg`)
-    
-                    if (app.assets && app.assets[target]) {
-                        for (const asset of app.assets[target]) {
-                            fs.copyFileSync(asset.from, `dist/apps/${app.name}/${target}/${asset.to}`)
-                        }
-                    }
-                }
-    
-                child_process.execSync(`bash -c "./pack-tools -d apps/${app.name}"`, { cwd: 'dist', stdio: 'inherit' })
-            }
-    
-            child_process.execSync(`cyfs-client ${action} apps/${app.name}.zip -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
-            let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'});
-            app_config.apps.push({ "id": app.appid, "ver": `${version}`, "status": 1 })
-    
-            // 运行app-tool，添加版本和fid
-            if (app.appid !== undefined) {
-                let cmd = `app-tool app set -v ${version} -s ${fid} ${app.appid} -o ${repo_path}`;
-                console.log("will run app tool cmd:", cmd)
-                child_process.execSync(cmd, { cwd: 'dist', stdio: 'inherit' })
-            }
-    
-        }
-    
-        fs.writeJSONSync('dist/app_config.cfg', app_config)
-    }
-    
-    
     if (type.includes("services")) {
         try { fs.removeSync('dist/device_config.cfg') } catch (error) { }
     
         let device_config = [];
         for (const service of services) {
+            if (!service.id) {
+                console.error(`service ${service.name} has no id!`);
+                process.exit(1);
+            }
+
             if (!service.pub) {
                 continue
             }
-            if (onlyput !== "onlyput") {
+
+            if (need_step(service.name, PublishStep.Pack)) {
                 for (const target of targets) {
                     if (service.exclude && service.exclude.includes(target)) {
                         continue
@@ -192,31 +183,41 @@ async function run() {
                     if (service.include && !service.include.includes(target)) {
                         continue
                     }
-    
+
                     let config_path = service.config_file[target] || service.config_file.default
                     fs.copyFileSync(`service/${service.name}/${config_path}`, `dist/services/${service.name}/${target}/package.cfg`)
-    
+
                     if (service.assets && service.assets[target]) {
                         for (const asset of service.assets[target]) {
                             fs.copyFileSync(asset.from, `dist/services/${service.name}/${target}/${asset.to}`)
                         }
                     }
-    
+
                     child_process.execSync(`bash -c "./pack-tools -d services/${service.name}/${target}"`, { cwd: 'dist', stdio: 'inherit' })
                     fs.rmSync(`dist/services/${service.name}/${target}`, {recursive: true, force: true});
                 }
+                set_step(service.name, PublishStep.Pack)
             }
-    
-            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path} --tcp`, { cwd: 'dist', stdio: 'inherit' })
-            let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
-            device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
-    
-            // 运行app-tool，添加版本和fid
-            if (service.id !== undefined) {
-                let cmd = `app-tool app set -v ${version} -s ${fid} ${service.id} -o ${repo_path}`;
+
+            if (need_step(service.name, PublishStep.Upload)) {
+                child_process.execSync(`cyfs-client put services/${service.name} -f fid -o ${file_repo_path} --tcp`, { cwd: 'dist', stdio: 'inherit' })
+                let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
+                set_step(service.name, PublishStep.Upload, fid)
+            }
+
+            if (need_step(service.name, PublishStep.SetVersion)) {
+                // 运行app-tool，添加版本和fid
+                let fid = get_step_arg(service.name, PublishStep.Upload)
+                let app_version = version + "-preview";
+                let cmd = `app-tool app set -v ${app_version} -s ${fid} ${service.id} -o ${repo_path}`;
                 console.log("will run app tool cmd:", cmd)
                 child_process.execSync(cmd, { cwd: 'dist', stdio: 'inherit' })
+                set_step(service.name, PublishStep.SetVersion, version)
             }
+
+            let service_version = get_step_arg(service.name, PublishStep.SetVersion)
+            assert(!!service_version)
+            device_config.push({ "id": service.id, "ver": `${service_version}`, "status": 1 })
         }
     
         fs.writeFileSync('dist/device-config.cfg', JSON.stringify(device_config))
@@ -226,6 +227,7 @@ async function run() {
 }
 
 run().then(() => {
+    fs.rmSync(step_file, {force: true, maxRetries: 3})
     process.exit(0)
 })
 

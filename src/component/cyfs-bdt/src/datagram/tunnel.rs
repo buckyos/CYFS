@@ -340,12 +340,19 @@ impl DatagramTunnel {
         vport: u16,
     ) -> Result<(), std::io::Error> {
         let mtu = MTU;
-        let datagram = self.build_datagram(buf, options, remote, vport, None);
-        let fragment_len = datagram.fragment_len(mtu, options.plaintext);
+        let mut datagram = self.build_datagram(buf, options, remote, vport, None);
+        let mut fragment_len = datagram.fragment_len(mtu, options.plaintext);
 
         if fragment_len == 0 {
             self.send_datagram(datagram, remote, options.plaintext)
         } else {
+            if options.sequence.is_none() {
+                let seq = self.0.sequence.generate();
+                options.sequence = Some(seq);
+                datagram.sequence = Some(seq);
+                fragment_len = datagram.fragment_len(mtu, options.plaintext);
+            }
+
             let count = (buf.len() as f64 / fragment_len as f64).ceil() as u8;
             let mut start = 0;
             let mut end = fragment_len;

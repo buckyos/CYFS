@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::borrow::Cow;
 
 // 请求的数据类型
 #[derive(Clone)]
@@ -249,6 +250,26 @@ impl NONObjectInfo {
     
     pub fn object(&self) -> &Arc<AnyNamedObject> {
         self.object.as_ref().unwrap()
+    }
+
+
+    pub fn object_if_none_then_decode(&self) -> BuckyResult<Cow<AnyNamedObject>> {
+        match &self.object {
+            Some(object) => {
+                Ok(Cow::Borrowed(object.as_ref()))
+            }
+            None => {
+                let (object, _) = AnyNamedObject::raw_decode(&self.object_raw).map_err(|e| {
+                    error!(
+                        "decode object from object_raw error: obj={} {}",
+                        self.object_id, e,
+                    );
+                    e
+                })?;
+
+                Ok(Cow::Owned(object))
+            }
+        }
     }
 
     pub fn take_object(&mut self) -> Arc<AnyNamedObject> {

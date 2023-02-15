@@ -4,7 +4,7 @@ use cyfs_base::*;
 
 use cyfs_core::TransContext;
 use serde_json::{Map, Value};
-use std::str::FromStr;
+use std::str::{FromStr};
 
 impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
@@ -292,7 +292,7 @@ impl JsonCodec<TransPublishFileOutputRequest> for TransPublishFileOutputRequest 
             "chunk_size".to_owned(),
             Value::String(self.chunk_size.to_string()),
         );
-
+        JsonCodecHelper::encode_option_string_field(&mut obj, "chunk_method", Some(format!("{:?}", self.chunk_method)).as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "file_id", self.file_id.as_ref());
 
         if let Some(dirs) = &self.dirs {
@@ -316,6 +316,7 @@ impl JsonCodec<TransPublishFileOutputRequest> for TransPublishFileOutputRequest 
             owner: JsonCodecHelper::decode_string_field(&obj, "owner")?,
             local_path: JsonCodecHelper::decode_string_field(&obj, "local_path")?,
             chunk_size: JsonCodecHelper::decode_int_field(&obj, "chunk_size")?,
+            chunk_method: JsonCodecHelper::decode_option_string_field(&obj, "chunk_method")?.unwrap_or(TransPublishChunkMethod::Track), 
             dirs: JsonCodecHelper::decode_option_array_field(&obj, "dirs")?,
             file_id: JsonCodecHelper::decode_option_string_field(obj, "file_id")?,
             access,
@@ -339,6 +340,7 @@ impl JsonCodec<TransPublishFileInputRequest> for TransPublishFileInputRequest {
         });
         JsonCodecHelper::encode_string_field(&mut obj, "local_path", local_path);
         JsonCodecHelper::encode_number_field(&mut obj, "chunk_size", self.chunk_size);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "chunk_method", Some(format!("{:?}", self.chunk_method)).as_ref());
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "file_id", self.file_id.as_ref());
 
@@ -360,6 +362,7 @@ impl JsonCodec<TransPublishFileInputRequest> for TransPublishFileInputRequest {
             owner: JsonCodecHelper::decode_string_field(&obj, "owner")?,
             local_path: JsonCodecHelper::decode_string_field(&obj, "local_path")?,
             chunk_size: JsonCodecHelper::decode_int_field(&obj, "chunk_size")?,
+            chunk_method: JsonCodecHelper::decode_option_string_field(&obj, "chunk_method")?.unwrap_or(TransPublishChunkMethod::Track), 
             dirs: JsonCodecHelper::decode_option_array_field(&obj, "dirs")?,
             file_id: JsonCodecHelper::decode_option_string_field(obj, "file_id")?,
             access,

@@ -153,6 +153,7 @@ impl StackInfo {
             known_passive_pn: init_pn_peers,
             known_device: init_known_peers,
             udp_sn_only: self.bdt_params.udp_sn_only,
+            sn_mode: self.bdt_params.sn_mode,
         };
 
         bdt_param

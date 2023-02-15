@@ -17,7 +17,7 @@ async-trait = "0.1.53"
 lazy_static = "1.4"
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
-cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base = { path = "../../component/cyfs-base", features = ["perf"]}
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-core = { path = "../../component/cyfs-core" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }

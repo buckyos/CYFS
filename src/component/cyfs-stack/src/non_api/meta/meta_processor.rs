@@ -27,6 +27,7 @@ impl MetaInputProcessor {
         meta_cache: MetaCacheRef,
         named_data_components: &NamedDataComponents,
         noc: NamedObjectCacheRef,
+        relation: NamedObjectRelationCacheRef,
     ) -> NONInputProcessorRef {
         let noc_with_meta_processor = Self::new(noc_processor, meta_cache);
 
@@ -34,6 +35,7 @@ impl MetaInputProcessor {
             noc_with_meta_processor,
             named_data_components,
             noc,
+            relation,
         );
 
         inner_path_processor

@@ -74,7 +74,10 @@ impl HttpRequestor for BdtHttpRequestor {
         );
         // bdt_stream.display_ref_count();
 
-        match async_h1::connect(bdt_stream, req.take().unwrap()).await {
+        let req = req.take().unwrap();
+        let req = self.add_default_headers(req);
+        
+        match async_h1::connect(bdt_stream, req).await {
             Ok(resp) => {
                 info!(
                     "http-bdt request to {} success! during={}ms, seq={:?}",

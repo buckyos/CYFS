@@ -244,6 +244,12 @@ struct ChunkDowloaderImpl {
     state: RwLock<StateImpl>, 
 }
 
+impl std::fmt::Display for ChunkDowloaderImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChunkDownloader{{chunk:{}}}", self.cache.chunk())
+    }
+}
+
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 
@@ -258,6 +264,7 @@ impl Drop for ChunkDowloaderImpl {
         };
        
         if let Some(session) = session {
+            info!("{} canceled for drop", self);
             session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
         }
     }
@@ -280,7 +287,7 @@ impl ChunkDownloader {
 
 impl std::fmt::Display for ChunkDownloader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChunkDownloader{{chunk:{}}}", self.chunk())
+        write!(f, "{}", self.0)
     }
 }
 
@@ -408,6 +415,7 @@ impl ChunkDownloader {
 
     async fn sync_finished(&self) {
         if self.cache().wait_exists(0..self.cache().chunk().len(), || self.owner().wait_user_canceled()).await.is_ok() {
+            info!("{} finished", self);
             let state = &mut *self.0.state.write().unwrap();
             *state = StateImpl::Finished;
         }

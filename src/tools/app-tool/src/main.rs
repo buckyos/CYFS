@@ -6,9 +6,6 @@ use cyfs_base::{
 };
 use cyfs_base_meta::{Data, SavedMetaObject};
 use cyfs_core::{AppList, AppListObj, AppStatus, AppStatusObj, DecApp, DecAppId, DecAppObj};
-use cyfs_lib::{
-    NONAPILevel, NONObjectInfo, NONOutputRequestCommon, NONPutObjectRequest, SharedCyfsStack,
-};
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 use lazy_static::lazy_static;
 use log::*;
@@ -56,58 +53,6 @@ fn add_id_or_file_arg<'a, 'b>(cmd: App<'a, 'b>) -> App<'a, 'b> {
             .default_value("")
             .help("app or app list name"),
     )
-}
-
-async fn put_object<D, T, N>(stack: &SharedCyfsStack, obj: &N)
-where
-    D: ObjectType,
-    T: RawEncode,
-    N: RawConvertTo<T>,
-    N: NamedObject<D>,
-    <D as ObjectType>::ContentType: BodyContent,
-{
-    let object_id = obj.desc().calculate_id();
-    match stack
-        .non_service()
-        .put_object(NONPutObjectRequest {
-            common: NONOutputRequestCommon::new(NONAPILevel::Router),
-            object: NONObjectInfo::new_from_object_raw(obj.to_vec().unwrap()).unwrap(),
-            access: None
-        })
-        .await
-    {
-        Ok(_) => {
-            info!("put obj [{}] to ood success!", &object_id);
-        }
-        Err(e) => {
-            if e.code() != BuckyErrorCode::Ignored {
-                error!("put obj [{}] to ood failed! {}", &object_id, e);
-            } else {
-                info!("put obj [{}] to ood success!", &object_id);
-            }
-        }
-    }
-}
-
-async fn put_object_ex<D, T, N>(obj: &N)
-where
-    D: ObjectType,
-    T: RawEncode,
-    N: RawConvertTo<T>,
-    N: NamedObject<D>,
-    <D as ObjectType>::ContentType: BodyContent,
-{
-    let cyfs_stack = match SharedCyfsStack::open_default(None).await {
-        Ok(stack) => Some(stack),
-        Err(e) => {
-            warn!("cannot open local stack, err {}", e);
-            None
-        }
-    };
-
-    if let Some(stack) = cyfs_stack {
-        put_object(&stack, obj).await;
-    }
 }
 
 fn get_owner(matches: &ArgMatches<'_>) -> Option<(StandardObject, PrivateKey)> {
@@ -184,38 +129,50 @@ async fn get_list(matches: &ArgMatches<'_>) -> BuckyResult<(AppList, SaveTarget)
     }
 }
 
+async fn get_app_from_meta(id: &ObjectId, target: &SaveTarget) -> BuckyResult<DecApp> {
+    match target {
+        SaveTarget::Meta(client, _) => {
+            match client.get_desc(&id).await {
+                Ok(data) => {
+                    if let SavedMetaObject::Data(data) = data {
+                        let app = DecApp::clone_from_slice(&data.data).unwrap();
+                        Ok(app)
+                    } else {
+                        error!("get {} from meta failed, unmatch", &id);
+                        Err(BuckyError::from(BuckyErrorCode::NotMatch))
+                    }
+                }
+                Err(e) => {
+                    error!("get {} from meta failed, err {}", &id, e);
+                    Err(e)
+                }
+            }
+        },
+        SaveTarget::File(_, _) => {
+            Err(BuckyError::from(BuckyErrorCode::NotSupport))
+        }
+    }
+}
+
 async fn get_app(matches: &ArgMatches<'_>) -> BuckyResult<(DecApp, SaveTarget)> {
+    let owner = get_owner(matches);
     if let Some(id_str) = matches.value_of("id") {
+        let id = ObjectId::from_str(id_str).unwrap();
         let meta_client = MetaClient::new_target(
             MetaMinerTarget::from_str(matches.value_of("meta_target").unwrap()).unwrap(),
         );
-        let id = ObjectId::from_str(id_str).unwrap();
 
-        return match meta_client.get_desc(&id).await {
-            Ok(data) => {
-                if let SavedMetaObject::Data(data) = data {
-                    let app = DecApp::clone_from_slice(&data.data).unwrap();
-                    let owner = get_owner(matches);
-                    Ok((app, SaveTarget::Meta(meta_client, owner)))
-                } else {
-                    error!("get {} from meta failed, unmatch", &id);
-                    Err(BuckyError::from(BuckyErrorCode::NotMatch))
-                }
-            }
-            Err(e) => {
-                error!("get {} from meta failed, err {}", &id, e);
-                Err(e)
-            }
-        };
+        let target = SaveTarget::Meta(meta_client, owner);
+        let app = get_app_from_meta(&id, &target).await?;
+        Ok((app, target))
     } else if let Some(file_path) = matches.value_of("file") {
         let (app, _) = DecApp::decode_from_file(file_path.as_ref(), &mut vec![])?;
-        let owner = get_owner(matches);
         return Ok((app, SaveTarget::File(file_path.to_owned(), owner)));
     } else {
         let meta_client = MetaClient::new_target(
             MetaMinerTarget::from_str(matches.value_of("meta_target").unwrap()).unwrap(),
         );
-        let owner = get_owner(matches);
+
         if owner.is_none() {
             error!("must use owner and name when no id or file!");
             return Err(BuckyError::from(BuckyErrorCode::InvalidInput));
@@ -255,54 +212,53 @@ impl SaveTarget {
             SaveTarget::File(_, owner) => owner.as_ref().map(|(obj, _)| obj.calculate_id()),
         }
     }
-}
 
-async fn save_obj<D, N>(target: SaveTarget, obj: &N) -> BuckyResult<()>
-where
-    D: ObjectType,
-    N: RawEncode,
-    N: NamedObject<D>,
-    <D as ObjectType>::ContentType: BodyContent,
-{
-    match target {
-        SaveTarget::Meta(meta_client, owner) => {
-            let upload_data = SavedMetaObject::Data(Data {
-                id: obj.desc().calculate_id(),
-                data: obj.to_vec().unwrap(),
-            });
+    async fn save_obj<D, N>(&self, obj: &N) -> BuckyResult<()>
+        where
+            D: ObjectType,
+            N: RawEncode,
+            N: NamedObject<D>,
+            <D as ObjectType>::ContentType: BodyContent,
+    {
+        match self {
+            SaveTarget::Meta(meta_client, owner) => {
+                let upload_data = SavedMetaObject::Data(Data {
+                    id: obj.desc().calculate_id(),
+                    data: obj.to_vec().unwrap(),
+                });
 
-            match meta_client
-                .update_desc(
-                    &owner.as_ref().unwrap().0,
-                    &upload_data,
-                    None,
-                    None,
-                    &owner.as_ref().unwrap().1,
-                )
-                .await
-            {
-                Ok(txid) => {
-                    info!("upload obj to meta success, TxId {}", &txid);
+                if let Some((owner, secret)) = owner {
+                    match meta_client.update_desc(owner,&upload_data,None,None, secret).await
+                    {
+                        Ok(txid) => {
+                            info!("upload obj to meta success, TxId {}", &txid);
+                        }
+                        Err(e) => {
+                            error!("upload obj to meta fail, err {}", e);
+                            return Err(e);
+                        }
+                    }
+                } else {
+                    error!("save obj to meta but no owner desc!");
+                    return Err(BuckyError::from(BuckyErrorCode::InvalidParam))
+                }
+            }
+            SaveTarget::File(path, _) => match obj.encode_to_file(path.as_ref(), false) {
+                Ok(_) => {
+                    info!("write obj to {} success", path);
                 }
                 Err(e) => {
-                    error!("upload obj to meta fail, err {}", e);
-                    return Err(e);
+                    info!("write obj to {} failed, err {}", path, e);
+                    return Err(e)
                 }
-            }
+            },
         }
-        SaveTarget::File(path, _) => match obj.encode_to_file(path.as_ref(), false) {
-            Ok(_) => {
-                info!("write obj to {} success", path);
-            }
-            Err(e) => {
-                info!("write obj to {} failed, err {}", path, e);
-                return Err(e)
-            }
-        },
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
+
+
 
 lazy_static! {
     static ref DEFAULT_TARGET: String = MetaMinerTarget::default().to_string();
@@ -320,201 +276,127 @@ async fn main_run() -> BuckyResult<()> {
         .long("meta_target")
         .default_value(&DEFAULT_TARGET)
         .help("meta target");
-    let matches = App::new("app-tool")
+    let app = App::new("app-tool")
         .version(cyfs_base::get_version())
         .about("manage app list")
         .subcommand(
             SubCommand::with_name("list")
                 .about("create/modify/show app list object")
-                .subcommand(
-                    SubCommand::with_name("create")
+                .subcommand(SubCommand::with_name("create")
                         .about("create app list object")
-                        .arg(
-                            Arg::with_name("owner")
-                                .short("o")
-                                .long("owner")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app list owner desc/sec file"),
-                        )
-                        .arg(
-                            Arg::with_name("name")
-                                .short("n")
-                                .long("name")
+                        .arg(Arg::with_name("owner")
+                                .short("o").long("owner")
+                                .takes_value(true).required(true)
+                                .help("app list owner desc/sec file"))
+                        .arg(Arg::with_name("name")
+                                .short("n").long("name")
                                 .default_value("")
-                                .help("app list name, default empty string"),
-                        )
-                        .arg(
-                            Arg::with_name("type")
-                                .short("t")
-                                .long("type")
+                                .help("app list name, default empty string"))
+                        .arg(Arg::with_name("type")
+                                .short("t").long("type")
                                 .default_value("app")
-                                .possible_values(&["app", "service"]),
-                        )
-                        .arg(
-                            Arg::with_name("upload")
-                                .short("u")
-                                .long("upload")
-                                .help("upload app list to chain, use owner account"),
-                        )
+                                .possible_values(&["app", "service"]))
+                        .arg(Arg::with_name("upload")
+                                .short("u").long("upload")
+                                .help("upload app list to chain, use owner account"))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(SubCommand::with_name("put").about("put app to app list"))
-                        .arg(
-                            Arg::with_name("type")
-                                .short("t")
-                                .long("type")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("put").about("put app to app list"))
+                        .arg(Arg::with_name("type")
+                                .short("t").long("type")
                                 .default_value("app")
-                                .possible_values(&["app", "service"]),
-                        )
-                        .arg(
-                            Arg::with_name("appid")
+                                .possible_values(&["app", "service"]))
+                        .arg(Arg::with_name("appid")
                                 .short("i")
-                                .required(true)
-                                .takes_value(true)
-                                .help("app id add to app list"),
-                        )
-                        .arg(
-                            Arg::with_name("appver")
+                                .required(true).takes_value(true)
+                                .help("app id add to app list"))
+                        .arg(Arg::with_name("appver")
                                 .short("v")
-                                .required(true)
-                                .takes_value(true)
-                                .help("app ver add to app list"),
-                        )
-                        .arg(
-                            Arg::with_name("status")
-                                .short("s")
-                                .long("start")
-                                .help("start app, default false"),
-                        )
+                                .required(true).takes_value(true)
+                                .help("app ver add to app list"))
+                        .arg(Arg::with_name("status")
+                                .short("s").long("start")
+                                .help("start app, default false"))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(
-                        SubCommand::with_name("remove").about("remove app from list"),
-                    )
-                    .arg(
-                        Arg::with_name("type")
-                            .short("t")
-                            .long("type")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("remove").about("remove app from list"))
+                    .arg(Arg::with_name("type")
+                            .short("t").long("type")
                             .default_value("app")
-                            .possible_values(&["app", "service"]),
-                    )
-                    .arg(
-                        Arg::with_name("appid")
+                            .possible_values(&["app", "service"]))
+                    .arg(Arg::with_name("appid")
                             .short("i")
-                            .takes_value(true)
-                            .required(true)
-                            .help("remove app id"),
-                    )
+                            .takes_value(true).required(true)
+                            .help("remove app id"))
                     .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(SubCommand::with_name("clear").about("clean all apps"))
-                        .arg(
-                            Arg::with_name("type")
-                                .short("t")
-                                .long("type")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("clear").about("clean all apps"))
+                        .arg(Arg::with_name("type")
+                                .short("t").long("type")
                                 .default_value("app")
-                                .possible_values(&["app", "service"]),
-                        )
+                                .possible_values(&["app", "service"]))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(SubCommand::with_name("show").about("show app list obj"))
-                        .arg(
-                            Arg::with_name("type")
-                                .short("t")
-                                .long("type")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("show").about("show app list obj"))
+                        .arg(Arg::with_name("type")
+                                .short("t").long("type")
                                 .default_value("app")
-                                .possible_values(&["app", "service"]),
-                        )
+                                .possible_values(&["app", "service"]))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(
-                        SubCommand::with_name("update").about("update app list from json"),
-                    )
-                    .arg(
-                        Arg::with_name("config")
-                            .short("c")
-                            .long("config")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("update").about("update app list from json"))
+                    .arg(Arg::with_name("config")
+                            .short("c").long("config")
                             .takes_value(true)
-                            .required(true),
-                    )
-                    .arg(
-                        Arg::with_name("type")
-                            .short("t")
-                            .long("type")
-                            .default_value("app")
-                            .possible_values(&["app", "service"]),
-                    ).arg(
-                        Arg::with_name("clear")
-                            .long("clear")
-                            .help("cleat list before update")
-                    )
+                            .required(true))
+                    .arg(Arg::with_name("type").short("t").long("type").default_value("app").possible_values(&["app", "service"]))
+                    .arg(Arg::with_name("clear").long("clear")
+                        .help("cleat list before update"))
+                    .arg(Arg::with_name("unpreview").long("unpreview")
+                        .help("change app preview version to normal version"))
                     .arg(meta_arg.clone()),
                 ),
         )
-        .subcommand(
-            SubCommand::with_name("app")
+        .subcommand(SubCommand::with_name("app")
                 .about("create/modify/show app object")
-                .subcommand(
-                    SubCommand::with_name("create")
+                .subcommand(SubCommand::with_name("create")
                         .about("create app object")
-                        .arg(
-                            Arg::with_name("owner")
+                        .arg(Arg::with_name("owner")
                                 .short("o")
                                 .long("owner")
                                 .takes_value(true)
                                 .required(true)
-                                .help("app owner desc/sec file"),
-                        )
-                        .arg(
-                            Arg::with_name("id")
+                                .help("app owner desc/sec file"))
+                        .arg(Arg::with_name("id")
                                 .index(1)
                                 .takes_value(true)
                                 .required(true)
-                                .help("app id"),
-                        )
-                        .arg(
-                            Arg::with_name("upload")
+                                .help("app id"))
+                        .arg(Arg::with_name("upload")
                                 .short("u")
                                 .long("upload")
-                                .help("upload app list to chain, use owner account"),
-                        )
+                                .help("upload app list to chain, use owner account"))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(SubCommand::with_name("set").about("add source to app"))
-                        .arg(
-                            Arg::with_name("appver")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("set").about("add source to app"))
+                        .arg(Arg::with_name("appver")
                                 .short("v")
                                 .required(true)
                                 .takes_value(true)
-                                .help("ver add to app source"),
-                        )
-                        .arg(
-                            Arg::with_name("source")
+                                .help("ver add to app source"))
+                        .arg(Arg::with_name("source")
                                 .short("s")
                                 .required(true)
                                 .takes_value(true)
-                                .help("fileid add to app source"),
-                        )
+                                .help("fileid add to app source"))
                         .arg(meta_arg.clone()),
                 )
-                .subcommand(
-                    add_id_or_file_arg(
-                        SubCommand::with_name("remove").about("remove source from app"),
-                    )
-                    .arg(
-                        Arg::with_name("appver")
+                .subcommand(add_id_or_file_arg(SubCommand::with_name("remove").about("remove source from app"))
+                    .arg(Arg::with_name("appver")
                             .short("v")
                             .takes_value(true)
                             .required(true)
-                            .help("remove app ver"),
-                    )
+                            .help("remove app ver"))
                     .arg(meta_arg.clone()),
                 )
                 .subcommand(
@@ -525,117 +407,8 @@ async fn main_run() -> BuckyResult<()> {
                     add_id_or_file_arg(SubCommand::with_name("show").about("show app obj"))
                         .arg(meta_arg.clone()),
                 ),
-        )
-        .subcommand(
-            SubCommand::with_name("cmd")
-                .about("add/install/uninstall/start/stop/setpermission/setquota")
-                .subcommand(
-                    SubCommand::with_name("add")
-                        .about("add app")
-                        .arg(
-                            Arg::with_name("owner")
-                                .short("o")
-                                .long("owner")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app owner id"),
-                        )
-                        .arg(
-                            Arg::with_name("id")
-                                .index(1)
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("install")
-                        .about("install app")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(
-                            Arg::with_name("version")
-                                .short("value")
-                                .long("version")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app version"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("start")
-                        .about("install app")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("stop")
-                        .about("stop app")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("remove")
-                        .about("remove app")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("uninstall")
-                        .about("uninstall app")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("setpermission")
-                        .about("set app permission")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                )
-                .subcommand(
-                    SubCommand::with_name("setquota")
-                        .about("set app quota")
-                        .arg(
-                            Arg::with_name("id")
-                                .takes_value(true)
-                                .required(true)
-                                .help("app id"),
-                        )
-                        .arg(meta_arg.clone()),
-                ),
-        )
-        .get_matches();
+        );
+        let matches = app.get_matches();
 
     match matches.subcommand() {
         ("list", Some(matches)) => {
@@ -715,7 +488,7 @@ async fn main_run() -> BuckyResult<()> {
                             matches.is_present("status"),
                         );
                         list.put(status);
-                        save_obj(target, &list).await
+                        target.save_obj(&list).await
                     })
                     .await
                 }
@@ -728,7 +501,7 @@ async fn main_run() -> BuckyResult<()> {
                             DecAppId::from_str(matches.value_of("appid").unwrap()).unwrap();
                         list.remove(&app_id);
 
-                        save_obj(target, &list).await
+                        target.save_obj(&list).await
                     })
                     .await
                 }
@@ -739,7 +512,7 @@ async fn main_run() -> BuckyResult<()> {
 
                         list.clear();
 
-                        save_obj(target, &list).await
+                        target.save_obj(&list).await
                     })
                     .await
                 }
@@ -777,38 +550,36 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         // 需要config格式：[{id, ver, status}]
                         for service in config.as_array().unwrap() {
+                            let service = service.as_object().unwrap();
                             let app_id = DecAppId::from_str(
-                                service
-                                    .as_object()
-                                    .unwrap()
-                                    .get("id")
-                                    .unwrap()
-                                    .as_str()
-                                    .unwrap(),
+                                service.get("id").unwrap().as_str().unwrap(),
                             )
                             .unwrap();
-                            let ver = service
-                                .as_object()
-                                .unwrap()
-                                .get("ver")
-                                .unwrap()
-                                .as_str()
-                                .unwrap()
-                                .to_owned();
-                            let status = service
-                                .as_object()
-                                .unwrap()
-                                .get("status")
-                                .unwrap()
-                                .as_i64()
-                                .unwrap()
-                                == 1;
+                            let ver = service.get("ver").unwrap().as_str().unwrap();
+                            let status = service.get("status").unwrap().as_i64().unwrap() == 1;
+
+                            if matches.is_present("unpreview") {
+                                info!("check preview version {} for app {}", ver, &app_id);
+
+                                if let Ok(mut app) = get_app_from_meta(app_id.object_id(), &target).await {
+                                    let pre_version = format!("{}-preview", ver);
+                                    if let Ok(id) = app.find_source(&pre_version) {
+                                        info!("find preview version {}, change to normal", &pre_version);
+                                        let desc = app.find_source_desc(&pre_version).map(|s|s.to_owned());
+                                        app.remove_source(&pre_version);
+                                        app.set_source(ver.to_owned(), id, desc);
+
+                                        target.save_obj(&app).await;
+                                    }
+                                }
+                            }
+
                             let status =
-                                AppStatus::create(target.owner_id().unwrap(), app_id, ver, status);
+                                AppStatus::create(target.owner_id().unwrap(), app_id, ver.to_owned(), status);
                             list.put(status);
                         }
 
-                        save_obj(target, &list).await
+                        target.save_obj(&list).await
                     })
                     .await
                 }
@@ -878,7 +649,7 @@ async fn main_run() -> BuckyResult<()> {
                     let ver = matches.value_of("appver").unwrap().to_owned();
                     app.set_source(ver, source, None);
 
-                    save_obj(target, &app).await
+                    target.save_obj(&app).await
                 })
                 .await
             }
@@ -890,7 +661,7 @@ async fn main_run() -> BuckyResult<()> {
                     let ver = matches.value_of("appver").unwrap();
                     app.remove_source(&ver);
 
-                    save_obj(target, &app).await
+                    target.save_obj(&app).await
                 })
                 .await
             }
@@ -901,7 +672,7 @@ async fn main_run() -> BuckyResult<()> {
 
                     app.clear_source();
 
-                    save_obj(target, &app).await
+                    target.save_obj(&app).await
                 })
                 .await
             }

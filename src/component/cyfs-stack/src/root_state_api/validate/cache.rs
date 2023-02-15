@@ -37,7 +37,10 @@ impl GlobalStatePathCacheInner {
             return Ok(ret.cloned());
         }
 
-        if let Some(item) = self.failed_cache.get(key) {
+        // force remove expired items 
+        self.failed_cache.iter();
+
+        if let Some(item) = self.failed_cache.peek(key) {
             return Err(item.error.clone());
         }
 

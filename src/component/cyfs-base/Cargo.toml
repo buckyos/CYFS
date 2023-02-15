@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-base'
-version = '0.6.8'
+version = '0.6.10'
 authors = ['liuzhicong <liuzhicong@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -16,6 +16,7 @@ protoc-bin-vendored = '3'
 [features]
 default = []
 sqlx-error = ['dep:sqlx']
+perf = []
 
 [dependencies]
 cyfs-base-derive = { path = '../cyfs-base-derive', version = '0.5' }
