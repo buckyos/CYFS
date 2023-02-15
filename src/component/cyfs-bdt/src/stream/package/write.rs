@@ -233,6 +233,35 @@ impl WriteProvider {
         let _ = stream.send_packages(packages);
         result
     }
+
+    pub fn reset(&self, stream: &PackageStream) {
+        let waiters = {
+            let mut waiters = LinkedList::new();
+            let state = &mut *cyfs_debug::lock!(self.0).unwrap();
+            match state {
+                WriteProviderState::Open(provider) => {
+                    info!("{} reset write", stream);
+                    if let Some(waiter) = provider.write_waiter.as_ref() {
+                        waiters.push_back(waiter.clone());
+                        provider.write_waiter = None;
+                    } 
+                    waiters.append(&mut provider.flush_waiters);
+                    if let Some(waiter) = provider.close_waiter.as_ref() {
+                        waiters.push_back(waiter.clone());
+                        provider.close_waiter = None;
+                    }
+                    *state = WriteProviderState::Closed;
+                },
+                _ => {}
+            }
+
+            waiters
+        };
+       
+        for waiter in waiters {
+            waiter.wake();
+        }
+    }
 }
 
 impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for WriteProvider {
@@ -244,10 +273,7 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
             match state {
                 WriteProviderState::Open(provider) => {
                     let now = bucky_time_now();
-                    if session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
-                        *state = WriteProviderState::Closed;
-                        return Ok(OnPackageResult::Handled)
-                    } else if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
+                    if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
                         let ack_est_package = session_data;
                         let package_id = ack_est_package.id_part.as_ref().unwrap().package_id;
                         trace!("{} recv estimate ack package {}", stream, package_id);
@@ -315,11 +341,7 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                         (Ok(OnPackageResult::Continue), Some(waiters))
                     }
                 }, 
-                WriteProviderState::Closed => {
-                    debug!("closed stream get data");
-
-                    (Ok(OnPackageResult::Break), None)
-                }
+                WriteProviderState::Closed => (Ok(OnPackageResult::Continue), None)
             }
         };
         

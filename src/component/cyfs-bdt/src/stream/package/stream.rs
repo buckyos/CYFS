@@ -169,11 +169,11 @@ impl StreamProvider for PackageStream {
                 let _ = self.write_provider().close(self, None);
             }, 
             Shutdown::Read => {
-                
+                let _ = self.read_provider().close();
             }, 
             Shutdown::Both => {
                 let _ = self.write_provider().close(self, None);
-                let _ = self.read_provider().close(self);
+                let _ = self.read_provider().close();
             }
         }
         Ok(())
@@ -217,39 +217,27 @@ impl StreamProvider for PackageStream {
 }
 
 impl OnPackage<SessionData> for PackageStream {
-    fn on_package(&self, session_data: &SessionData, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
+    fn on_package(&self, session_data: &SessionData, _: Option<()>) -> BuckyResult<OnPackageResult> {
         let mut packages = Vec::new();
         let r = if session_data.is_syn_ack() {
             let ack_ack = SessionData::new();
             packages.push(DynamicPackage::from(ack_ack));
-            Ok(OnPackageResult::Handled)
+            OnPackageResult::Handled
         } else {
             trace!("{} on session data {}", self, session_data);
-            let write_result = self.write_provider().on_package(session_data, (self, &mut packages))?;
+            let write_result = if session_data.is_reset() {
+                self.write_provider().reset(self);
+                OnPackageResult::Continue
+            } else {
+                self.write_provider().on_package(session_data, (self, &mut packages))?
+            };
+            
             match write_result {
-                OnPackageResult::Continue | OnPackageResult::Break => {
-                    let read_result = self.read_provider().on_package(session_data, (self, &mut packages));
-                    if read_result.is_err() {
-                        read_result
-                    } else {
-                        let read_result = read_result.unwrap();
-                        if write_result == OnPackageResult::Break && 
-                            read_result == OnPackageResult::Break && 
-                            !session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
-                            let mut package = SessionData::new();
-                            package.flags_add(SESSIONDATA_FLAG_RESET);
-                            package.send_time = bucky_time_now();
-                            packages.push(DynamicPackage::from(package));
-                        }
-
-                        Ok(OnPackageResult::Handled)
-                    }
-                }, 
-                OnPackageResult::Handled => {
-                    Ok(OnPackageResult::Handled)
-                }, 
+                OnPackageResult::Continue => self.read_provider().on_package(session_data, (self, &mut packages))?, 
+                OnPackageResult::Handled => OnPackageResult::Handled, 
+                _ => unreachable!()
             }
-        }?;
+        };
         let _ = self.send_packages(packages);
         Ok(r)
     }

@@ -238,7 +238,10 @@ impl ReadProvider {
                     if let Some(readable) = provider.readable_waiter.as_ref() {
                         to_wake.push_back(readable.clone());
                     }
-                    *state = ReadProviderState::Closed(provider.queue.stream_end(), Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
+                    *state = ReadProviderState::Closed(
+                        provider.queue.stream_end(), 
+                        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken"))
+                    );
                 }, 
                 ReadProviderState::Closed(_, _) => {
                     
@@ -336,14 +339,12 @@ impl ReadProvider {
         ret
     }
 
-    pub fn close(&self, _: &PackageStream) {
+    pub fn close(&self) {
         let _ = {
             let state = &mut *cyfs_debug::lock!(self.0).unwrap();
             match state {
                 ReadProviderState::Open(provider) => {
-                    *state = ReadProviderState::Closed(
-                        provider.queue.stream_end(), 
-                        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
+                    *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0))
                 }, 
                 _ => {}
             }   
@@ -355,17 +356,10 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
     fn on_package(&self, session_data: &SessionData, context: (&PackageStream, &mut Vec<DynamicPackage>)) -> Result<OnPackageResult, BuckyError> {
         let stream = context.0;
         let packages = context.1;
-        let mut closed = false;
         let (readable_waker, read_waker) = {
             let state = &mut *cyfs_debug::lock!(self.0).unwrap();
             match state {
                 ReadProviderState::Open(provider) => {
-                    if session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
-                        *state = ReadProviderState::Closed(
-                            provider.queue.stream_end(), 
-                            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream reset")));
-                        return Ok(OnPackageResult::Handled)
-                    }
                     if session_data.payload.as_ref().len() > 0 
                         || session_data.is_flags_contain(SESSIONDATA_FLAG_FIN) {
                         match &provider.nagle {
@@ -405,11 +399,22 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
                     }
                    
                 }, 
-                ReadProviderState::Closed(_, _) => {
-                    debug!("closed stream get data");
-
-                    closed = true;
-
+                ReadProviderState::Closed(stream_end, _) => {
+                    if session_data.stream_pos_end() > *stream_end {
+                        debug!("{} will ack reset for read closed", stream);
+                        let mut package = SessionData::new();
+                        package.flags_add(SESSIONDATA_FLAG_RESET);
+                        package.send_time = bucky_time_now();
+                        packages.push(DynamicPackage::from(package));
+                    } else {
+                        if packages.len() == 0 || !(&packages[packages.len() - 1] as &dyn AsRef<SessionData>).as_ref().is_flags_contain(SESSIONDATA_FLAG_ACK) {
+                            trace!("{} will ack for fin or nagle income", stream);
+                            let mut package = SessionData::new();
+                            package.flags_add(SESSIONDATA_FLAG_ACK);
+                            package.send_time = bucky_time_now();
+                            packages.push(DynamicPackage::from(package));
+                        } 
+                    }
                     // do nothing
                     (None, None)
                 }
@@ -420,10 +425,6 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
         }
         if let Some(to_wake) = read_waker {
             to_wake.wake();
-        }
-
-        if closed {
-            return Ok(OnPackageResult::Break)
         }
 
         Ok(OnPackageResult::Handled)

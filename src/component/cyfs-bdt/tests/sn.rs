@@ -394,7 +394,7 @@ async fn call_with_tcp() {
 
 #[async_std::test]
 async fn sn_with_ipv6() {
-    let ipv6_ep = format!("D6udp[{:?}]:10024", &local_ip_address::list_afinet_netifas().unwrap()[0].1);
+    let ipv6_ep = format!("D6udp[{:?}]:10027", &local_ip_address::list_afinet_netifas().unwrap()[0].1);
 
     let (sn, sn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10027", &ipv6_ep]).unwrap();
 
@@ -409,8 +409,8 @@ async fn sn_with_ipv6() {
     });
    
 
-    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10028", "D6udp[::]:10025", "D6tcp[::]:10025"]).unwrap();
-    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10029", "D6udp[::]:10026", "D6tcp[::]:10026"]).unwrap();
+    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10028", "D6udp[::]:10025", "D6tcp[::]:10028"]).unwrap();
+    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10029", "D6udp[::]:10026", "D6tcp[::]:10029"]).unwrap();
     
     let mut ln_params = StackOpenParams::new("");
     ln_params.config.interface.udp.sn_only = true;
