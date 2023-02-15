@@ -418,7 +418,7 @@ impl ZoneManager {
                 // 目前owner只支持people和simplegroup
                 // People,SimpleGroup对象存在ood_list
                 match obj_type {
-                    ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+                    ObjectTypeCode::People | ObjectTypeCode::Group => {
                         // 查找owner对象
                         info!("will search owner: type={:?}, {}", obj_type, owner_id);
                         let object = self.search_object(&owner_id).await?;
@@ -642,7 +642,7 @@ impl ZoneManager {
 
             // 目前owner只支持people和simplegroup
             // People,SimpleGroup对象存在ood_list
-            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::SimpleGroup {
+            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::Group {
                 match owner_object.ood_list() {
                     Ok(list) => {
                         if list.len() > 0 {
@@ -730,7 +730,7 @@ impl ZoneManager {
             })?;
 
             match object_id.obj_type_code() {
-                ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+                ObjectTypeCode::People | ObjectTypeCode::Group => {
                     // 需要校验签名
                     let obj = Arc::new(obj);
 

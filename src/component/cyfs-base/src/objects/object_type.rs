@@ -7,8 +7,7 @@ use std::str::FromStr;
 pub enum ObjectTypeCode {
     Device = 1,
     People = 2,
-    SimpleGroup = 3,
-    Org = 4,
+    Group = 3,
     AppGroup = 5,
     UnionAccount = 6,
     Chunk = 7,
@@ -28,8 +27,7 @@ impl From<u16> for ObjectTypeCode {
         match v {
             1u16 => ObjectTypeCode::Device,
             2u16 => ObjectTypeCode::People,
-            3u16 => ObjectTypeCode::SimpleGroup,
-            4u16 => ObjectTypeCode::Org,
+            3u16 => ObjectTypeCode::Group,
             5u16 => ObjectTypeCode::AppGroup,
             6u16 => ObjectTypeCode::UnionAccount,
             7u16 => ObjectTypeCode::Chunk,
@@ -52,8 +50,7 @@ impl From<&ObjectTypeCode> for u16 {
         match v {
             ObjectTypeCode::Device => 1u16,
             ObjectTypeCode::People => 2u16,
-            ObjectTypeCode::SimpleGroup => 3u16,
-            ObjectTypeCode::Org => 4u16,
+            ObjectTypeCode::Group => 3u16,
             ObjectTypeCode::AppGroup => 5u16,
             ObjectTypeCode::UnionAccount => 6u16,
             ObjectTypeCode::Chunk => 7u16,

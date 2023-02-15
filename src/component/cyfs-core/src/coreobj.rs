@@ -60,6 +60,13 @@ pub enum CoreObjectType {
     // Perf
     PerfOperation = 600,
 
+    // Group
+    GroupProposal = 700,
+    GroupUpdateGroup = 701,
+    GroupConsensusBlock = 702,
+    GroupRPathStatus = 703,
+    GroupAction = 704,
+
     // IM通用对象
     AddFriend = 1001,
     Msg = 1003,

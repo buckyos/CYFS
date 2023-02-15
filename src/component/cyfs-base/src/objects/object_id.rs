@@ -12,6 +12,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+pub const OBJECT_ID_LEN: usize = 32;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ObjectCategory {
     Standard,
