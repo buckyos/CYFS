@@ -14,8 +14,7 @@ macro_rules! match_any_obj {
             AnyNamedObject::Standard(o) => match o {
                 StandardObject::Device($o) => $body,
                 StandardObject::People($o) => $body,
-                StandardObject::SimpleGroup($o) => $body,
-                StandardObject::Org($o) => $body,
+                StandardObject::Group($o) => $body,
                 StandardObject::AppGroup($o) => $body,
                 StandardObject::UnionAccount($o) => $body,
                 StandardObject::ChunkId($chunk_id) => $chunk_body,
@@ -27,6 +26,10 @@ macro_rules! match_any_obj {
                 StandardObject::Action($o) => $body,
                 StandardObject::ObjectMap($o) => $body,
                 StandardObject::Contract($o) => $body,
+                StandardObject::SimpleGroup => {
+                    panic!("SimpleGroup is deprecated, you can use the Group.")
+                }
+                StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
             },
             AnyNamedObject::Core($o) => $body,
             AnyNamedObject::DECApp($o) => $body,
@@ -682,5 +685,5 @@ any_for_standard_target!(as_file, into_file, File);
 any_for_standard_target!(as_dir, into_dir, Dir);
 any_for_standard_target!(as_people, into_people, People);
 any_for_standard_target!(as_device, into_device, Device);
-any_for_standard_target!(as_simple_group, into_simple_group, SimpleGroup);
+any_for_standard_target!(as_group, into_group, Group);
 any_for_standard_target!(as_object_map, into_object_map, ObjectMap);
