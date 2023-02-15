@@ -34,9 +34,9 @@ struct LocalInfo {
 }
 
 #[derive(Clone)]
-pub struct GroupRPathMgr(Arc<(LocalInfo, RwLock<GroupRPathMgrRaw>)>);
+pub struct GroupManager(Arc<(LocalInfo, RwLock<GroupRPathMgrRaw>)>);
 
-impl GroupRPathMgr {
+impl GroupManager {
     pub fn new(
         signer: RsaCPUObjectSigner,
         non_driver: Box<dyn crate::network::NONDriver>,
