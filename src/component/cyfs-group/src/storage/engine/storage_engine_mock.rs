@@ -2,28 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 
-#[async_trait::async_trait]
-pub trait StorageWriter: Send + Sync + Drop {
-    async fn insert_prepares(&mut self, block_id: &ObjectId) -> BuckyResult<()>;
-    async fn insert_pre_commit(&mut self, block_id: &ObjectId, is_instead: bool)
-        -> BuckyResult<()>;
-    async fn push_commit(&mut self, height: u64, block_id: &ObjectId) -> BuckyResult<()>;
-    async fn remove_prepares(&mut self, block_ids: &[ObjectId]) -> BuckyResult<()>;
-    async fn push_proposals(
-        &mut self,
-        proposal_ids: &[ObjectId],
-        timestamp: u64,
-    ) -> BuckyResult<()>;
-
-    async fn set_last_vote_round(&mut self, round: u64) -> BuckyResult<()>;
-}
-
-#[async_trait::async_trait]
-pub trait StorageEngine {
-    async fn find_block_by_height(&self, height: u64) -> BuckyResult<ObjectId>;
-    async fn create_writer(&mut self) -> BuckyResult<StorageEngineMockWriter>;
-    async fn is_proposal_finished(&self, proposal_id: &ObjectId) -> BuckyResult<bool>;
-}
+use super::{StorageEngine, StorageWriter};
 
 struct StorageEngineMockFinishProposalMgr {
     flip_timestamp: u64,
@@ -58,6 +37,10 @@ impl StorageEngineMock {
             },
         }
     }
+
+    pub async fn create_writer(&mut self) -> BuckyResult<StorageEngineMockWriter> {
+        Ok(StorageEngineMockWriter { engine: self })
+    }
 }
 
 #[async_trait::async_trait]
@@ -69,19 +52,15 @@ impl StorageEngine for StorageEngineMock {
             .ok_or(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
     }
 
-    async fn create_writer(&mut self) -> BuckyResult<StorageEngineMockWriter> {
-        Ok(StorageEngineMockWriter { engine: self })
-    }
-
-    async fn is_proposal_finished(&self, proposal_id: &ObjectId) -> BuckyResult<bool> {
-        let is_finished = self
-            .finish_proposals
-            .adding
-            .get(proposal_id)
-            .or(self.finish_proposals.over.get(proposal_id))
-            .is_some();
-        Ok(is_finished)
-    }
+    // async fn is_proposal_finished(&self, proposal_id: &ObjectId) -> BuckyResult<bool> {
+    //     let is_finished = self
+    //         .finish_proposals
+    //         .adding
+    //         .get(proposal_id)
+    //         .or(self.finish_proposals.over.get(proposal_id))
+    //         .is_some();
+    //     Ok(is_finished)
+    // }
 }
 
 pub struct StorageEngineMockWriter<'a> {
@@ -164,9 +143,9 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     async fn push_proposals(
         &mut self,
         proposal_ids: &[ObjectId],
-        timestamp: u64,
+        timestamp: Option<u64>,
     ) -> BuckyResult<()> {
-        if timestamp - self.engine.finish_proposals.flip_timestamp > 60000 {
+        if let Some(timestamp) = timestamp {
             let mut new_over = HashSet::new();
             std::mem::swap(&mut new_over, &mut self.engine.finish_proposals.adding);
             std::mem::swap(&mut new_over, &mut self.engine.finish_proposals.over);

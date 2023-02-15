@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::SystemTime};
+use std::{
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
 
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
@@ -6,10 +9,13 @@ use cyfs_base::{
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
+use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
-use crate::{storage::StorageWriter, NONDriverHelper, TIME_PRECISION};
+use crate::{storage::StorageWriter, NONDriverHelper, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION};
 
-use super::{storage_engine::StorageEngineMock, StorageEngine};
+use super::{storage_engine_mock::StorageEngineMock, StorageEngine};
+
+const PROPOSAL_MAX_TIMEOUT_AS_MS: u64 = PROPOSAL_MAX_TIMEOUT.as_millis() as u64;
 
 pub enum BlockLinkState {
     Expired,
@@ -21,6 +27,12 @@ pub enum BlockLinkState {
     ), // <prev-block, proposals>
     Pending,
     InvalidBranch,
+}
+
+struct FinishProposalMgr {
+    flip_timestamp: u64,
+    over: HashSet<ObjectId>,
+    adding: HashSet<ObjectId>,
 }
 
 pub struct GroupStorage {
@@ -39,6 +51,8 @@ pub struct GroupStorage {
     prepares: HashMap<ObjectId, GroupConsensusBlock>,
     pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
 
+    finish_proposals: FinishProposalMgr,
+
     storage_engine: StorageEngineMock,
 }
 
@@ -50,10 +64,18 @@ impl GroupStorage {
         init_state_id: Option<ObjectId>,
         non_driver: NONDriverHelper,
         local_device_id: ObjectId,
+        // root_state_mgr: GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
         let group_chunk = ChunkMeta::from(&group);
         let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
+
+        // let group_state = root_state_mgr
+        //     .load_root_state(group_id, Some(group_id.clone()), true)
+        //     .await?
+        //     .expect("create group state failed.");
+
+        // let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
 
         Ok(Self {
             group,
@@ -70,6 +92,11 @@ impl GroupStorage {
             pre_commits: HashMap::new(),
             storage_engine: StorageEngineMock::new(),
             local_device_id,
+            finish_proposals: FinishProposalMgr {
+                flip_timestamp: 0,
+                over: HashSet::new(),
+                adding: HashSet::new(),
+            },
         })
     }
 
@@ -78,6 +105,7 @@ impl GroupStorage {
         dec_id: &ObjectId,
         rpath: &str,
         non_driver: NONDriverHelper,
+        // root_state_mgr: GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
@@ -240,10 +268,17 @@ impl GroupStorage {
                 .iter()
                 .map(|p| p.proposal.clone())
                 .collect();
-            writer.push_proposals(
-                finish_proposals.as_slice(),
-                new_header.named_object().desc().create_time(),
-            );
+
+            let timestamp = new_header.named_object().desc().create_time();
+            if timestamp - self.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
+                writer
+                    .push_proposals(finish_proposals.as_slice(), Some(timestamp))
+                    .await?;
+            } else {
+                writer
+                    .push_proposals(finish_proposals.as_slice(), None)
+                    .await?;
+            }
         }
 
         // update memory
@@ -276,6 +311,20 @@ impl GroupStorage {
                 if self.first_block.is_none() {
                     self.first_block = self.header_block.clone();
                 }
+
+                let timestamp = new_header.named_object().desc().create_time();
+                if timestamp - self.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
+                    let mut new_over = HashSet::new();
+                    std::mem::swap(&mut new_over, &mut self.finish_proposals.adding);
+                    std::mem::swap(&mut new_over, &mut self.finish_proposals.over);
+                    self.finish_proposals.flip_timestamp = timestamp;
+                }
+
+                for proposal in new_header.proposals() {
+                    let is_new = self.finish_proposals.adding.insert(proposal.proposal);
+                    assert!(is_new);
+                }
+
                 return Ok(Some((self.header_block.as_ref().unwrap(), removed_blocks)));
             }
             None => {
@@ -551,7 +600,13 @@ impl GroupStorage {
 
         // find in storage
 
-        self.storage_engine.is_proposal_finished(proposal_id).await
+        let is_finished = self
+            .finish_proposals
+            .adding
+            .get(proposal_id)
+            .or(self.finish_proposals.over.get(proposal_id))
+            .is_some();
+        Ok(is_finished)
     }
 
     pub fn block_with_max_round(&self) -> Option<GroupConsensusBlock> {
