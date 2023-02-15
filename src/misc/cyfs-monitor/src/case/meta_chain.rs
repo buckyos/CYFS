@@ -53,6 +53,7 @@ fn ensure_desc() -> BuckyResult<(PrivateKey, People)> {
     let sec_path = path.with_extension("sec");
     if !desc_path.exists() || !sec_path.exists()  {
         info!("not found meta writer desc, create.");
+        let _ = std::fs::create_dir_all(path.parent().unwrap());
         let pk = PrivateKey::generate_rsa(1024)?;
         let people = People::new(None, vec![], pk.public(), None, None, None).build();
         pk.encode_to_file(&sec_path, false)?;
