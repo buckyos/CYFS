@@ -1,5 +1,5 @@
 use super::output_request::*;
-use crate::base::*;
+use crate::{base::*, TransPublishChunkMethod};
 use cyfs_base::*;
 use std::path::PathBuf;
 
@@ -88,7 +88,8 @@ pub struct UtilBuildFileInputRequest {
     pub common: UtilInputRequestCommon,
     pub local_path: PathBuf,
     pub owner: ObjectId,
-    pub chunk_size: u32,
+    pub chunk_size: u32, 
+    pub chunk_method: TransPublishChunkMethod, 
     pub access: Option<AccessString>,
 }
 

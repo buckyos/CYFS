@@ -7,6 +7,7 @@ mod monitor;
 mod package;
 mod repo;
 mod service;
+mod status;
 
 use clap::{App, Arg};
 use std::str::FromStr;
@@ -21,9 +22,9 @@ const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
 fn start_log() {
     cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
-        .level("debug")
+        .level("info")
         .console("info")
-        .enable_bdt(Some("debug"), Some("debug"))
+        .enable_bdt(Some("info"), Some("info"))
         .build()
         .unwrap()
         .start();
@@ -166,7 +167,7 @@ async fn main_run() {
     if !no_ood_control {
         if let Err(e) = start_control(mode.clone(), &matches).await {
             println!("start ood control failed! {}", e);
-            std::process::exit(-1);
+            std::process::exit(e.code().into());
         }
     } else {
         info!("will run without ood control service");
@@ -175,6 +176,7 @@ async fn main_run() {
     let daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
+        std::process::exit(e.code().into());
     }
 }
 

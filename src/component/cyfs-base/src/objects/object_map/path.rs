@@ -1,9 +1,9 @@
 use super::cache::*;
+use super::check::*;
 use super::iterator::*;
 use super::object_map::*;
 use super::op::*;
 use crate::*;
-use super::check::*;
 
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +13,7 @@ pub struct ObjectMapPath {
     obj_map_cache: ObjectMapOpEnvCacheRef,
 
     // 用以暂存所有写入操作
-    write_ops: ObjectMapOpList,
+    write_ops: Option<ObjectMapOpList>,
 }
 
 struct ObjectMapPathSeg {
@@ -28,11 +28,19 @@ impl std::fmt::Debug for ObjectMapPathSeg {
 }
 
 impl ObjectMapPath {
-    pub fn new(root: ObjectId, obj_map_cache: ObjectMapOpEnvCacheRef) -> Self {
+    pub fn new(
+        root: ObjectId,
+        obj_map_cache: ObjectMapOpEnvCacheRef,
+        enable_transaction: bool,
+    ) -> Self {
         Self {
             root: Arc::new(Mutex::new(root)),
             obj_map_cache,
-            write_ops: ObjectMapOpList::new(),
+            write_ops: if enable_transaction {
+                Some(ObjectMapOpList::new())
+            } else {
+                None
+            },
         }
     }
 
@@ -184,8 +192,10 @@ impl ObjectMapPath {
             };
 
             let create_strategy = match auto_create {
-                ObjectMapCreateStrategy::CreateIfNotExists =>  ObjectMapCreateStrategy::CreateIfNotExists,
-                ObjectMapCreateStrategy::NotCreate =>  ObjectMapCreateStrategy::NotCreate,
+                ObjectMapCreateStrategy::CreateIfNotExists => {
+                    ObjectMapCreateStrategy::CreateIfNotExists
+                }
+                ObjectMapCreateStrategy::NotCreate => ObjectMapCreateStrategy::NotCreate,
                 ObjectMapCreateStrategy::CreateNew => {
                     // only use createNew for the last seg
                     if is_last_part {
@@ -270,7 +280,13 @@ impl ObjectMapPath {
             let mut parent_obj_map = obj_map_list.pop().unwrap();
             parent_obj_map
                 .obj_map
-                .set_with_key(&self.obj_map_cache, &seg, &current_id, &Some(prev_id), false)
+                .set_with_key(
+                    &self.obj_map_cache,
+                    &seg,
+                    &current_id,
+                    &Some(prev_id),
+                    false,
+                )
                 .await
                 .map_err(|e| e)?;
 
@@ -290,7 +306,8 @@ impl ObjectMapPath {
             let current_id = obj_map.cached_object_id().unwrap();
             assert_ne!(current_id, prev_id);
 
-            self.obj_map_cache.put_object_map(&current_id, obj_map, None)?;
+            self.obj_map_cache
+                .put_object_map(&current_id, obj_map, None)?;
 
             if index + 1 == count {
                 self.update_root(current_id, &prev_id)?;
@@ -421,7 +438,11 @@ impl ObjectMapPath {
             .await
     }
 
-    pub async fn remove_with_path(&self, full_path: &str, prev_value: &Option<ObjectId>) -> BuckyResult<Option<ObjectId>> {
+    pub async fn remove_with_path(
+        &self,
+        full_path: &str,
+        prev_value: &Option<ObjectId>,
+    ) -> BuckyResult<Option<ObjectId>> {
         let (path, key) = Self::parse_full_path(full_path)?;
 
         self.remove_with_key(path, key, prev_value).await
@@ -449,8 +470,9 @@ impl ObjectMapPath {
 
         // insert不需要保存状态，只要插入成功，那么状态就认为是一致的
 
-        self.write_ops
-            .append_op(ObjectMapWriteOp::CreateNew(op_data));
+        if let Some(write_ops) = &self.write_ops {
+            write_ops.append_op(ObjectMapWriteOp::CreateNew(op_data));
+        }
 
         Ok(ret)
     }
@@ -458,7 +480,11 @@ impl ObjectMapPath {
     async fn create_new_op(&self, op_data: &CreateNewOpData) -> BuckyResult<()> {
         // 首先获取路径上的所有ObjectMap(空目录自动创建)
         let ret = self
-            .create_object_map(&op_data.path, ObjectMapSimpleContentType::Map, ObjectMapCreateStrategy::CreateIfNotExists)
+            .create_object_map(
+                &op_data.path,
+                ObjectMapSimpleContentType::Map,
+                ObjectMapCreateStrategy::CreateIfNotExists,
+            )
             .await?;
         let mut obj_map_list = ret.unwrap();
         assert!(obj_map_list.len() > 0);
@@ -525,8 +551,9 @@ impl ObjectMapPath {
 
         // insert不需要保存状态，只要插入成功，那么状态就认为是一致的
 
-        self.write_ops
-            .append_op(ObjectMapWriteOp::InsertWithKey(op_data));
+        if let Some(write_ops) = &self.write_ops {
+            write_ops.append_op(ObjectMapWriteOp::InsertWithKey(op_data));
+        }
 
         Ok(ret)
     }
@@ -534,7 +561,11 @@ impl ObjectMapPath {
     async fn insert_with_key_op(&self, op_data: &InsertWithKeyOpData) -> BuckyResult<()> {
         // 首先获取路径上的所有ObjectMap(空目录自动创建)
         let ret = self
-            .create_object_map(&op_data.path, ObjectMapSimpleContentType::Map, ObjectMapCreateStrategy::CreateIfNotExists)
+            .create_object_map(
+                &op_data.path,
+                ObjectMapSimpleContentType::Map,
+                ObjectMapCreateStrategy::CreateIfNotExists,
+            )
             .await?;
         let mut obj_map_list = ret.unwrap();
         assert!(obj_map_list.len() > 0);
@@ -582,18 +613,19 @@ impl ObjectMapPath {
         let ret = self.set_with_key_op(&op_data).await?;
 
         // 保存状态
-        let state = ObjectMapKeyState { value: ret.clone() };
-        op_data.state = Some(state);
+        if let Some(write_ops) = &self.write_ops {
+            let state = ObjectMapKeyState { value: ret.clone() };
+            op_data.state = Some(state);
 
-        self.write_ops
-            .append_op(ObjectMapWriteOp::SetWithKey(op_data));
+            write_ops.append_op(ObjectMapWriteOp::SetWithKey(op_data));
+        }
 
         Ok(ret)
     }
 
     async fn set_with_key_op(&self, op_data: &SetWithKeyOpData) -> BuckyResult<Option<ObjectId>> {
         // 首先获取路径上的所有ObjectMap(空目录自动创建)
-        
+
         let create_strategy = if op_data.param.auto_insert {
             ObjectMapCreateStrategy::CreateIfNotExists
         } else {
@@ -658,7 +690,12 @@ impl ObjectMapPath {
         Ok(ret)
     }
 
-    pub async fn remove_with_key(&self, path: &str, key: &str, prev_value: &Option<ObjectId>,) -> BuckyResult<Option<ObjectId>> {
+    pub async fn remove_with_key(
+        &self,
+        path: &str,
+        key: &str,
+        prev_value: &Option<ObjectId>,
+    ) -> BuckyResult<Option<ObjectId>> {
         // 创建事务
         let param = RemoveWithKeyParam {
             key: key.to_owned(),
@@ -673,11 +710,12 @@ impl ObjectMapPath {
         let ret = self.remove_with_key_op(&op_data).await?;
 
         // 保存状态
-        let state = ObjectMapKeyState { value: ret.clone() };
-        op_data.state = Some(state);
+        if let Some(write_ops) = &self.write_ops {
+            let state = ObjectMapKeyState { value: ret.clone() };
+            op_data.state = Some(state);
 
-        self.write_ops
-            .append_op(ObjectMapWriteOp::RemoveWithKey(op_data));
+            write_ops.append_op(ObjectMapWriteOp::RemoveWithKey(op_data));
+        }
 
         Ok(ret)
     }
@@ -688,7 +726,11 @@ impl ObjectMapPath {
     ) -> BuckyResult<Option<ObjectId>> {
         let (ret, obj_map_list) = loop {
             let ret = self
-                .create_object_map(&op_data.path, ObjectMapSimpleContentType::Map, ObjectMapCreateStrategy::NotCreate)
+                .create_object_map(
+                    &op_data.path,
+                    ObjectMapSimpleContentType::Map,
+                    ObjectMapCreateStrategy::NotCreate,
+                )
                 .await?;
 
             // 所在目录不存在，那么直接返回不存在即可
@@ -711,7 +753,11 @@ impl ObjectMapPath {
                 .last_mut()
                 .unwrap()
                 .obj_map
-                .remove_with_key(&self.obj_map_cache, &op_data.param.key, &op_data.param.prev_value)
+                .remove_with_key(
+                    &self.obj_map_cache,
+                    &op_data.param.key,
+                    &op_data.param.prev_value,
+                )
                 .await?;
 
             info!(
@@ -779,16 +825,22 @@ impl ObjectMapPath {
         let ret = self.insert_op(&op_data).await?;
 
         // 保存现有状态
-        op_data.state = Some(ret);
+        if let Some(write_ops) = &self.write_ops {
+            op_data.state = Some(ret);
 
-        self.write_ops.append_op(ObjectMapWriteOp::Insert(op_data));
+            write_ops.append_op(ObjectMapWriteOp::Insert(op_data));
+        }
 
         Ok(ret)
     }
 
     async fn insert_op(&self, op_data: &InsertOpData) -> BuckyResult<bool> {
         let obj_map_list = self
-            .create_object_map(&op_data.path, ObjectMapSimpleContentType::Set, ObjectMapCreateStrategy::CreateIfNotExists)
+            .create_object_map(
+                &op_data.path,
+                ObjectMapSimpleContentType::Set,
+                ObjectMapCreateStrategy::CreateIfNotExists,
+            )
             .await?;
 
         let mut obj_map_list = obj_map_list.unwrap();
@@ -837,16 +889,22 @@ impl ObjectMapPath {
         let ret = self.remove_op(&op_data).await?;
 
         // 保存状态
-        op_data.state = Some(ret);
+        if let Some(write_ops) = &self.write_ops {
+            op_data.state = Some(ret);
 
-        self.write_ops.append_op(ObjectMapWriteOp::Remove(op_data));
+            write_ops.append_op(ObjectMapWriteOp::Remove(op_data));
+        }
 
         Ok(ret)
     }
 
     async fn remove_op(&self, op_data: &RemoveOpData) -> BuckyResult<bool> {
         let ret = self
-            .create_object_map(&op_data.path, ObjectMapSimpleContentType::Set, ObjectMapCreateStrategy::NotCreate)
+            .create_object_map(
+                &op_data.path,
+                ObjectMapSimpleContentType::Set,
+                ObjectMapCreateStrategy::NotCreate,
+            )
             .await?;
 
         // 所在目录不存在，那么直接返回错误
@@ -892,12 +950,14 @@ impl ObjectMapPath {
     }
 
     pub fn clear_op_list(&self) {
-        let _ = self.write_ops.fetch_all();
+        if let Some(write_ops) = &self.write_ops {
+            let _ = write_ops.fetch_all();
+        }
     }
 
     // 提交操作列表，用以实现事务的commit
     pub async fn commit_op_list(&self) -> BuckyResult<()> {
-        let op_list = self.write_ops.fetch_all();
+        let op_list = self.write_ops.as_ref().unwrap().fetch_all();
 
         for op_data in op_list {
             self.commit_op(op_data).await?;
@@ -936,8 +996,8 @@ impl ObjectMapPath {
 #[cfg(test)]
 mod test_path {
     use super::super::cache::*;
-    use super::*;
     use super::super::path_iterator::*;
+    use super::*;
 
     use std::str::FromStr;
 
@@ -1039,7 +1099,7 @@ mod test_path {
         dump_path(path, "/a").await;
         dump_path(path, "/a/b").await;
         dump_path(path, "/a/b/c").await;
-        
+
         let ret = path.remove_with_key("/a/b", "c", &None).await.unwrap();
         assert_eq!(ret, Some(c_id));
 
@@ -1055,13 +1115,21 @@ mod test_path {
         let ret = path.get_by_path("/").await.unwrap();
         assert!(ret.is_some());
 
-        path.create_new("/a/b", "c", ObjectMapSimpleContentType::Set).await.unwrap();
-        if let Err(e) = path.create_new("/a/b", "c", ObjectMapSimpleContentType::Set).await {
+        path.create_new("/a/b", "c", ObjectMapSimpleContentType::Set)
+            .await
+            .unwrap();
+        if let Err(e) = path
+            .create_new("/a/b", "c", ObjectMapSimpleContentType::Set)
+            .await
+        {
             assert!(e.code() == BuckyErrorCode::AlreadyExists);
         } else {
             unreachable!();
         }
-        if let Err(e) = path.create_new("/a/b", "c", ObjectMapSimpleContentType::Set).await {
+        if let Err(e) = path
+            .create_new("/a/b", "c", ObjectMapSimpleContentType::Set)
+            .await
+        {
             assert!(e.code() == BuckyErrorCode::AlreadyExists);
         } else {
             unreachable!();
@@ -1089,13 +1157,14 @@ mod test_path {
         cache.put_object_map(&root_id, root).unwrap();
         info!("new root: {}", root_id);
 
-        let path = ObjectMapPath::new(root_id.clone(), cache.clone());
+        let path = ObjectMapPath::new(root_id.clone(), cache.clone(), true);
         test_path1(&path).await;
 
         let opt = ObjectMapPathIteratorOption::new(true, true);
         let root = path.root();
         let root_obj = cache.get_object_map(&root).await.unwrap();
-        let mut it = ObjectMapPathIterator::new(root_obj.unwrap(), cache.clone(), opt.clone()).await;
+        let mut it =
+            ObjectMapPathIterator::new(root_obj.unwrap(), cache.clone(), opt.clone()).await;
         while !it.is_end() {
             let list = it.next(5).await.unwrap();
             info!("list: {} {:?}", 1, list.list);
@@ -1107,7 +1176,8 @@ mod test_path {
         cache.gc(false, &root_id).await.unwrap();
 
         let root_obj = cache.get_object_map(&root_id).await.unwrap();
-        let mut it = ObjectMapPathIterator::new(root_obj.unwrap(), cache.clone(), opt.clone()).await;
+        let mut it =
+            ObjectMapPathIterator::new(root_obj.unwrap(), cache.clone(), opt.clone()).await;
         while !it.is_end() {
             let list = it.next(5).await.unwrap();
             info!("list: {} {:?}", 1, list.list);

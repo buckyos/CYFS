@@ -7,29 +7,58 @@ use cyfs_base::*;
 use cyfs_debug::Mutex;
 
 use lazy_static::lazy_static;
-use once_cell::sync::OnceCell;
 use std::sync::Arc;
 use std::time::Duration;
 
+struct DeviceConfigRepoItem {
+    desc: String,
+    repo: DeviceConfigRepoRef,
+}
+
 pub struct DeviceConfigManager {
-    repo: OnceCell<DeviceConfigRepoRef>,
+    repo: Mutex<Option<DeviceConfigRepoItem>>,
 
     device_config_hash: Mutex<Option<HashValue>>,
     device_config: DeviceConfig,
 }
 
 impl DeviceConfigManager {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
-            repo: OnceCell::new(),
+            repo: Mutex::new(None),
             device_config_hash: Mutex::new(None),
             device_config: DeviceConfig::new(),
         }
     }
 
     pub fn init(&self) -> BuckyResult<()> {
+        self.init_repo()?;
+
+        // 计算当前device_config的hash
+        let hash = Self::calc_config_hash();
+        *self.device_config_hash.lock().unwrap() = hash;
+
+        Ok(())
+    }
+
+    // can be init multi times!
+    pub fn init_repo(&self) -> BuckyResult<()> {
         // 从system_config获取device_config依赖的desc
         let desc = &get_system_config().config_desc;
+
+        {
+            let current = self.repo.lock().unwrap();
+            match &*current {
+                Some(item) => {
+                    if item.desc == *desc {
+                        return Ok(());
+                    }
+
+                    info!("device config's desc changed! {} -> {}", item.desc, desc);
+                }
+                None => {}
+            }
+        }
 
         info!("will init device_config repo: {}", desc);
 
@@ -37,10 +66,8 @@ impl DeviceConfigManager {
             let repo = DeviceConfigLocalRepo::new();
             Box::new(repo) as Box<dyn DeviceConfigRepo>
         } else if desc == "cyfs_repo" || desc == "device" {
-            let mut repo = DeviceConfigMetaRepo::new();
-            if let Err(e) = repo.init(&desc, &get_system_config().version) {
-                return Err(e);
-            }
+            let repo = DeviceConfigMetaRepo::new();
+            repo.init()?;
 
             Box::new(repo) as Box<dyn DeviceConfigRepo>
         } else if desc.starts_with("http") {
@@ -54,15 +81,16 @@ impl DeviceConfigManager {
             return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
         };
 
-        if let Err(_) = self.repo.set(Arc::new(repo)) {
-            unreachable!();
-        }
-
-        // 计算当前device_config的hash
-        let hash = Self::calc_config_hash();
-        *self.device_config_hash.lock().unwrap() = hash;
+        *self.repo.lock().unwrap() = Some(DeviceConfigRepoItem {
+            desc: desc.to_owned(),
+            repo: Arc::new(repo),
+        });
 
         Ok(())
+    }
+
+    pub fn get_repo(&self) -> DeviceConfigRepoRef {
+        self.repo.lock().unwrap().as_ref().unwrap().repo.clone()
     }
 
     pub async fn load_and_apply_config(&self) -> BuckyResult<()> {
@@ -117,10 +145,10 @@ impl DeviceConfigManager {
     }
 
     pub async fn fetch_config(&self) -> Result<bool, BuckyError> {
-        let repo = self.repo.get().unwrap().clone();
+        let repo = self.get_repo();
 
         // 从mete-chain拉取对应desc
-        let ret = async_std::future::timeout(Duration::from_secs(60), repo.fetch()).await;
+        let ret = async_std::future::timeout(Duration::from_secs(60 * 5), repo.fetch()).await;
 
         if ret.is_err() {
             let msg = format!("fetch device config timeout! repo={}", repo.get_type());
@@ -132,10 +160,10 @@ impl DeviceConfigManager {
         let device_config_str = match ret.unwrap() {
             Ok(v) => v,
             Err(e) => {
-                let msg = format!("load desc from repo failed! err={}", e);
+                let msg = format!("load device config from repo failed! err={}", e);
                 error!("{}", msg);
 
-                return Err(BuckyError::from(msg));
+                return Err(BuckyError::new(e.code(), msg));
             }
         };
 

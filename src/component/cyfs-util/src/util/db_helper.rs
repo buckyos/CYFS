@@ -64,9 +64,10 @@ impl SqliteConnectionHolder {
         })?;
 
         info!(
-            "open db for thread={:?}, file={}",
+            "open db for thread={:?}, file={}, read={}",
             std::thread::current().id(),
-            self.data_file.display()
+            self.data_file.display(),
+            read_only,
         );
         assert!(conn.is_autocommit());
 

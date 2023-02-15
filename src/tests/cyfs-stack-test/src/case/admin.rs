@@ -20,7 +20,17 @@ async fn change_access_mode(_dec_id: &ObjectId, access_mode: GlobalStateAccessMo
 
     let admin_id = admin_object.desc().calculate_id();
     let buf = admin_object.to_vec().unwrap();
-    let req = NONPostObjectOutputRequest::new_router(Some(target.clone().into()), admin_id, buf);
+    let mut req = NONPostObjectOutputRequest::new_router(Some(target.clone().into()), admin_id, buf);
+    req.common.req_path = Some(cyfs_base::CYFS_SYSTEM_ADMIN_VIRTUAL_PATH.to_owned());
+
+    let resp = stack.non_service().post_object(req.clone()).await;
+    if let Err(e) = resp {
+        assert_eq!(e.code(), BuckyErrorCode::NotHandled);
+    } else {
+        unreachable!();
+    }
+
+    req.common.dec_id = Some(cyfs_core::get_system_dec_app().to_owned());
     let resp = stack.non_service().post_object(req).await;
     if let Err(e) = resp {
         assert_eq!(e.code(), BuckyErrorCode::InvalidSignature);
@@ -41,7 +51,9 @@ async fn change_access_mode(_dec_id: &ObjectId, access_mode: GlobalStateAccessMo
 
     let admin_id = admin_object.desc().calculate_id();
     let buf = admin_object.to_vec().unwrap();
-    let req = NONPostObjectOutputRequest::new_router(Some(target.into()), admin_id, buf);
+    let mut req = NONPostObjectOutputRequest::new_router(Some(target.into()), admin_id, buf);
+    req.common.req_path = Some(cyfs_base::CYFS_SYSTEM_ADMIN_VIRTUAL_PATH.to_owned());
+    req.common.dec_id = Some(cyfs_core::get_system_dec_app().to_owned());
     let resp = stack.non_service().post_object(req).await.unwrap();
     assert!(resp.object.is_none());
 

@@ -32,7 +32,7 @@ impl DownloadRoot {
         path: String
     ) -> BuckyResult<(Box<dyn DownloadTask>, String, Option<String>)> {
         if path.len() == 0 {
-            return Ok((self.sub.clone_as_task(), "/".to_owned(), None));
+            return Ok((self.sub.clone_as_download_task(), "/".to_owned(), None));
         } 
 
         let mut parts: Vec<&str> = path.split("/").collect();
@@ -49,14 +49,14 @@ impl DownloadRoot {
         parts.remove(parts.len() - 1);
 
         let parent_path = (parts.join("/") + "/").to_owned();
-        let mut parent = self.sub.clone_as_task();
+        let mut parent = self.sub.clone_as_download_task();
         for part in parts {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
                 let sub = DownloadGroup::new(self.sub.history_config().clone());
-                parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
-                parent = sub.clone_as_task();
+                parent.add_task(Some(part.to_owned()), sub.clone_as_download_task())?;
+                parent = sub.clone_as_download_task();
             }
         }
         Ok((parent, parent_path, last_part))
@@ -66,7 +66,7 @@ impl DownloadRoot {
     pub fn add_task(&self, path: String, task: &dyn DownloadTask) -> BuckyResult<String> {
         let (parent, parent_path, rel_path) = self.makesure_path(path)?;
         let rel_path = rel_path.unwrap_or(self.next_index());
-        let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
+        let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_download_task())?;
         let abs_path = [parent_path, rel_path].join("");
         task.on_post_add_to_root(abs_path.clone());
         Ok(abs_path)
@@ -98,7 +98,7 @@ impl UploadRoot {
         path: String
     ) -> BuckyResult<(Box<dyn UploadTask>, String, Option<String>)> {
         if path.len() == 0 {
-            return Ok((self.sub.clone_as_task(), "/".to_owned(), None));
+            return Ok((self.sub.clone_as_upload_task(), "/".to_owned(), None));
         } 
 
         let mut parts: Vec<&str> = path.split("/").collect();
@@ -115,14 +115,14 @@ impl UploadRoot {
         parts.remove(parts.len() - 1);
 
         let parent_path = (parts.join("/") + "/").to_owned();
-        let mut parent = self.sub.clone_as_task();
+        let mut parent = self.sub.clone_as_upload_task();
         for part in parts {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
                 let sub = UploadGroup::new(self.sub.history_config().clone());
-                parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
-                parent = sub.clone_as_task();
+                parent.add_task(Some(part.to_owned()), sub.clone_as_upload_task())?;
+                parent = sub.clone_as_upload_task();
             }
         }
         Ok((parent, parent_path, last_part))
@@ -139,7 +139,7 @@ impl UploadRoot {
         for path in pathes {
             if let Ok(abs_path) = self.makesure_path(path).and_then(|(parent, parent_path, rel_path)| {
                 let rel_path = rel_path.unwrap_or(self.next_index());
-                parent.add_task(Some(rel_path.clone()), task.clone_as_task())
+                parent.add_task(Some(rel_path.clone()), task.clone_as_upload_task())
                     .map(|_| [parent_path, rel_path].join(""))
             }) {
                 results.push(abs_path);

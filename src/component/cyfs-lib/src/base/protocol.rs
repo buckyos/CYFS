@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+pub const CYFS_CURRENT_API_EDITION: u32 = 1;
 
 // pub const CYFS_OBJECT_MIME_STRING: &str = "application/cyfs-object";
 

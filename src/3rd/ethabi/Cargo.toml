@@ -22,9 +22,9 @@ ethereum-types = "0.11.0"
 thiserror = "1"
 uint = "0.9.0"
 rustc-hex = "2.1"
-cyfs-base = {path = "../../component/cyfs-base"}
+cyfs-base = { path = "../../component/cyfs-base" }
 itertools = "0.10"
-evm = {path = "../evm"}
+evm = { path = "../evm" }
 
 [dev-dependencies]
 hex-literal = "0.3"

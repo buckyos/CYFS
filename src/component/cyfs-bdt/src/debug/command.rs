@@ -31,12 +31,14 @@ pub fn debug_command_line() -> clap::App<'static, 'static> {
         .subcommand(SubCommand::with_name("nc")
             .arg(Arg::with_name("remote").required(true))
             .arg(Arg::with_name("port").required(true))
+            .arg(Arg::with_name("bench").required(false))
+            .arg(Arg::with_name("task").required(false))
         )
         .subcommand(SubCommand::with_name("get_chunk")
             .arg(Arg::with_name("remotes").required(true))
             .arg(Arg::with_name("timeout").required(true))
             .arg(Arg::with_name("chunk_id").required(true))
-            .arg(Arg::with_name("local_path").required(true))
+            .arg(Arg::with_name("local_path").required(false))
         )
         .subcommand(SubCommand::with_name("get_file")
             .arg(Arg::with_name("remotes").required(true))
@@ -100,10 +102,14 @@ impl DebugCommand {
                 let remote = remote_device(stack, subcommand.value_of("remote").unwrap()).await
                     .map_err(|err| format!("load remote desc {} failed for {}\r\n", subcommand.value_of("remote").unwrap(), err))?;
                 let port = u16::from_str(subcommand.value_of("port").unwrap()).unwrap();
+                let bench = u32::from_str(subcommand.value_of("bench").unwrap_or("0")).unwrap();
+                let task_num = u32::from_str(subcommand.value_of("task").unwrap_or("1")).unwrap();
                 Ok(Self::Nc(DebugCommandNc {
                     remote, 
                     port, 
-                    timeout: Duration::from_secs(8)
+                    timeout: Duration::from_secs(8),
+                    bench,
+                    task_num,
                 }))
             }, 
             "get_chunk" => {
@@ -114,12 +120,12 @@ impl DebugCommand {
                 for remote_file in remotes_split {
                     let remote = remote_device(stack, remote_file).await
                     .map_err(|err| format!("load remote desc {} failed for {}\r\n", subcommand.value_of("remote").unwrap(), err))?;
-                    remotes.push(remote.desc().device_id());
+                    remotes.push(remote.desc().clone());
                 }
                 let chunk_id_str = String::from_str(subcommand.value_of("chunk_id").unwrap()).unwrap();
                 let chunk_id = ChunkId::from_str(&chunk_id_str.as_str()).map_err(|err| format!("load chunk_id {} fail: {}\r\n",
                     chunk_id_str, err))?;
-                let local_path_str = String::from_str(subcommand.value_of("local_path").unwrap()).unwrap();
+                let local_path_str = String::from_str(subcommand.value_of("local_path").unwrap_or("default")).unwrap();
                 let local_path = PathBuf::from_str(&local_path_str.as_str()).unwrap();
                 let timeout = u32::from_str(subcommand.value_of("timeout").unwrap()).unwrap();
 
@@ -214,14 +220,17 @@ pub struct DebugCommandPing {
     pub timeout: Duration
 }
 
+#[derive(Clone, Debug)]
 pub struct DebugCommandNc {
     pub remote: Device, 
     pub port: u16, 
-    pub timeout: Duration
+    pub timeout: Duration,
+    pub bench: u32,
+    pub task_num: u32,
 }
 
 pub struct DebugCommandGetChunk {
-    pub remotes: Vec<DeviceId>, 
+    pub remotes: Vec<DeviceDesc>, 
     pub timeout: u32,
     pub chunk_id: ChunkId,
     pub local_path: PathBuf,

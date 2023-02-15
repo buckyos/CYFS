@@ -52,7 +52,7 @@ fn new_dec(name: &str) -> ObjectId {
 }
 
 pub async fn test() {
-    return test_codec().await;
+    test_codec().await;
 
     let dec_id = new_dec("crypto");
     let stack1 = TestLoader::get_shared_stack(DeviceIndex::User1OOD);

@@ -49,16 +49,8 @@ struct ReadProviderImpl {
 }
 
 impl ReadProviderImpl {
-    fn check_close_waiting(&self, now: Timestamp, msl: Duration) -> bool {
-        if let Some(when) = self.remote_closed.as_ref() {
-            //FIXME: 2 * msl
-            if self.queue.stream_len() == 0 
-                && now >= *when 
-                && Duration::from_micros(now - *when) > 2 * msl {
-                return true;
-            }  
-        }
-        false
+    fn check_close_waiting(&self) -> bool {
+        self.remote_closed.is_some() && self.queue.stream_len() == 0
     }
 
     fn check_timeout(&mut self, stream: &PackageStream, stub_time: u64) -> Option<Waker> {
@@ -222,7 +214,7 @@ impl ReadProvider {
                         // do nothing
                     }
                 };
-                if provider.check_close_waiting(now, stream.config().package.msl) {
+                if provider.check_close_waiting() {
                     *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0));
                 }
                 Ok(())
@@ -246,7 +238,10 @@ impl ReadProvider {
                     if let Some(readable) = provider.readable_waiter.as_ref() {
                         to_wake.push_back(readable.clone());
                     }
-                    *state = ReadProviderState::Closed(provider.queue.stream_end(), Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
+                    *state = ReadProviderState::Closed(
+                        provider.queue.stream_end(), 
+                        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken"))
+                    );
                 }, 
                 ReadProviderState::Closed(_, _) => {
                     
@@ -290,7 +285,7 @@ impl ReadProvider {
                         Poll::Ready(r) => {
                             if let Ok(0) = r {
                                 debug!("{} close recv queue for remote closed and no pending read", stream);
-                                if provider.check_close_waiting(bucky_time_now(), stream.config().package.msl) {
+                                if provider.check_close_waiting() {
                                     *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0));
                                 }
                             }
@@ -344,14 +339,12 @@ impl ReadProvider {
         ret
     }
 
-    pub fn close(&self, _: &PackageStream) {
+    pub fn close(&self) {
         let _ = {
             let state = &mut *cyfs_debug::lock!(self.0).unwrap();
             match state {
                 ReadProviderState::Open(provider) => {
-                    *state = ReadProviderState::Closed(
-                        provider.queue.stream_end(), 
-                        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
+                    *state = ReadProviderState::Closed(provider.queue.stream_end(), Ok(0))
                 }, 
                 _ => {}
             }   
@@ -363,17 +356,10 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
     fn on_package(&self, session_data: &SessionData, context: (&PackageStream, &mut Vec<DynamicPackage>)) -> Result<OnPackageResult, BuckyError> {
         let stream = context.0;
         let packages = context.1;
-        let mut closed = false;
         let (readable_waker, read_waker) = {
             let state = &mut *cyfs_debug::lock!(self.0).unwrap();
             match state {
                 ReadProviderState::Open(provider) => {
-                    if session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
-                        *state = ReadProviderState::Closed(
-                            provider.queue.stream_end(), 
-                            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream reset")));
-                        return Ok(OnPackageResult::Handled)
-                    }
                     if session_data.payload.as_ref().len() > 0 
                         || session_data.is_flags_contain(SESSIONDATA_FLAG_FIN) {
                         match &provider.nagle {
@@ -413,11 +399,22 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
                     }
                    
                 }, 
-                ReadProviderState::Closed(_, _) => {
-                    debug!("closed stream get data");
-
-                    closed = true;
-
+                ReadProviderState::Closed(stream_end, _) => {
+                    if session_data.stream_pos_end() > *stream_end {
+                        debug!("{} will ack reset for read closed", stream);
+                        let mut package = SessionData::new();
+                        package.flags_add(SESSIONDATA_FLAG_RESET);
+                        package.send_time = bucky_time_now();
+                        packages.push(DynamicPackage::from(package));
+                    } else {
+                        if packages.len() == 0 || !(&packages[packages.len() - 1] as &dyn AsRef<SessionData>).as_ref().is_flags_contain(SESSIONDATA_FLAG_ACK) {
+                            trace!("{} will ack for fin or nagle income", stream);
+                            let mut package = SessionData::new();
+                            package.flags_add(SESSIONDATA_FLAG_ACK);
+                            package.send_time = bucky_time_now();
+                            packages.push(DynamicPackage::from(package));
+                        } 
+                    }
                     // do nothing
                     (None, None)
                 }
@@ -428,10 +425,6 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
         }
         if let Some(to_wake) = read_waker {
             to_wake.wake();
-        }
-
-        if closed {
-            return Ok(OnPackageResult::Break)
         }
 
         Ok(OnPackageResult::Handled)

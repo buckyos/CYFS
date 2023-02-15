@@ -15,11 +15,14 @@ log = "0.4"
 cyfs-util = { path = "../../component/cyfs-util" }
 desc-tool = { path = "../../tools/desc-tool" }
 cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 ood-daemon = { path = "../../service/ood-daemon" }
 ood-control = { path = "../../service/ood-control" }
 cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-client = { path = "../../tools/cyfs-client" }
+app-manager = {path="../../service/app-manager"}
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 async-trait = "0.1.53"
 futures-util = "0.3"

@@ -24,7 +24,8 @@ pub(super) struct BdtDataAclCache {
 
 impl BdtDataAclCache {
     pub fn new() -> Self {
-        let list = LruCache::with_expiry_duration(std::time::Duration::from_secs(60 * 5));
+        let list = LruCache::with_expiry_duration_and_capacity(
+            std::time::Duration::from_secs(60 * 5), 256);
 
         Self {
             list: Arc::new(Mutex::new(list)),
@@ -45,6 +46,10 @@ impl BdtDataAclCache {
 
     pub fn get(&self, key: &BdtDataAclCacheKey) -> Option<BuckyResult<()>> {
         let mut list = self.list.lock().unwrap();
-        list.get(&key).map(|v| v.result.clone())
+
+        // force remove expired items 
+        list.iter();
+
+        list.peek(&key).map(|v| v.result.clone())
     }
 }

@@ -82,11 +82,12 @@ impl SNConfigManager {
             meta_cache,
             root_state,
             noc,
-            config,
 
             sn_list: Arc::new(Mutex::new(vec![])),
             coll: Arc::new(OnceCell::new()),
-            bdt_stack: BdtStackSNHelper::new(),
+            bdt_stack: BdtStackSNHelper::new(config.get_bdt_params().sn_mode),
+
+            config,
         }
     }
 
