@@ -85,6 +85,7 @@ impl TargetDataManager {
         let reader = ChunkListCacheReader::new(
             self.chunk_manager.clone(),
             file_id.to_string(),
+            total_size,
             Box::new(reader),
         );
 
@@ -154,6 +155,7 @@ impl TargetDataManager {
         let reader = ChunkListCacheReader::new(
             self.chunk_manager.clone(),
             chunk_id.to_string(),
+            total_size as u64,
             Box::new(reader),
         );
 

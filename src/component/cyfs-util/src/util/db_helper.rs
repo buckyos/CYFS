@@ -47,7 +47,7 @@ impl SqliteConnectionHolder {
         Ok((conn.borrow(), lock))
     }
 
-    fn create_new_conn(&self, read_only: bool) -> BuckyResult<Connection> {
+    pub fn create_new_conn(&self, read_only: bool) -> BuckyResult<Connection> {
         let flags = if read_only {
             OpenFlags::SQLITE_OPEN_READ_ONLY
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX
@@ -64,9 +64,10 @@ impl SqliteConnectionHolder {
         })?;
 
         info!(
-            "open db for thread={:?}, file={}",
+            "open db for thread={:?}, file={}, read={}",
             std::thread::current().id(),
-            self.data_file.display()
+            self.data_file.display(),
+            read_only,
         );
         assert!(conn.is_autocommit());
 

@@ -26,8 +26,16 @@ impl SnCache {
         for sn in sn_list {
             known_list.insert(sn.clone());
         }
-       
     }
+
+    pub fn reset_known_sn(&self, sn_list: &Vec<DeviceId>) {
+        let mut known_list = self.known_list.write().unwrap();
+        known_list.clear();
+        for sn in sn_list {
+            known_list.insert(sn.clone());
+        }
+    }
+
     pub fn nearest_sn_of(remote: &DeviceId, sn_list: &[DeviceId]) -> Option<DeviceId> {
         sn_list.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned()
     }

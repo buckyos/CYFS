@@ -115,12 +115,11 @@ pub fn get_app_acl_dir(app_id: &str) -> PathBuf {
     get_cyfs_root_path().join("app").join("acl").join(app_id)
 }
 
-pub fn get_app_dep_dir(app_id: &str, version: &str) -> PathBuf {
+pub fn get_app_dep_dir(app_id: &str) -> PathBuf {
     get_cyfs_root_path()
         .join("app")
         .join("dependent")
         .join(app_id)
-        .join(version)
 }
 
 pub fn get_app_dockerfile_dir(app_id: &str) -> PathBuf {

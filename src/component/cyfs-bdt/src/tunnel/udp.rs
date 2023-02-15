@@ -356,7 +356,7 @@ impl tunnel::Tunnel for Tunnel {
         interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
 
-    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage) -> Result<usize, BuckyError> {
         let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {
             Ok((active_state.container.clone(), active_state.interface.clone(), active_state.key.clone()))
@@ -367,8 +367,8 @@ impl tunnel::Tunnel for Tunnel {
         let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
         let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
-        interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
-        Ok(())
+        let sent_len = interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
+        Ok(sent_len)
     }
 
     fn retain_keeper(&self) {

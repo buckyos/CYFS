@@ -229,7 +229,8 @@ impl TransRequestHandler {
             common,
             owner: JsonCodecHelper::decode_string_field(&body, "owner")?,
             local_path: JsonCodecHelper::decode_string_field(&body, "local_path")?,
-            chunk_size: JsonCodecHelper::decode_int_field(&body, "chunk_size")?,
+            chunk_size: JsonCodecHelper::decode_int_field(&body, "chunk_size")?, 
+            chunk_method: JsonCodecHelper::decode_option_string_field(&body, "chunk_method")?.unwrap_or(TransPublishChunkMethod::Track),
             file_id: JsonCodecHelper::decode_option_string_field(&body, "file_id")?,
             dirs: JsonCodecHelper::decode_option_array_field(&body, "dirs")?,
             access,
@@ -346,6 +347,7 @@ impl TransRequestHandler {
 
         let req = TransControlTaskGroupInputRequest{
             common,
+            group_type: JsonCodecHelper::decode_string_field(&body, "group_type")?,
             group: JsonCodecHelper::decode_string_field(&body, "group")?,
             action: JsonCodecHelper::decode_serde_field(&body, "action")?,
         };
@@ -367,6 +369,7 @@ impl TransRequestHandler {
 
         let req = TransGetTaskGroupStateInputRequest {
             common,
+            group_type: JsonCodecHelper::decode_string_field(&body, "group_type")?,
             group: JsonCodecHelper::decode_string_field(&body, "group")?,
             speed_when: JsonCodecHelper::decode_option_int_field(&body, "speed_when")?,
         };

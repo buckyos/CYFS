@@ -7,19 +7,16 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateAccessorService {
-    device_id: DeviceId,
-    root_state: Arc<GlobalStateManager>,
+    root_state: GlobalStateRef,
     noc: NamedObjectCacheRef,
 }
 
 impl GlobalStateAccessorService {
     pub fn new(
-        device_id: DeviceId,
-        root_state: Arc<GlobalStateManager>,
+        root_state: GlobalStateRef,
         noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
-            device_id,
             root_state,
             noc,
         }
@@ -42,7 +39,7 @@ impl GlobalStateAccessorService {
             }
             Some(dec_id) => {
                 let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
-                let op_env = dec_root_manager.create_op_env(None).await?;
+                let op_env = dec_root_manager.create_op_env(None)?;
                 let ret = op_env.get_by_path(inner_path).await?;
                 if ret.is_none() {
                     let msg = format!(

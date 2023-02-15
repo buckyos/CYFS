@@ -13,6 +13,9 @@ pub struct CyfsStackConfigParams {
 
     // 是否开启shared_object_stack服务，默认为true
     pub shared_stack: bool,
+
+    // Whether to enable perf_service
+    pub perf_service: bool,
 }
 
 impl Default for CyfsStackConfigParams {
@@ -21,6 +24,7 @@ impl Default for CyfsStackConfigParams {
             isolate: None,
             sync_service: true,
             shared_stack: true,
+            perf_service: true,
         }
     }
 }

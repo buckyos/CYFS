@@ -13,6 +13,7 @@ mod path_iterator;
 mod root;
 mod single_env;
 mod visitor;
+mod isolate_path_env;
 
 pub use access::*;
 pub use cache::*;

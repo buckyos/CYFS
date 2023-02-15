@@ -23,6 +23,7 @@ pub async fn test() {
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
+    test_group_state().await;
     test_load_with_cache(&device_stack).await;
 
     test_storage(&device_stack).await;
@@ -34,7 +35,35 @@ pub async fn test() {
 
     test_path_env(&stack).await;
     test_path_env_update(&stack).await;
+    test_isolate_path_env(&stack).await;
     test_iterator(&stack).await;
+
+    info!("test root state all cases success!");
+}
+
+async fn test_group_state() {
+    let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
+
+    let isolate_id = new_dec("test-group");
+    let group_state = stack.global_state_manager().get_global_state(GlobalStateCategory::RootState, &isolate_id).await;
+    let group_state = if group_state.is_none() {
+        let _ret = stack.global_state_manager().load_global_state(GlobalStateCategory::RootState, &isolate_id, None, false).await.unwrap();
+ 
+        let ret = stack.global_state_manager().load_root_state(&isolate_id, None, true).await.unwrap();
+        ret.unwrap()
+    } else {
+        group_state.unwrap().clone_processor()
+    };
+
+    let _ = group_state.get_dec_root(&isolate_id);
+    let dec_manager = group_state.get_dec_root_manager(&isolate_id, true).await.unwrap();
+    let op_env = dec_manager.create_op_env(None).unwrap();
+    op_env.set_with_path("/a/b", &isolate_id, &None, true).await.unwrap();
+    let dec_root = op_env.commit().await.unwrap();
+
+    assert_eq!(dec_root, dec_manager.get_current_root());
+
+    info!("test group state complete!");
 }
 
 async fn test_load_with_cache(stack: &SharedCyfsStack) {
@@ -657,4 +686,83 @@ pub async fn test_storage(s: &SharedCyfsStack) {
     }
 
     info!("state storage test complete!");
+}
+
+
+async fn test_isolate_path_env(stack: &SharedCyfsStack) {
+    let root_state = stack.root_state_stub(None, None);
+    
+    let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+    let x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
+
+    // create sub tree
+    let path_env = root_state.create_isolate_path_op_env().await.unwrap();
+    path_env.get_by_path("/a/b").await.unwrap_err();
+
+    path_env.create_new(ObjectMapSimpleContentType::Map).await.unwrap();
+
+    path_env.insert_with_path("/a/b", &x1_value).await.unwrap();
+    let ret = path_env.set_with_path("/a/b", &x1_value, None, false).await.unwrap();
+    assert_eq!(ret, Some(x1_value));
+    let ret = path_env.set_with_path("/a/b", &x1_value2, Some(x1_value), false).await.unwrap();
+    assert_eq!(ret, Some(x1_value));
+    let ret = path_env.get_by_path("/a/b").await.unwrap();
+    assert_eq!(ret, Some(x1_value2));
+    let ret = path_env.get_by_path("/a/x").await.unwrap();
+    assert_eq!(ret, None);
+
+    path_env.insert_with_path("/a/c", &x1_value).await.unwrap();
+
+    path_env.create_new_with_path("/s", ObjectMapSimpleContentType::Set).await.unwrap();
+    path_env.create_new_with_path("/s2", ObjectMapSimpleContentType::Set).await.unwrap();
+    path_env.insert("/s", &x1_value).await.unwrap();
+    path_env.insert("/s", &x1_value2).await.unwrap();
+
+    let ret = path_env.metadata("/s2").await.unwrap();
+    assert_eq!(ret.count, 0);
+    assert_eq!(ret.content_type, ObjectMapSimpleContentType::Set);
+
+    let info = path_env.get_current_root().await.unwrap();
+    let info2 = path_env.commit().await.unwrap();
+
+    assert_eq!(info, info2);
+
+    // attach to root-state and check with full path of root-state
+    let op_env = root_state.create_path_op_env().await.unwrap();
+    let ret = op_env.remove_with_path("/i", None).await.unwrap();
+    if ret.is_some() {
+        // WARN sub tree always the same! if sub tree changed in future, this assert will triggered once!
+        // assert_eq!(ret, Some(info.root));
+    }
+
+    op_env.insert_with_path("/i", &info.root).await.unwrap();
+
+    let value = op_env.get_by_path("/i/a/b").await.unwrap();
+    assert_eq!(value, Some(x1_value2));
+
+    let value = op_env.get_by_path("/i/a/c").await.unwrap();
+    assert_eq!(value, Some(x1_value));
+
+    let value = op_env.get_by_path("/i").await.unwrap();
+    assert_eq!(value, Some(info.root));
+
+    let value = op_env.get_by_path("/i/a/x").await.unwrap();
+    assert_eq!(value, None);
+
+    let ret = op_env.contains("/i/s", &x1_value).await.unwrap();
+    assert!(ret);
+
+    let ret = op_env.contains("/i/s", &x1_value2).await.unwrap();
+    assert!(ret);
+
+    let ret = op_env.contains("/i/s", &info.root).await.unwrap();
+    assert!(!ret);
+
+    let ret = op_env.metadata("/i/s2").await.unwrap();
+    assert_eq!(ret.count, 0);
+    assert_eq!(ret.content_type, ObjectMapSimpleContentType::Set);
+
+    op_env.commit().await.unwrap();
+
+    info!("test_isolate_path_env complete!");
 }

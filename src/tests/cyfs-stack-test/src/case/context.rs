@@ -37,6 +37,8 @@ async fn publish_file(dec_id: &ObjectId) -> (DeviceId, FileId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        chunk_method: TransPublishChunkMethod::Track,
+         
         access: None,
         
         // 关联的dirs

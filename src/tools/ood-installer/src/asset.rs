@@ -164,7 +164,7 @@ impl OODAsset {
         self.extract_from_asset(&root, "app-manager.toml")
     }
 
-    fn extract_app_repo(&self) -> BuckyResult<()> {
+    pub(crate) fn extract_app_repo(&self) -> BuckyResult<()> {
         let root = ::cyfs_util::get_cyfs_root_path()
             .join("etc")
             .join("desc")

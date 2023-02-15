@@ -12,16 +12,50 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::util_proto::BuildDirParams)]
 pub struct BuildDirParams {
     pub local_path: String,
     pub owner: ObjectId,
     pub dec_id: ObjectId,
-    pub chunk_size: u32,
+    pub chunk_size: u32, 
+    pub chunk_method: TransPublishChunkMethod, 
     pub device_id: ObjectId,
     pub access: Option<u32>,
 }
+
+
+impl ProtobufTransform<super::util_proto::BuildDirParams> for BuildDirParams {
+    fn transform(
+        value: super::util_proto::BuildDirParams,
+    ) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            owner: ObjectId::clone_from_slice(value.owner.as_slice())?,
+            dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice())?,
+            chunk_size: value.chunk_size, 
+            chunk_method: value.chunk_method.map(|v| TransPublishChunkMethod::try_from(v as u8)).unwrap_or(Ok(TransPublishChunkMethod::default()))?, 
+            device_id: ObjectId::clone_from_slice(value.device_id.as_slice())?,
+            access: value.access
+        })
+    }
+}
+
+impl ProtobufTransform<&BuildDirParams> for super::util_proto::BuildDirParams {
+    fn transform(value: &BuildDirParams) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            owner: value.owner.as_slice().to_vec(),
+            dec_id: value.dec_id.as_slice().to_vec(),
+            chunk_size: value.chunk_size, 
+            chunk_method: Some(Into::<u8>::into(value.chunk_method) as i32), 
+            device_id: value.device_id.as_slice().to_vec(),
+            access: value.access
+        })
+    }
+}
+
+
 
 pub struct BuildDirTaskFactory {
     task_manager: Weak<TaskManager>,
@@ -46,7 +80,8 @@ impl TaskFactory for BuildDirTaskFactory {
             params.local_path,
             params.owner,
             params.dec_id,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             params.access,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
@@ -68,7 +103,8 @@ impl TaskFactory for BuildDirTaskFactory {
             params.local_path,
             params.owner,
             params.dec_id,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             params.access,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
@@ -386,7 +422,8 @@ pub struct BuildDirTask {
     local_path: String,
     owner: ObjectId,
     dec_id: ObjectId,
-    chunk_size: u32,
+    chunk_size: u32, 
+    chunk_method: TransPublishChunkMethod, 
     device_id: DeviceId,
     access: Option<u32>,
     noc: NamedObjectCacheRef,
@@ -400,7 +437,8 @@ impl BuildDirTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
@@ -419,7 +457,8 @@ impl BuildDirTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             device_id,
             noc,
@@ -433,7 +472,8 @@ impl BuildDirTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
@@ -454,7 +494,8 @@ impl BuildDirTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             device_id,
             noc,
@@ -471,7 +512,7 @@ impl BuildDirTask {
         start_pos: usize,
     ) -> BuckyResult<ObjectId> {
         let path_str = path.to_string_lossy().to_string();
-        log::info!("build_dir {}", path_str.as_str());
+        log::info!("build_dir {}, start_pos={}", path_str, start_pos);
         {
             let mut task_state = self.task_state.lock().unwrap();
             if !task_state
@@ -509,7 +550,8 @@ impl BuildDirTask {
                 local_path: sub_file.to_string_lossy().to_string(),
                 owner: self.owner.clone(),
                 dec_id: self.dec_id.clone(),
-                chunk_size: self.chunk_size,
+                chunk_size: self.chunk_size, 
+                chunk_method: self.chunk_method, 
                 access: self.access.clone(),
             };
 
@@ -541,7 +583,7 @@ impl BuildDirTask {
                             let file_id = file.desc().calculate_id();
                             Ok((task_id, file_name, file_id))
                         } else {
-                            let msg = format!("build_file_object unexpect status");
+                            let msg = format!("build_file_object unexpect status, task={}", task_id);
                             log::error!("{}", msg.as_str());
                             Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg))
                         }

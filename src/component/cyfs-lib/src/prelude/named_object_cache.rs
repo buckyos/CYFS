@@ -297,3 +297,49 @@ pub trait NamedObjectCacheObjectMetaAccessProvider: Sync + Send {
 }
 
 pub type NamedObjectCacheObjectMetaAccessProviderRef = Arc<Box<dyn NamedObjectCacheObjectMetaAccessProvider>>;
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NamedObjectRelationType {
+    InnerPath = 0,
+}
+
+impl Into<u8> for NamedObjectRelationType {
+    fn into(self) -> u8 {
+        match self {
+            Self::InnerPath => 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NamedObjectRelationCacheKey {
+    pub object_id: ObjectId,
+    pub relation_type: NamedObjectRelationType,
+    pub relation: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct NamedObjectRelationCachePutRequest {
+    pub cache_key: NamedObjectRelationCacheKey,
+    pub target_object_id: Option<ObjectId>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NamedObjectRelationCacheGetRequest {
+    pub cache_key: NamedObjectRelationCacheKey,
+    pub flags: u32,
+}
+
+#[derive(Clone)]
+pub struct NamedObjectRelationCacheData {
+    pub target_object_id: Option<ObjectId>,
+}
+
+#[async_trait::async_trait]
+pub trait NamedObjectRelationCache: Send + Sync {
+    async fn put(&self, req: &NamedObjectRelationCachePutRequest) -> BuckyResult<()>;
+    async fn get(&self, req: &NamedObjectRelationCacheGetRequest) -> BuckyResult<Option<NamedObjectRelationCacheData>>;
+}
+
+pub type NamedObjectRelationCacheRef = Arc<Box<dyn NamedObjectRelationCache>>;

@@ -50,7 +50,7 @@ impl Drop for ObjectMapPathOpEnv {
 }
 
 impl ObjectMapPathOpEnv {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         lock: &ObjectMapPathLock,
@@ -80,7 +80,7 @@ impl ObjectMapPathOpEnv {
                 "path_op_env bind root snapshot: sid={}, root={}",
                 self.sid, root
             );
-            let path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let path = ObjectMapPath::new(root.clone(), self.cache.clone(), true);
 
             ObjectMapPathSnapshot {
                 root: RwLock::new(root),

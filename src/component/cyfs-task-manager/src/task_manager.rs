@@ -162,10 +162,22 @@ impl TaskManager {
         match self.get_task_factory(&task_type) {
             Some(factory) => {
                 let param = task_param.to_vec()?;
-                let mut task = factory.create(param.as_slice()).await?;
+                let mut task = factory.create(param.as_slice()).await.map_err(|e| {
+                    let msg = format!("create task failed! dec={}, source={}, task_type={}, {}", dec_id, source, task_type, e);
+                    error!("{}", msg);
+                    BuckyError::new(e.code(), msg)
+                })?;
+
+                if task.get_task_type() != task_type {
+                    let msg = format!("create task but task_type mismatch! dec={}, source={}, create task_type={}, got={}", dec_id, source, task_type, task.get_task_type());
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+                }
+
                 if task.need_persist() {
                     task.set_task_store(self.task_store.clone()).await;
                 }
+
                 let task_id = task.get_task_id();
                 let _locker = Locker::get_locker(format!("task_manager_{}", task_id.to_string())).await;
                 {

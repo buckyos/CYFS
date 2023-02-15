@@ -1,5 +1,9 @@
 use async_std::sync::{Arc, Weak};
-use std::{collections::BTreeMap, sync::{RwLock}};
+use std::{
+    collections::{BTreeMap}, 
+    sync::{RwLock, Mutex}
+};
+use lru_time_cache::LruCache;
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -16,7 +20,7 @@ use log::*;
 
 const QUESTION_MAX_LEN: usize = 1024*25;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct RemoteSequence(DeviceId, TempSeq);
 
 impl std::fmt::Display for RemoteSequence {
@@ -31,26 +35,58 @@ impl From<(DeviceId, TempSeq)> for RemoteSequence {
     }
 }
 
-struct StreamContainerEntries {
+struct StreamEntries {
     id_entries: BTreeMap<IncreaseId, StreamContainer>,
-    remote_entries: BTreeMap<RemoteSequence, StreamContainer> 
+    remote_entries: BTreeMap<RemoteSequence, StreamContainer>, 
 }
 
-pub struct StreamManagerImpl {
-    stack: WeakStack, 
-    stream_entries: RwLock<StreamContainerEntries>, 
-    acceptor_entries: RwLock<BTreeMap<u16, StreamListener>>
-}
+impl StreamEntries {
+    fn stream_of_id(&self, id: &IncreaseId) -> Option<StreamContainer> {
+        self.id_entries.get(id).cloned()
+    }
 
-impl StreamManagerImpl {
-    pub fn remove_acceptor(&self, acceptor: &StreamListener) {
-        self.acceptor_entries.write().unwrap().remove(&acceptor.port());
+    fn stream_of_remote_sequence(&self, rs: &RemoteSequence) -> Option<StreamContainer> {
+        self.remote_entries.get(rs).cloned()
+    }
+
+    fn remove_stream(&mut self, stream: &StreamContainer) -> (
+        Option<IncreaseId>, 
+        Option<RemoteSequence>
+    ) {
+        let remote_seq = RemoteSequence::from((stream.remote().0.clone(), stream.sequence()));
+        (self.id_entries.remove(&stream.local_id()).map(|_| stream.local_id()), 
+            self.remote_entries.remove(&remote_seq).map(|_| remote_seq))
     }
 }
 
+struct ReservingEntries {
+    id_entries: LruCache<IncreaseId, StreamContainer>,
+    remote_entries: LruCache<RemoteSequence, StreamContainer>, 
+}
+
+impl ReservingEntries {
+    fn stream_of_id(&mut self, id: &IncreaseId) -> Option<StreamContainer> {
+        self.id_entries.get(id).cloned()
+    }
+
+    fn stream_of_remote_sequence(&mut self, rs: &RemoteSequence) -> Option<StreamContainer> {
+        self.remote_entries.get(rs).cloned()
+    }
+}
+
+struct StreamManagerImpl {
+    stack: WeakStack, 
+    stream_entries: RwLock<StreamEntries>, 
+    reserving_entries: Mutex<ReservingEntries>, 
+    acceptor_entries: RwLock<BTreeMap<u16, StreamListener>>
+}
+
+
 #[derive(Clone)]
 pub struct StreamManager(Arc<StreamManagerImpl>);
-pub type WeakStreamManager = Weak<StreamManagerImpl>;
+
+#[derive(Clone)]
+pub struct WeakStreamManager(Weak<StreamManagerImpl>);
 
 impl std::fmt::Display for StreamManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -60,18 +96,23 @@ impl std::fmt::Display for StreamManager {
 
 impl StreamManager {
     pub fn new(stack: WeakStack) -> Self {
+        let strong_stack = Stack::from(&stack);
         Self(Arc::new(StreamManagerImpl {
             stack, 
-            stream_entries: RwLock::new(StreamContainerEntries {
+            stream_entries: RwLock::new(StreamEntries {
                 id_entries: BTreeMap::new(), 
-                remote_entries: BTreeMap::new()
+                remote_entries: BTreeMap::new(), 
+            }), 
+            reserving_entries: Mutex::new(ReservingEntries {
+                id_entries: LruCache::with_expiry_duration(strong_stack.config().stream.stream.package.msl), 
+                remote_entries: LruCache::with_expiry_duration(strong_stack.config().stream.stream.package.msl), 
             }), 
             acceptor_entries: RwLock::new(BTreeMap::new())
         }))
     }
 
     fn to_weak(&self) -> WeakStreamManager {
-        Arc::downgrade(&self.0)
+        WeakStreamManager(Arc::downgrade(&self.0))
     }
 
     // connect完成是返回stream
@@ -94,14 +135,14 @@ impl StreamManager {
         let local_id = stack.id_generator().generate();
         let tunnel = stack.tunnel_manager().create_container(&build_params.remote_const)?;
 
-        let stream = StreamContainerImpl::new(
+        let stream = StreamContainer::new(
             manager_impl.stack.clone(), 
             tunnel.clone(), 
             port, 
             local_id, 
             tunnel.generate_sequence());
         manager_impl.stream_entries.write().unwrap().id_entries.insert(local_id, stream.clone());
-        stream.as_ref().connect(&stream, question, build_params).await.map_err(|err| {self.remove_stream(&stream); err})?;
+        stream.connect(question, build_params).await.map_err(|err| {self.remove_stream(&stream, true); err})?;
         Ok(StreamGuard::from(stream))
     }
 
@@ -121,30 +162,33 @@ impl StreamManager {
             .map_err(|err| {error!("{} listen on {} failed for {}", self, port, err); err})
     } 
 
-    fn stream_of_remoteid(&self, remote_id: &IncreaseId) -> Option<StreamContainer> {
-        let id_entries = &self.0.stream_entries.read().unwrap().id_entries;
-        for (_, stream) in id_entries {
-            if stream.remote_id() == *remote_id {
-                return Some(stream.clone())
-            }
-        }
-        None
-    }
-
     fn stream_of_id(&self, id: &IncreaseId) -> Option<StreamContainer> {
-        self.0.stream_entries.read().unwrap().id_entries.get(id).map(|s| s.clone())
+        self.0.stream_entries.read().unwrap().stream_of_id(id)
+            .or_else(|| self.0.reserving_entries.lock().unwrap().stream_of_id(id))
     }
 
-    pub fn stream_of_remote_sequence(&self, rs: &RemoteSequence) -> Option<StreamContainer> {
-        self.0.stream_entries.read().unwrap().remote_entries.get(rs).map(|s| s.clone())
+    pub(crate) fn stream_of_remote_sequence(&self, rs: &RemoteSequence) -> Option<StreamContainer> {
+        self.0.stream_entries.read().unwrap().stream_of_remote_sequence(rs)
+            .or_else(|| self.0.reserving_entries.lock().unwrap().stream_of_remote_sequence(rs))
     }
 
-    pub fn remove_stream(&self, stream: &StreamContainer) {
-        debug!("{} remove from stream manager", stream.as_ref());
-        let mut stream_entries = self.0.stream_entries.write().unwrap();
-        let _ = stream_entries.id_entries.remove(&stream.local_id());
-        let remote_seq = RemoteSequence::from((stream.remote().0.clone(), stream.sequence()));
-        let _ = stream_entries.remote_entries.remove(&remote_seq);
+    pub(crate) fn remove_stream(&self, stream: &StreamContainer, reserving: bool) {
+        info!("{} remove from stream manager", stream);
+        let (local_id, remote_seq) = self.0.stream_entries.write().unwrap().remove_stream(stream);
+        if reserving {
+            info!("{} reserved closed in stream manager ", stream);
+            let mut entries = self.0.reserving_entries.lock().unwrap();
+            if let Some(local_id) = local_id {
+                entries.id_entries.insert(local_id, stream.clone());
+            }
+            if let Some(remote_seq) = remote_seq {
+                entries.remote_entries.insert(remote_seq, stream.clone());
+            }            
+        }
+    }
+
+    pub(crate) fn remove_acceptor(&self, acceptor: &StreamListener) {
+        self.0.acceptor_entries.write().unwrap().remove(&acceptor.port());
     }
 
     fn try_accept(
@@ -158,13 +202,13 @@ impl StreamManager {
             Some(acceptor) => {
                 let manager_impl = &self.0;
                 let local_id = Stack::from(&manager_impl.stack).id_generator().generate();
-                let stream = StreamContainerImpl::new(
+                let stream = StreamContainer::new(
                     manager_impl.stack.clone(), 
                     tunnel.clone(), 
                     port, 
                     local_id, 
                     sequence);
-                stream.as_ref().accept(&stream, remote_id);
+                stream.accept(remote_id);
                 // 先加入到stream entries
                 if let Some(exists) = {
                     let remote_seq = RemoteSequence(tunnel.remote().clone(), sequence);
@@ -177,13 +221,14 @@ impl StreamManager {
                         None
                     }                    
                 } {
-                    let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicate accepting stream"));
+                    let _ = stream.cancel_connecting_with(&BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicate accepting stream"));
                     Some(exists)
                 } else {
                     // 因为可能会失败，用guard保证reset掉，从stream entries中移除
-                    let _ = acceptor.as_ref().push_stream(acceptor.clone(),PreAcceptedStream {
-                        stream:  StreamGuard::from(stream.clone()),
-                        question});
+                    let _ = acceptor.push_stream(PreAcceptedStream {
+                        stream: StreamGuard::from(stream.clone()),
+                        question
+                    });
                     Some(stream)  
                 }
             }, 
@@ -200,15 +245,9 @@ impl StreamManager {
     }
 }
 
-impl AsRef<StreamManagerImpl> for StreamManager {
-    fn as_ref(&self) -> &StreamManagerImpl {
-        &self.0
-    }
-}
-
 impl From<&WeakStreamManager> for StreamManager {
     fn from(w: &WeakStreamManager) -> Self {
-        Self(w.upgrade().unwrap())
+        Self(w.0.upgrade().unwrap())
     }
 }
 
@@ -243,12 +282,6 @@ impl OnPackage<SessionData, &TunnelContainer> for StreamManager {
                 debug!("{} on {} from {}", self, pkg, tunnel.remote());
                 let to_session_id = pkg.to_session_id.as_ref().unwrap();
                 self.stream_of_id(to_session_id)
-            } else if pkg.is_rest() {
-                if pkg.to_session_id.is_some() && !pkg.session_id.is_valid() {
-                    self.stream_of_remoteid(&pkg.to_session_id.unwrap())
-                } else {
-                    self.stream_of_id(&pkg.session_id)
-                }
             } else {
                 self.stream_of_id(&pkg.session_id)
             }

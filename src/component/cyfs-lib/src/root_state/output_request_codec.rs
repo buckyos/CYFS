@@ -195,6 +195,8 @@ impl JsonCodec<Self> for OpEnvCreateNewOutputRequest {
         JsonCodecHelper::encode_option_string_field(&mut obj, "path", self.path.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "key", self.key.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "content_type", &self.content_type);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "owner", self.owner.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "dec", self.dec.as_ref());
 
         obj
     }
@@ -205,6 +207,8 @@ impl JsonCodec<Self> for OpEnvCreateNewOutputRequest {
             path: JsonCodecHelper::decode_option_string_field(obj, "path")?,
             key: JsonCodecHelper::decode_option_string_field(obj, "key")?,
             content_type: JsonCodecHelper::decode_string_field(obj, "content_type")?,
+            owner: JsonCodecHelper::decode_option_string_field(obj, "owner")?,
+            dec: JsonCodecHelper::decode_option_string_field(obj, "dec")?,
         })
     }
 }

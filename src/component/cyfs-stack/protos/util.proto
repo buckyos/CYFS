@@ -6,6 +6,7 @@ message BuildFileParams {
   bytes dec_id = 3;
   uint32 chunk_size = 4;
   optional uint32 access = 5;
+  optional int32 chunk_method = 6;
 }
 
 message BuildDirParams {
@@ -15,4 +16,5 @@ message BuildDirParams {
   uint32 chunk_size = 4;
   bytes device_id = 5;
   optional uint32 access = 6;
+  optional int32 chunk_method = 7;
 }

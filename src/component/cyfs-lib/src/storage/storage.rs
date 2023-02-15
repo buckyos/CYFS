@@ -372,6 +372,20 @@ impl NOCRawStorage {
             storage_id: storage.storage_id(),
         }
     }
+    
+    pub async fn exists(id: &str, noc: &NamedObjectCacheRef) -> BuckyResult<bool> {
+        let storage: Storage = StorageObj::create(id, Vec::new());
+        let storage_id = storage.storage_id();
+
+        let noc_req = NamedObjectCacheExistsObjectRequest {
+            object_id: storage_id.object_id().clone(),
+            source: RequestSourceInfo::new_local_system(),
+        };
+
+        noc.exists_object(&noc_req).await.map(|resp| {
+            resp.meta && resp.object
+        })
+    }
 }
 
 #[async_trait::async_trait]

@@ -39,6 +39,7 @@ const BDT_CONFIG: &str = r#"
 #tcp_port_mapping = 0
 device = "${device_file_name}"
 #udp_sn_only = false
+#sn_mode = "normal"
 
 ${endpoints}
 "#;
@@ -73,7 +74,7 @@ type = "ws"
 enable = ${ws_enable}
 listen = "${ws_listener}"
 
-# bdt配置部分，可替换默认值
+# bdt configuration part, can replace the default value
 ${bdt_config}
 "#;
 

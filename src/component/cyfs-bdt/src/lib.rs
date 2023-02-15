@@ -9,7 +9,7 @@ mod finder;
 pub mod sn;
 pub mod tunnel;
 pub mod pn;
-mod cc;
+pub mod cc;
 mod stream;
 mod datagram;
 mod dht;

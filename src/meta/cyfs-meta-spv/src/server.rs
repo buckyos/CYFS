@@ -1,6 +1,6 @@
 use crate::*;
 use cyfs_base::*;
-use tide::Server;
+use tide::{Server, StatusCode};
 use tide::{Request, Response};
 use std::str::FromStr;
 use tide::http::Url;
@@ -181,6 +181,39 @@ impl SPVHttpServer {
 
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
                 resp.set_body(result.to_vec()?);
+                Ok(resp)
+            }
+        });
+
+        let tmp_storage = storage.clone();
+        app.at("/objects/:objectid").get(move |req: Request<()>| {
+            #[derive(Deserialize)]
+            #[serde(default)]
+            struct ObjectQuery {
+                bodyhash: Option<String>,
+                begin: Option<i64>,
+                end: Option<i64>
+            }
+            impl Default for ObjectQuery {
+                fn default() -> Self {
+                    Self {
+                        bodyhash: None,
+                        begin: None,
+                        end: None,
+                    }
+                }
+            }
+            let storage = tmp_storage.clone();
+            async move {
+                let object_id = req.param("objectid")?;
+                let params: ObjectQuery = req.query()?;
+                let tx_storage = storage.create_tx_storage().await?;
+                let objects = tx_storage.get_objects(object_id, params.bodyhash, params.begin, params.end).await?;
+                let mut resp = Response::new(StatusCode::NotFound);
+                if !objects.is_empty() {
+                    resp.set_status(StatusCode::Ok);
+                    resp.set_body(objects.to_vec()?);
+                }
                 Ok(resp)
             }
         });

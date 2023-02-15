@@ -17,6 +17,9 @@ use std::sync::Arc;
 #[async_trait]
 pub trait DeviceConfigRepo: Send + Sync {
     async fn fetch(&self) -> BuckyResult<String>;
+    async fn clear_cache(&self) {
+        // do nothing on default!
+    }
 
     fn get_type(&self) -> &'static str;
 }

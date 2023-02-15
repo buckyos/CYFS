@@ -24,7 +24,7 @@ use crate::rmeta::GlobalStateMetaOutputTransformer;
 use crate::rmeta_api::{GlobalStateMetaLocalService, GlobalStateMetaService};
 use crate::root_state::{GlobalStateAccessorOutputTransformer, GlobalStateOutputTransformer};
 use crate::root_state_api::{
-    GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager,
+    GlobalStateLocalService, GlobalStateManager, GlobalStateService, GlobalStateValidatorManager,
 };
 use crate::router_handler::RouterHandlersManager;
 use crate::trans::TransOutputTransformer;
@@ -92,6 +92,9 @@ pub struct CyfsStackImpl {
     // acl
     acl_manager: AclManagerRef,
 
+    // global state manager
+    global_state_manager: GlobalStateManager,
+
     // root_state
     root_state: GlobalStateService,
 
@@ -126,6 +129,8 @@ impl CyfsStackImpl {
         };
 
         let noc = Self::init_raw_noc(isolate, known_objects).await?;
+        let noc_relation = NamedObjectRelationCacheManager::create(isolate)
+        .await?;
 
         // meta with cache
         let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
@@ -134,9 +139,23 @@ impl CyfsStackImpl {
         let name_resolver = NameResolver::new(raw_meta_cache.clone(), noc.clone());
         name_resolver.start().await?;
 
-        // 加载全局状态
-        let (local_root_state, local_cache) =
-            Self::load_global_state(&device_id, &device, noc.clone(), &config).await?;
+        // init global state manager
+        let global_state_manager = GlobalStateManager::new(noc.clone(), config.clone());
+        global_state_manager.load().await.map_err(|e| {
+            let msg = format!("init global state manager failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
+
+        // load current zone's global_state
+        let (local_root_state, local_cache) = Self::load_global_state(
+            &global_state_manager,
+            &device_id,
+            &device,
+            noc.clone(),
+            &config,
+        )
+        .await?;
 
         let current_root = local_root_state.state().get_current_root();
 
@@ -225,7 +244,8 @@ impl CyfsStackImpl {
             Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source);
 
         // init global-state validator
-        let validator = GlobalStateValidatorManager::new(&device_id, &local_root_state, &local_cache);
+        let validator =
+            GlobalStateValidatorManager::new(&device_id, &local_root_state, &local_cache);
 
         noc.bind_object_meta_access_provider(Arc::new(Box::new(local_global_state_meta.clone())));
 
@@ -325,6 +345,7 @@ impl CyfsStackImpl {
 
         let (non_service, ndn_service) = NONService::new(
             noc.clone(),
+            noc_relation,
             bdt_stack.clone(),
             &named_data_components,
             forward_manager.clone(),
@@ -423,6 +444,7 @@ impl CyfsStackImpl {
 
             bdt_stack,
 
+            global_state_manager,
             root_state,
             local_cache,
 
@@ -569,10 +591,15 @@ impl CyfsStackImpl {
             }
         });
 
+        if param.config.perf_service {
+            let _ = stack.init_perf().await;
+        }
+
         Ok(stack)
     }
 
     async fn load_global_state(
+        global_state_manager: &GlobalStateManager,
         device_id: &DeviceId,
         device: &Device,
         noc: NamedObjectCacheRef,
@@ -591,11 +618,11 @@ impl CyfsStackImpl {
 
         // load root state
         let root_state = GlobalStateLocalService::load(
+            global_state_manager,
             GlobalStateCategory::RootState,
             device_id,
             Some(owner.clone()),
             noc.clone(),
-            config.clone(),
         )
         .await?;
 
@@ -609,11 +636,11 @@ impl CyfsStackImpl {
 
         // load local cache
         let local_cache = GlobalStateLocalService::load(
+            global_state_manager,
             GlobalStateCategory::LocalCache,
             device_id,
             Some(owner),
             noc,
-            config.clone(),
         )
         .await?;
 
@@ -1004,6 +1031,44 @@ impl CyfsStackImpl {
 
         processors
     }
+
+    async fn init_perf(&self) -> BuckyResult<()> {
+        use cyfs_perf_client::*;
+
+        // The same process can only be initialized once, there may be other cyfs-stacks in the same process
+        if !cyfs_base::PERF_MANGER.get().is_none() {
+            warn!("perf manager already initialized!");
+            return Ok(());
+        } 
+
+        let info = self.zone_manager.get_current_info().await?;
+
+        let perf = PerfClient::new(
+            "cyfs-stack".to_owned(),
+            cyfs_base::get_version().to_owned(),
+            None,
+            PerfConfig {
+                reporter: PerfServerConfig::Default,
+                save_to_file: true,
+                report_interval: std::time::Duration::from_secs(60 * 10),
+            },
+            self.open_uni_stack(&None).await,
+            info.device_id.clone(),
+            info.owner_id.clone(),
+        );
+
+        if let Err(e) = perf.start().await {
+            error!("init perf client failed! {}", e);
+        }
+
+        if let Err(_) = cyfs_base::PERF_MANGER.set(Box::new(perf)) {
+            warn!("init perf manager but already initialized!");
+        }
+
+        info!("init perf manager success! current={}", info.device_id);
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -1087,6 +1152,10 @@ impl CyfsStack {
 
     pub fn util_service(&self) -> &Arc<UtilService> {
         &self.stack.services.util_service
+    }
+
+    pub fn global_state_manager(&self) -> &GlobalStateManager {
+        &self.stack.global_state_manager
     }
 
     pub fn root_state(&self) -> &GlobalStateService {

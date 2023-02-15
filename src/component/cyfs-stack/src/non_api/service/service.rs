@@ -27,6 +27,7 @@ pub struct NONService {
 impl NONService {
     pub(crate) fn new(
         noc: NamedObjectCacheRef,
+        noc_relation: NamedObjectRelationCacheRef,
         bdt_stack: StackGuard,
         named_data_components: &NamedDataComponents,
         forward_manager: ForwardProcessorManager,
@@ -36,9 +37,11 @@ impl NONService {
         meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
     ) -> (NONService, NDNService) {
+
         // raw service with inner_path service support
         let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
+            noc_relation.clone(),
             named_data_components,
             router_handlers.clone(),
             zone_manager.clone(),
@@ -50,6 +53,7 @@ impl NONService {
             meta_cache,
             named_data_components,
             noc.clone(),
+            noc_relation.clone(),
         );
 
         // noc processor with local device acl + rmeta acl + validate
@@ -71,6 +75,7 @@ impl NONService {
 
         // 标准acl权限的router + rmeta acl + validate
         let router = NONRouter::new_acl(
+            noc_relation,
             raw_noc_processor.clone(),
             forward_manager.clone(),
             acl.clone(),
