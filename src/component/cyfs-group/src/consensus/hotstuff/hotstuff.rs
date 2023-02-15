@@ -18,7 +18,7 @@ use crate::{
     consensus::{synchronizer::Synchronizer, proposal}, dec_state::StatePusher, helper::Timer, Committee,
     ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
     PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
+    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT,
 };
 
 /**
@@ -1461,12 +1461,13 @@ impl HotstuffRunner {
                 continue;
             }
 
-            if let Some(ending) = proposal.effective_ending() {
-                if now >= bucky_time_to_system_time(ending) {
-                    remove_proposals.push(proposal.desc().object_id());
-                    timeout_proposals.push(proposal);
-                    continue;
-                }
+            let ending =  proposal.effective_ending()
+                .map_or(now.checked_add(PROPOSAL_MAX_TIMEOUT).unwrap(), 
+                    |ending| bucky_time_to_system_time(ending));
+            if now >= ending {
+                remove_proposals.push(proposal.desc().object_id());
+                timeout_proposals.push(proposal);
+                continue;
             }
 
             match self.delegate.on_execute(&proposal, result_state_id).await {
