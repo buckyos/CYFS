@@ -28,7 +28,7 @@ async-recursion = '1.0'
 rand = '0.8.5'
 cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
 cyfs-core = { path = '../../component/cyfs-core', version = '0.6' }
-cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.6' }
+cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.7' }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = '../../component/cyfs-lib' }
 cyfs-chunk-lib = { path = '../../component/cyfs-chunk-lib' }
