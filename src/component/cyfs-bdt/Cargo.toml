@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-bdt'
-version = '0.6.8'
+version = '0.7.0'
 authors = ['liuzhicong <liuzhicong@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -38,3 +38,6 @@ serde = { version = '1.0', features = ['derive'] }
 
 [target.'cfg(unix)'.dependencies]
 nix = '0.24'
+
+[dev-dependencies]
+local-ip-address = '0.5.1'

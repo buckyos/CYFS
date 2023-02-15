@@ -49,6 +49,7 @@ struct StackLazyComponents {
 #[derive(Clone)]
 pub struct StackConfig {
     pub statistic_interval: Duration, 
+    pub device_cache: DeviceCacheConfig, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
     pub sn_client: sn::client::Config,
@@ -66,14 +67,18 @@ impl StackConfig {
             keystore: keystore::Config {
                 active_time: Duration::from_secs(300),
                 capacity: 10000,
-            },
+            }, 
+            device_cache: DeviceCacheConfig {
+                expire: Duration::from_secs(5 * 60),
+                capacity: 1024 * 1024
+            }, 
             interface: interface::Config {
                 udp: interface::udp::Config {
                     sn_only: false, 
                     sim_loss_rate: 0, 
                     recv_buffer: 52428800
                 }
-            }, 
+            },
             sn_client: sn::client::Config {
                 atomic_interval: Duration::from_millis(100),
                 ping: sn::client::ping::PingConfig {
@@ -90,7 +95,7 @@ impl StackConfig {
                         resend_interval: Duration::from_millis(500),
                     }
                 }
-            },     
+            },
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
                 retry_sn_timeout: Duration::from_secs(2), 
@@ -302,7 +307,7 @@ impl Stack {
             local_const: local_device.desc().clone(),
             id_generator: IncreaseIdGenerator::new(),
             keystore: key_store,
-            device_cache: DeviceCache::new(outer_cache),
+            device_cache: DeviceCache::new(&params.config.device_cache, outer_cache),
             net_manager,
             lazy_components: None, 
             ndn: None
@@ -330,7 +335,6 @@ impl Stack {
             None
         };
 
-
         {
             let components = StackLazyComponents {
                 sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
@@ -343,7 +347,7 @@ impl Stack {
             
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.lazy_components = Some(components);
-    
+
             let mut chunk_store = None;
             std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
@@ -353,7 +357,9 @@ impl Stack {
             let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.ndn = Some(ndn);
-        }   
+
+        }
+        
 
         let mut known_device = vec![];
         if params.known_device.is_some() {
@@ -362,7 +368,7 @@ impl Stack {
         for device in known_device {
             stack
                 .device_cache()
-                .add(&device.desc().device_id(), &device);
+                .add_static(&device.desc().device_id(), &device);
         }
 
         let net_listener = stack.net_manager().listener();
@@ -458,7 +464,7 @@ impl Stack {
         info!("{} reset_sn_list {:?}", self, sn_id_list);
         
         for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
-            self.device_cache().add(id, sn);
+            self.device_cache().add_static(id, sn);
         }
         self.sn_client().cache().add_known_sn(&sn_id_list);
 

@@ -295,7 +295,8 @@ async fn build_file() {
                 },
                 local_path,
                 owner: Default::default(),
-                chunk_size: 4 * 1024 * 1024,
+                chunk_size: 4 * 1024 * 1024, 
+                chunk_method: TransPublishChunkMethod::Track,
                 access: None,
             }).await.unwrap();
             info!("build file {}", resp.object_id.to_string());

@@ -97,8 +97,20 @@ impl DApp {
 
         // 解析packge.cfg完成，提取关键字段
         let app_info = DApp::parse_info(app_info_root)?;
+        if app_info.start.is_empty() {
+            let msg = format!("app {} has no start script!", &dec_id);
+            warn!("{}", &msg);
+        }
+        if app_info.status.is_empty() {
+            let msg = format!("app {} has no status script!", &dec_id);
+            warn!("{}", &msg);
+        }
+        if app_info.stop.is_empty() {
+            let msg = format!("app {} has no stop script!", &dec_id);
+            warn!("{}", &msg);
+        }
         Ok(DApp {
-            dec_id: dec_id,
+            dec_id,
             info: app_info,
             work_dir: path.clone(),
             process: Mutex::new(None),
@@ -161,6 +173,7 @@ impl DApp {
     fn run(cmd: &str, dir: &Path, detach: bool, stdout: Option<File>) -> BuckyResult<Child> {
         let args: Vec<&str> = ProcessUtil::parse_cmd(cmd);
         if args.len() == 0 {
+            error!("parse cmd {} failed, cmd empty?", cmd);
             return Err(BuckyError::from(BuckyErrorCode::InvalidData));
         }
         info!("run cmd {} in {}", cmd, dir.display());

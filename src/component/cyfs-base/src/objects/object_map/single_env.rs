@@ -135,7 +135,7 @@ impl ObjectMapSingleOpEnv {
     pub async fn load_with_inner_path(&self, obj_map_id: &ObjectId, inner_path: Option<String>) -> BuckyResult<()> {
         let value = match &inner_path {
             Some(inner_path) if inner_path.len() > 0  => {
-                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone());
+                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone(), false);
                 let value = object_path.get_by_path(&inner_path).await?;
                 if value.is_none() {
                     let msg = format!(
@@ -172,7 +172,7 @@ impl ObjectMapSingleOpEnv {
         let root = self.root_holder.get_current_root();
 
         let value = if key.len() > 0 {
-            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone(), false);
             let value = object_path.get_by_key(path, key).await?;
             if value.is_none() {
                 let msg = format!(

@@ -58,7 +58,7 @@ pub(crate) struct GlobalStateRoot {
 impl GlobalStateRoot {
     pub async fn load(
         category: GlobalStateCategory,
-        device_id: &DeviceId,
+        isolate_id: &ObjectId,
         owner: Option<ObjectId>,
         noc: NamedObjectCacheRef,
         noc_cache: ObjectMapNOCCacheRef,
@@ -67,7 +67,7 @@ impl GlobalStateRoot {
         let revision = RevisionList::new();
 
         // 首先从noc加载global root的id
-        let root_index = GlobalRootIndex::new(category.clone(), device_id, noc, revision.clone());
+        let root_index = GlobalRootIndex::new(category.clone(), isolate_id, noc, revision.clone());
         let root_index = Arc::new(root_index);
         root_index.load().await?;
 
@@ -172,7 +172,7 @@ impl GlobalStateRoot {
         Self::check_dec(dec_id)?;
 
         let key = dec_id.to_string();
-        let env = self.root.create_op_env(None).await?;
+        let env = self.root.create_op_env(None)?;
         let root_id = env.get_by_key("/", &key).await.map_err(|e| {
             error!(
                 "get dec root from global state error! category={}, dec={}, {}",
@@ -268,7 +268,7 @@ impl GlobalStateRoot {
         }
 
         let key = dec_id.to_string();
-        let env = self.root.create_op_env(None).await?;
+        let env = self.root.create_op_env(None)?;
         
         env.set_with_key("/", &key, &new_root_id, &Some(prev_id), false)
             .await

@@ -14,7 +14,7 @@ use crate::{
     types::*, 
     protocol::{*, v0::*}, 
     interface,
-    tunnel::{udp::Tunnel as UdpTunnel, tunnel::Tunnel}, 
+    tunnel::{udp::Tunnel as UdpTunnel, tunnel::Tunnel, TunnelContainer}, 
     cc
 };
 use super::super::{
@@ -59,19 +59,20 @@ impl PackageStream {
     }
     
     pub fn new(
-        owner: &super::super::container::StreamContainerImpl, 
+        owner: &StreamContainer,
+        tunnel: &TunnelContainer,
         local_id: IncreaseId, 
         remote_id: IncreaseId,
     ) -> BuckyResult<Self> {
         let owner_disp = format!("{}", owner);
-        let config = owner.tunnel().stack().config().stream.stream.clone();
+        let config = tunnel.stack().config().stream.stream.clone();
 
         let write_provider = WriteProvider::new(&config);
         let read_provider = ReadProvider::new(&config);
         let stream = Self(Arc::new(PackageStreamImpl {
             owner_disp, 
             config, 
-            tunnel: owner.tunnel().default_udp_tunnel()?, 
+            tunnel: tunnel.default_udp_tunnel()?, 
             local_id, 
             remote_id, 
             write_provider,
@@ -146,14 +147,14 @@ impl StreamProvider for PackageStream {
                 let mut packages = Vec::new(); 
                 let write_result = stream.write_provider().on_time_escape(&stream, now, &mut packages);
                 if write_result.is_err() {
-                    owner.as_ref().break_with_error(&owner, write_result.unwrap_err());
+                    owner.break_with_error(write_result.unwrap_err(), true, true);
                     stream.read_provider().break_with_error(BuckyError::new(BuckyErrorCode::ErrorState, "stream broken"));
                     break;
                 } 
                 let write_result = write_result.unwrap();
                 let read_result = stream.read_provider().on_time_escape(&stream, now, &mut packages);
                 if write_result.is_err() && read_result.is_err() {
-                    owner.as_ref().on_shutdown(&owner);
+                    owner.on_shutdown(true);
                     break;
                 }
                 let _ = stream.send_packages(packages);

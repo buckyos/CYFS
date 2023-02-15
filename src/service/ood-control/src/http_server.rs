@@ -159,6 +159,12 @@ impl HandlerEndpoint {
             access_token.clone(),
             handler.to_owned(),
         ));
+
+        // external
+        let all = handler.fetch_all_external_servers();
+        for item in all {
+            item.register(server);
+        }
     }
 }
 
@@ -174,12 +180,12 @@ where
 }
 
 #[derive(Clone)]
-pub(crate) struct HttpServer {
+pub struct HttpServer {
     server: Arc<::tide::Server<()>>,
 }
 
 impl HttpServer {
-    fn new_server() -> ::tide::Server<()> {
+    pub fn new_server() -> ::tide::Server<()> {
         use http_types::headers::HeaderValue;
         use tide::security::{CorsMiddleware, Origin};
 
@@ -205,6 +211,10 @@ impl HttpServer {
         }
     }
 
+    pub fn server(&self) -> &Arc<::tide::Server<()>> {
+        &self.server
+    }
+    
     pub async fn respond(
         &self,
         req: http_types::Request,

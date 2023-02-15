@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.6.8"
+version = "0.6.9"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.6.8"
+version = "0.7.0"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1325,6 +1325,7 @@ dependencies = [
  "generic-array 0.12.4",
  "hex",
  "libc",
+ "local-ip-address",
  "log 0.4.17",
  "lru_time_cache",
  "md5",
@@ -1382,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-chunk-lib"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1414,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-core"
-version = "0.6.3"
+version = "0.6.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1440,7 +1441,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-debug"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "async-h1",
  "async-std",
@@ -1486,8 +1487,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyfs-group"
-version = "0.1.1"
+name = "cyfs-lib"
+version = "0.8.0"
 dependencies = [
  "async-recursion",
  "async-std",
@@ -1754,7 +1755,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-task-manager"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1783,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-util"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "async-h1",
  "async-std",
@@ -3005,6 +3006,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "local-ip-address"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faa9d02443a1741e9f51dafdfcbffb3863b2a89c457d762b40337d6c5153ef81"
+dependencies = [
+ "libc",
+ "neli",
+ "thiserror",
+ "windows-sys 0.42.0",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3205,6 +3218,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "neli"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9053554eb5dcb7e10d9cdab1206965bde870eed5d0d341532ca035e3ba221508"
+dependencies = [
+ "byteorder",
+ "libc",
+]
+
+[[package]]
 name = "nix"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3350,12 +3373,96 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.15.0"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fac9e2da13b5eb447a6ce3d392f23a29d8694bff781bf03a16cd9ac8697593b"
+checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
 dependencies = [
- "hermit-abi 0.2.6",
+ "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "object"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21158b2c33aa6d4561f1c0a6ea283ca92bc54802a93b263e910746d679a7eb53"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "once_cell"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
+
+[[package]]
+name = "ood-control"
+version = "0.5.1"
+dependencies = [
+ "android_logger",
+ "async-h1",
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-util",
+ "futures",
+ "hex",
+ "http-types",
+ "jni",
+ "lazy_static",
+ "log 0.4.17",
+ "mac_address",
+ "once_cell",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sysinfo 0.26.5",
+ "tide",
+]
+
+[[package]]
+name = "ood-daemon"
+version = "0.5.0"
+dependencies = [
+ "async-h1",
+ "async-std",
+ "async-trait",
+ "clap",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-client",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-meta-lib",
+ "cyfs-stack-loader",
+ "cyfs-util",
+ "fs_extra",
+ "futures",
+ "futures-util",
+ "hex",
+ "http-types",
+ "lazy_static",
+ "log 0.4.17",
+ "once_cell",
+ "ood-control",
+ "serde",
+ "serde_json",
+ "tide",
+ "toml",
+ "zip",
 ]
 
 [[package]]

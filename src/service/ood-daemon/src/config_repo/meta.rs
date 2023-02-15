@@ -2,9 +2,9 @@ use super::DeviceConfigRepo;
 use crate::config::*;
 use cyfs_base::*;
 use cyfs_core::*;
+use cyfs_debug::Mutex;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 use cyfs_util::LOCAL_DEVICE_MANAGER;
-use cyfs_debug::Mutex;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -34,9 +34,8 @@ impl DeviceConfigGenerator {
     }
 
     fn sort(&mut self) {
-        self.service.sort_by(|left, right| {
-            left.name.partial_cmp(&right.name).unwrap()
-        });
+        self.service
+            .sort_by(|left, right| left.name.partial_cmp(&right.name).unwrap());
     }
 
     pub fn to_string(&self) -> String {
@@ -99,8 +98,8 @@ impl DeviceConfigGenerator {
         let id = status.app_id().to_string();
         let version = status.version();
         let target_state = match status.status() {
-            true => ServiceState::RUN,
-            false => ServiceState::STOP,
+            true => ServiceState::Run,
+            false => ServiceState::Stop,
         };
 
         for item in self.service.iter_mut() {
@@ -417,7 +416,11 @@ impl DeviceConfigMetaRepo {
         }
 
         if left.to_vec().unwrap() != right.to_vec().unwrap() {
-            warn!("service list raw data is not the same! left={}, right={}", hex::encode(left.to_vec().unwrap()), hex::encode(right.to_vec().unwrap()));
+            warn!(
+                "service list raw data is not the same! left={}, right={}",
+                hex::encode(left.to_vec().unwrap()),
+                hex::encode(right.to_vec().unwrap())
+            );
             return false;
         }
 
