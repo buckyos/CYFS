@@ -1293,8 +1293,8 @@ impl TryFrom<TypelessAnyObject> for AnyNamedObject {
                     e
                 })?,
             ))),
-            ObjectTypeCode::Org => Ok(AnyNamedObject::Standard(StandardObject::Org(
-                Org::try_from(value).map_err(|e| {
+            ObjectTypeCode::Group => Ok(AnyNamedObject::Standard(StandardObject::Group(
+                Group::try_from(value).map_err(|e| {
                     log::error!("AnyNamedObject::try_from/Org error:{}", e);
                     e
                 })?,
@@ -1305,12 +1305,6 @@ impl TryFrom<TypelessAnyObject> for AnyNamedObject {
                     e
                 })?,
             ))),
-            ObjectTypeCode::SimpleGroup => Ok(AnyNamedObject::Standard(
-                StandardObject::SimpleGroup(SimpleGroup::try_from(value).map_err(|e| {
-                    log::error!("AnyNamedObject::try_from/SimpleGroup error:{}", e);
-                    e
-                })?),
-            )),
             ObjectTypeCode::UnionAccount => Ok(AnyNamedObject::Standard(
                 StandardObject::UnionAccount(UnionAccount::try_from(value).map_err(|e| {
                     log::error!("AnyNamedObject::try_from/UnionAccount error:{}", e);

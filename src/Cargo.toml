@@ -26,6 +26,7 @@ members = [
     "./component/cyfs-chunk-lib",
     "./component/cyfs-mobile-stack",
     "./component/cyfs-bdt-ext",
+    "./component/cyfs-group",
 
     "./service/ood-control",
     "./service/ood-daemon",
@@ -69,6 +70,7 @@ members = [
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",
     "./tests/cyfs-stack-bench",
+    "./tests/group-example",
 ]
 
 [profile.release]
