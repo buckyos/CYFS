@@ -107,8 +107,8 @@ impl GlobalStateManager {
             state: state.clone(),
         };
 
-        if let Some(_) = list.insert(isolate_id.to_owned(), item) {
-            unreachable!();
+        if let Some(prev) = list.insert(isolate_id.to_owned(), item) {
+           assert!(prev.state.is_none());
         }
 
         Ok(state)
