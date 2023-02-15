@@ -7,7 +7,7 @@ pub async fn process_req<RW>(req: Request, stream: RW) -> BuckyResult<Response>
     where
     RW: Read + Write + Send + Sync + Unpin + 'static,
 {
-    let resp = cyfs_util::async_h1_helper::connect_timeout(stream, req,std::time::Duration::from_secs(60 * 5)).await.map_err(|e| {
+    let resp = cyfs_util::async_h1_helper::connect_timeout(stream, req,std::time::Duration::from_secs(30)).await.map_err(|e| {
         error!("read resp from stream error: {}", e);
         e
     })?;

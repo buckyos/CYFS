@@ -59,7 +59,7 @@ impl GlobalStateSyncHelper {
 
         let (root, revision) = ret.unwrap();
         let op_env_cache = self.new_op_env_cache();
-        let path = ObjectMapPath::new(root, op_env_cache);
+        let path = ObjectMapPath::new(root, op_env_cache, false);
         let ret = path.get_by_path(&req.path).await;
         if ret.is_err() {
             warn!(

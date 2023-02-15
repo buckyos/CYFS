@@ -16,7 +16,8 @@ pub struct PublishLocalFile {
     owner: ObjectId,
     dec_id: ObjectId,
     file: File,
-    chunk_size: u32,
+    chunk_size: u32, 
+    chunk_method: TransPublishChunkMethod, 
 }
 
 impl ProtobufTransform<super::trans_proto::PublishLocalFile> for PublishLocalFile {
@@ -28,7 +29,8 @@ impl ProtobufTransform<super::trans_proto::PublishLocalFile> for PublishLocalFil
             owner: ObjectId::clone_from_slice(value.owner.as_slice())?,
             dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice())?,
             file: File::clone_from_slice(value.file.as_slice())?,
-            chunk_size: value.chunk_size,
+            chunk_size: value.chunk_size, 
+            chunk_method: value.chunk_method.map(|v| TransPublishChunkMethod::try_from(v as u8)).unwrap_or(Ok(TransPublishChunkMethod::default()))?
         })
     }
 }
@@ -40,7 +42,8 @@ impl ProtobufTransform<&PublishLocalFile> for super::trans_proto::PublishLocalFi
             owner: value.owner.as_slice().to_vec(),
             dec_id: value.dec_id.as_slice().to_vec(),
             file: value.file.to_vec()?,
-            chunk_size: value.chunk_size,
+            chunk_size: value.chunk_size, 
+            chunk_method: Some(Into::<u8>::into(value.chunk_method) as i32)
         })
     }
 }
@@ -64,6 +67,7 @@ struct PublishLocalFileTask {
     owner: ObjectId,
     file: File,
     chunk_size: u32,
+    chunk_method: TransPublishChunkMethod, 
     task_state: Mutex<PublishLocalFileTaskStatus>,
 }
 
@@ -72,7 +76,8 @@ impl PublishLocalFileTask {
         local_path: String,
         owner: ObjectId,
         file: File,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
@@ -93,7 +98,8 @@ impl PublishLocalFileTask {
             local_path,
             owner,
             file,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped),
         }
     }
@@ -133,7 +139,7 @@ impl Runnable for PublishLocalFileTask {
         );
 
         file_recorder
-            .record_file_chunk_list(Path::new(self.local_path.as_str()), &self.file)
+            .record_file_chunk_list(Path::new(self.local_path.as_str()), &self.file, self.chunk_method)
             .await
             .map_err(|e| {
                 let mut state = self.task_state.lock().unwrap();
@@ -190,11 +196,12 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             params.local_path,
             params.owner,
             params.file,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            params.dec_id,
+            params.dec_id, 
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -211,7 +218,8 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             params.local_path,
             params.owner,
             params.file,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
@@ -221,23 +229,50 @@ impl TaskFactory for PublishLocalFileTaskFactory {
     }
 }
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::trans_proto::PublishLocalDir)]
 pub struct PublishLocalDir {
     local_path: String,
     root_id: ObjectId,
-    dec_id: ObjectId,
+    dec_id: ObjectId, 
+    chunk_method: TransPublishChunkMethod, 
 }
+
+impl ProtobufTransform<super::trans_proto::PublishLocalDir> for PublishLocalDir {
+    fn transform(
+        value: crate::trans_api::local::trans_proto::PublishLocalDir,
+    ) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            root_id: ObjectId::clone_from_slice(value.root_id.as_slice())?,
+            dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice())?,
+            chunk_method: value.chunk_method.map(|v| TransPublishChunkMethod::try_from(v as u8)).unwrap_or(Ok(TransPublishChunkMethod::default()))?
+        })
+    }
+}
+
+impl ProtobufTransform<&PublishLocalDir> for super::trans_proto::PublishLocalDir {
+    fn transform(value: &PublishLocalDir) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            root_id: value.root_id.as_slice().to_vec(),
+            dec_id: value.dec_id.as_slice().to_vec(),
+            chunk_method: Some(Into::<u8>::into(value.chunk_method) as i32)
+        })
+    }
+}
+
 
 struct PublishLocalDirTask {
     task_store: Option<Arc<dyn TaskStore>>,
     task_id: TaskId,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: NamedObjectCacheRef,
+    noc: NamedObjectCacheRef, 
     dec_id: ObjectId,
     local_path: String,
     root_id: ObjectId,
+    chunk_method: TransPublishChunkMethod, 
     task_state: Mutex<PublishLocalFileTaskStatus>,
 }
 
@@ -248,7 +283,8 @@ impl PublishLocalDirTask {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        dec_id: ObjectId,
+        dec_id: ObjectId, 
+        chunk_method: TransPublishChunkMethod, 
     ) -> Self {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(PUBLISH_TASK_CATEGORY.0.to_be_bytes());
@@ -263,7 +299,8 @@ impl PublishLocalDirTask {
             noc,
             dec_id,
             local_path,
-            root_id,
+            root_id, 
+            chunk_method, 
             task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped),
         }
     }
@@ -313,11 +350,11 @@ impl PublishLocalDirTask {
                                     .join(sub_path.strip_prefix("/").unwrap())
                                     .join(file_name);
                                 log::info!(
-                                    "publish file {}",
-                                    file_path.to_string_lossy().to_string()
+                                    "publish file {}, {}",
+                                    file_path.to_string_lossy().to_string(), object_id,
                                 );
                                 file_recorder
-                                    .record_file_chunk_list(file_path.as_path(), &file)
+                                    .record_file_chunk_list(file_path.as_path(), &file, self.chunk_method)
                                     .await?;
                                 file_recorder.add_file_to_ndc(&file, None).await?;
                             }
@@ -409,7 +446,8 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            params.dec_id,
+            params.dec_id, 
+            params.chunk_method
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -428,7 +466,8 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            params.dec_id,
+            params.dec_id, 
+            params.chunk_method
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -490,7 +529,8 @@ impl PublishManager {
         local_path: String,
         owner: ObjectId,
         file: Option<File>,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<AccessString>,
     ) -> BuckyResult<FileId> {
         let file = if file.is_none() {
@@ -498,7 +538,8 @@ impl PublishManager {
                 local_path: local_path.clone(),
                 owner,
                 dec_id: dec_id.clone(),
-                chunk_size,
+                chunk_size, 
+                chunk_method, 
                 access: access.map(|v| v.value()),
             };
             let task_id = self
@@ -539,7 +580,8 @@ impl PublishManager {
             owner,
             dec_id: dec_id.clone(),
             file,
-            chunk_size,
+            chunk_size, 
+            chunk_method
         };
 
         let task_id = self
@@ -587,7 +629,8 @@ impl PublishManager {
         local_path: String,
         owner: ObjectId,
         dir: Option<ObjectId>,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<AccessString>,
     ) -> BuckyResult<ObjectId> {
         let root_id = if dir.is_none() {
@@ -595,7 +638,8 @@ impl PublishManager {
                 local_path: local_path.clone(),
                 owner,
                 dec_id: dec_id.clone(),
-                chunk_size,
+                chunk_size, 
+                chunk_method, 
                 access: access.map(|v| v.value()),
                 device_id: self.device_id.object_id().clone(),
             };
@@ -635,7 +679,8 @@ impl PublishManager {
         let params = PublishLocalDir {
             local_path: local_path.clone(),
             root_id: root_id.clone(),
-            dec_id: dec_id.clone(),
+            dec_id: dec_id.clone(), 
+            chunk_method, 
         };
 
         let task_id = self

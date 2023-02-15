@@ -2,6 +2,7 @@ mod codec;
 mod crypto;
 mod base;
 mod objects;
+mod perf;
 
 pub use base::endpoint;
 
@@ -18,6 +19,7 @@ pub use base::*;
 pub use codec::*;
 pub use cyfs_base_derive::*;
 pub use objects::*;
+pub use perf::*;
 
 #[macro_use]
 extern crate log;

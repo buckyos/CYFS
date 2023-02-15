@@ -1,4 +1,4 @@
-use bollard::Docker;
+use bollard::{API_DEFAULT_VERSION, Docker};
 use cyfs_base::*;
 use cyfs_util::*;
 use flate2::write::GzEncoder;
@@ -287,8 +287,12 @@ pub struct DockerApi {
 
 impl DockerApi {
     pub fn new() -> DockerApi {
-        let docker = Docker::connect_with_socket_defaults().unwrap();
-        DockerApi { docker: docker }
+        #[cfg(unix)]
+            let path = "unix:///var/run/docker.sock";
+        #[cfg(windows)]
+            let path = "npipe:////./pipe/docker_engine";
+        let docker = Docker::connect_with_socket(path, 300, API_DEFAULT_VERSION).unwrap();
+        DockerApi { docker }
     }
 
     /// # get_network_id

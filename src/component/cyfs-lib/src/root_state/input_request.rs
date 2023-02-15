@@ -165,6 +165,8 @@ pub struct OpEnvCreateNewInputRequest {
     pub key: Option<String>,
 
     pub content_type: ObjectMapSimpleContentType,
+    pub owner: Option<ObjectMapField>,
+    pub dec: Option<ObjectMapField>,
 }
 
 impl fmt::Display for OpEnvCreateNewInputRequest {
@@ -176,7 +178,11 @@ impl fmt::Display for OpEnvCreateNewInputRequest {
         if let Some(key) = &self.key {
             write!(f, ", key: {}", key)?;
         }
-        write!(f, ", content_type: {:?}", self.content_type)
+        write!(
+            f,
+            ", content_type: {:?}, owner={:?}, dec={:?}",
+            self.content_type, self.owner, self.dec,
+        )
     }
 }
 

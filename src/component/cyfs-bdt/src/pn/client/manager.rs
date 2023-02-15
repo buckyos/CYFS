@@ -50,7 +50,7 @@ impl ProxyManager {
         let stack = Stack::from(&self.stack);
         let proxy_id = proxy.desc().device_id();
         info!("{} add active proxy {}", self, proxy_id);
-        stack.device_cache().add(&proxy_id, proxy);
+        stack.device_cache().add_static(&proxy_id, proxy);
         let _ = self.proxies.write().unwrap().active_proxies.insert(proxy_id);
     }
 
@@ -66,7 +66,7 @@ impl ProxyManager {
         let stack = Stack::from(&self.stack);
         let proxy_id = proxy.desc().device_id();
         info!("{} add passive proxy {}", self, proxy_id);
-        stack.device_cache().add(&proxy_id, proxy);
+        stack.device_cache().add_static(&proxy_id, proxy);
         let mut proxies = self.proxies.write().unwrap(); 
         let _ = proxies.passive_proxies.insert(proxy_id.clone());
         let _ = proxies.active_proxies.insert(proxy_id);
@@ -86,7 +86,7 @@ impl ProxyManager {
         let stack = Stack::from(&self.stack);
         let proxy_id = proxy.desc().device_id();
         info!("{} add dump proxy {}", self, proxy_id);
-        stack.device_cache().add(&proxy_id, proxy);
+        stack.device_cache().add_static(&proxy_id, proxy);
         let _ = self.proxies.write().unwrap().dump_proxies.insert(proxy_id);
     }
 

@@ -21,36 +21,39 @@ use crate::{
     datagram::{self, DatagramOptions}, 
     types::*,
     ndn::*, 
-    utils::*
+    utils::*,
 };
 use super::command::*;
-// use super::super::sn::client::SnStatus;
+use super::super::sn::client::SnStatus;
 
 struct DebugStubImpl {
     stack: WeakStack, 
     listener: TcpListener,
+    chunk_store: MemChunkStore, 
 }
 
 #[derive(Clone)]
 pub struct Config {
     pub local: String,
-    pub port: u16
+    pub port: u16,
+    pub chunk_store: MemChunkStore,
 }
 
 #[derive(Clone)]
 pub struct DebugStub(Arc<DebugStubImpl>);
 
 impl DebugStub {
-    pub async fn open(weak_stack: WeakStack) -> BuckyResult<Self> {
+    pub async fn open(weak_stack: WeakStack, chunk_store: MemChunkStore) -> BuckyResult<Self> {
         let stack = Stack::from(&weak_stack);
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::from_str(stack.config().debug.as_ref().unwrap().local.as_str()).unwrap()), 
             stack.config().debug.as_ref().unwrap().port);
         let listener = TcpListener::bind(addr).await?;
         Ok(Self(Arc::new(DebugStubImpl {
             stack: weak_stack, 
-            listener
+            listener,
+            chunk_store,
         })))
-    } 
+    }
 
     pub fn listen(&self) {
         const READ_CMD_TIMEOUT: u64 = 30;
@@ -138,38 +141,40 @@ impl DebugStub {
         Ok(())
     }
 
-    async fn sn_conn_status(&self, _tunnel: TcpStream, _command: DebugCommandSnConnStatus) -> Result<(), String> {
-        // let mut tunnel = tunnel;
+    async fn sn_conn_status(&self, tunnel: TcpStream, command: DebugCommandSnConnStatus) -> Result<(), String> {
+        let mut tunnel = tunnel;
 
-        // let stack = Stack::from(&self.0.stack);
-        // let timeout = {
-        //     if command.timeout_sec == 0 {
-        //         6
-        //     } else {
-        //         command.timeout_sec
-        //     }
-        // };
+        let stack = Stack::from(&self.0.stack);
+        let timeout = {
+            if command.timeout_sec == 0 {
+                6
+            } else {
+                command.timeout_sec
+            }
+        };
 
-        // let sleep_ms = 200; 
-        // let mut counter = timeout*(1000/sleep_ms);
-        // loop {
-        //     let sn_status = stack.sn_client().ping().status();
+        let sleep_ms = 200; 
+        let mut counter = timeout*(1000/sleep_ms);
+        loop {
+            let sn_status = stack.sn_client().ping().status();
 
-        //     if let SnStatus::Online = sn_status {
-        //         let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
+            if let Some(sn_status) = sn_status {
+                if let SnStatus::Online = sn_status {
+                    let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
 
-        //         return Ok(())
-        //     }
+                    return Ok(())
+                }
+            }
 
-        //     counter -= 1;
-        //     if counter == 0 {
-        //         break ;
-        //     }
+            counter -= 1;
+            if counter == 0 {
+                break ;
+            }
 
-        //     task::sleep(Duration::from_millis(sleep_ms)).await;
-        // }
+            task::sleep(Duration::from_millis(sleep_ms)).await;
+        }
 
-        // let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
+        let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
 
         Ok(())
     }
@@ -283,93 +288,85 @@ impl DebugStub {
     }
 
     async fn nc(&self, tunnel: TcpStream, command: DebugCommandNc) -> Result<(), String> {
-        let mut tunnel = tunnel;
         let stack = Stack::from(&self.0.stack);
-        let _ = tunnel.write_all("connecting stream\r\n".as_ref()).await;
+        let task_num = if command.task_num == 0 {
+            1
+        } else {
+            command.task_num
+        };
+        let mut tasks = vec![];
 
-        let question = b"question?";
-        let mut conn = stack.stream_manager().connect(
-            command.port, 
-            question.to_vec(), 
-            BuildTunnelParams {
-                remote_const: command.remote.desc().clone(), 
-                remote_sn: None, 
-                remote_desc: Some(command.remote.clone())
-        }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
-
-        let _ = tunnel.write_all("Connect success, read answer\r\n".as_ref()).await;
-
-        let mut answer = [0; 128];
-        match conn.read(&mut answer).await {
-            Ok(len) => {
-                let s = format!("Read answer success, len={} content={:?}\r\n", 
-                    len, String::from_utf8(answer[..len].to_vec()).expect(""));
-                let _ = tunnel.write_all(s.as_bytes()).await;
-            },
-            Err(e) => {
-                let s = format!("Read answer fail, err={}\r\n", e);
-                let _ = tunnel.write_all(s.as_bytes()).await;
-                return Ok(());
-            }
+        for task_id in 0..task_num {
+            let mut t = tunnel.clone();
+            let c = command.clone();
+            let s = stack.clone();
+            tasks.push(task::spawn(async move {
+                match nc_task(t.clone(), c, s, task_id).await {
+                    Err(e) => {
+                        let _ = t.write_all(format!("nc_task err={}\r\n", e).as_ref()).await;
+                    },
+                    Ok(_) => {
+                    }
+                }
+            }));
         }
 
-        let _ = conn.write_all(b"hello world.").await;
-
-        let mut buf = [0u8; 128];
-        match conn.read(&mut buf).await {
-            Ok(len) => {
-                let s = format!("Read data success, len={} content={:?}\r\n", 
-                    len, String::from_utf8(buf[..len].to_vec()).expect(""));
-                let _ = tunnel.write_all(s.as_bytes()).await;
-            },
-            Err(e) => {
-                let s = format!("Read data fail, err={}\r\n", e);
-                let _ = tunnel.write_all(s.as_bytes()).await;
-                return Ok(());
-            }
+        for t in tasks {
+            let _ = t.await;
         }
-
-        let _ = tunnel.write_all("Ok: stream connected\r\n".as_ref()).await;
-
-        let _ = conn.shutdown(Shutdown::Both);
 
         Ok(())
     }
 
     async fn get_chunk(&self, tunnel: TcpStream, command: DebugCommandGetChunk) -> Result<(), String> {
         let mut tunnel = tunnel;
-        
+
         let chunk_id = command.chunk_id;
         let remotes = command.remotes;
-        let timeout = command.timeout;
-        let local_path = command.local_path;
+        //let local_path = command.local_path;
 
-        let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let stack = Stack::from(&self.0.stack);
-        let context = SampleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
-            .map_err(|e| format!("download err: {}\r\n", e))?;
-        let (_, reader) = download_chunk(&stack,
-            chunk_id.clone(),
-            None, 
-            context).await
-            .map_err(|e| format!("download err: {}\r\n", e))?;
 
-        let _ = future::timeout(Duration::from_secs(timeout as u64), LocalChunkWriter::new(local_path.clone(), None, &chunk_id).write(reader)).await
-            .map_err(|e| {
-                format!("download err: {}\r\n", e)
-            })?;
+        let chunk_store = self.0.chunk_store.clone();
+        let context = SampleDownloadContext::desc_streams("".to_string(), remotes);
+        let begin = Instant::now();
+        match download_chunk(&stack, chunk_id.clone(),None, context).await {
+            Ok((_, reader)) => {
+                chunk_store.write_chunk(&chunk_id, reader).await.unwrap();
+                match future::timeout(Duration::from_secs(600), get_chunk_wait_finish(stack.clone(), chunk_id.clone())).await {
+                    Err(e) => {
+                        let _ = tunnel.write_all(format!("get_chunk_wait_finish err={}\r\n", e).as_ref()).await;
+                    },
+                    Ok(r) => {
+                        match r {
+                            Ok(n) => {
+                                let cost_secs = begin.elapsed().as_secs_f64();
+                                let _ = tunnel.write_all(format!("get success\r\n").as_ref()).await;
+                                if chunk_id.len() != n {
+                                    let _ = tunnel.write_all(format!("data wrong, recv_len={} want={}\r\n", n, chunk_id.len()).as_ref()).await;
+                                } else {
+                                    let len = n as f64;
+                                    let speed = if cost_secs > 0.0 {
+                                        len / cost_secs / 1024.0
+                                    } else {
+                                        999999.9
+                                    };
+                                    let _ = tunnel.write_all(format!("cost={:.3}s len={:.1}KB speed={:.1}KB/s\r\n",
+                                    cost_secs, len/1024.0, speed).as_ref()).await;
+                                }
+                            },
+                            Err(e) => {
+                                let _ = tunnel.write_all(format!("get_chunk_wait_finish err={}\r\n", e).as_ref()).await;
+                            }
+                        }
+                    }
+                }
+            },
+            Err(e) => {
+                let _ = tunnel.write_all(format!("download_chunk err={}\r\n", e).as_ref()).await;
+            }
+        }
 
-        let _ = tunnel.write_all("waiting..\r\n".as_ref()).await;
-        let task_start_time = Instant::now();
-        // let ret = watchdog_download_finished(path, timeout).await;
-        // if ret.is_ok() {
-            let size = get_filesize(&local_path);
-            let cost = Instant::now() - task_start_time;
-            let cost_sec = (cost.as_millis() as f64) / 1000.0;
-            let speed = (size as f64) * 8.0 / cost_sec / 1000000.0;
-            let _ = tunnel.write_all(format!("download chunk finish.\r\nsize: {:.1} MB\r\ncost: {:.1} s\r\nspeed: {:.1} Mbps\r\n", 
-            size/1024/1024, cost_sec, speed).as_bytes()).await;
-        // }
         Ok(())
     }
 
@@ -407,53 +404,47 @@ impl DebugStub {
                 format!("download err: {}\r\n", e)
             })?;
 
-       
-        // let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
         let _ = tunnel.write_all("download file finish.\r\n".as_ref()).await;
         Ok(())
      }
 
-     async fn put_chunk(&self, _tunnel: TcpStream, _command: DebugCommandPutChunk) -> Result<(), String> {
-        // FIXME: impl put chunk debug command with 
-        // let mut tunnel = tunnel;
-        // let stack = Stack::from(&self.0.stack);
-        // let local_path = command.local_path;
+     async fn put_chunk(&self, tunnel: TcpStream, command: DebugCommandPutChunk) -> Result<(), String> {
+        let mut tunnel = tunnel;
+        let local_path = command.local_path;
 
-        // if local_path.as_path().exists() {
-        //     let mut file = async_std::fs::File::open(local_path.as_path()).await.map_err(|e| {
-        //         format!("open file err: {}\r\n", e)
-        //     })?;
-        //     let mut content = Vec::<u8>::new();
-        //     let _ = file.read_to_end(&mut content).await.map_err(|e| {
-        //         format!("read file err: {}\r\n", e)
-        //     })?;
+        if local_path.as_path().exists() {
+            let mut file = async_std::fs::File::open(local_path.as_path()).await.map_err(|e| {
+                format!("open file err: {}\r\n", e)
+            })?;
+            let mut content = Vec::<u8>::new();
+            let _ = file.read_to_end(&mut content).await.map_err(|e| {
+                format!("read file err: {}\r\n", e)
+            })?;
 
-        //     if content.len() == 0 {
-        //         return Err(format!("file size is zero\r\n"));
-        //     }
+            if content.len() == 0 {
+                return Err(format!("file size is zero\r\n"));
+            }
 
-        //     match ChunkId::calculate(content.as_slice()).await {
-        //         Ok(chunk_id) => {
-        //             LocalChunkWriter::new(&chunk_id, local_path, None).await
-        //             .map_err(|e| {
-        //                 format!("download err: {}\r\n", e)
-        //             })?
-        //             .track_path().await
-        //             .map_err(|e| {
-        //                 format!("download err: {}\r\n", e)
-        //             })?;
-        //             let _ = tunnel.write_all(format!("put chunk success. chunk_id: {}\r\n", 
-        //             chunk_id.to_string()).as_bytes()).await;
-        //             Ok(())
-        //         }, 
-        //         Err(e) => {
-        //             Err(format!("calculate chunk id err: {}\r\n", e))
-        //         }
-        //     }
-        // } else {
-        //     Err(format!("file not exists: {}\r\n", local_path.to_str().unwrap()))
-        // }
-        Err("not supported now".to_owned())
+            let chunk_store = self.0.chunk_store.clone();
+            match ChunkId::calculate(content.as_slice()).await {
+                Ok(chunk_id) => {
+                    match chunk_store.add(chunk_id.clone(), Arc::new(content)).await {
+                        Ok(_) => {
+                            let _ = tunnel.write_all(format!("put chunk success, chunk_id={}\r\n", chunk_id).as_ref()).await;
+                        },
+                        Err(e) => {
+                            let _ = tunnel.write_all(format!("put chunk fail, err={}\r\n", e).as_ref()).await;
+                        }
+                    }
+                    Ok(())
+                }, 
+                Err(e) => {
+                    Err(format!("calculate chunk id err: {}\r\n", e))
+                }
+            }
+        } else {
+            Err(format!("file not exists: {}\r\n", local_path.to_str().unwrap()))
+        }
      }
 
      async fn put_file(&self, _tunnel: TcpStream, _command: DebugCommandPutFile) -> Result<(), String> {
@@ -530,10 +521,10 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
 
     loop {
         match task.state() {
-            DownloadTaskState::Finished => {
+            NdnTaskState::Finished => {
                 break Ok(());
             },
-            DownloadTaskState::Downloading => {
+            NdnTaskState::Running => {
                 if task.cur_speed() > 0 {
                     i = 0;
 
@@ -544,7 +535,7 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
                     i += 1;
                 }
             },
-            DownloadTaskState::Error(e) => {
+            NdnTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
             _ => {
@@ -600,4 +591,121 @@ fn rand_data_gen_buf(len: usize) -> Vec<u8> {
     }
 
     buf
+}
+
+fn rand_char(len: usize) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.resize(len, 0u8);
+
+    for i in 0..len {
+        buf[i] = 97 + rand::random::<u8>() % 26;
+    }
+
+    buf
+}
+
+async fn get_chunk_wait_finish(stack: Stack, chunk_id: ChunkId) -> BuckyResult<usize> {
+    let mut len = 0;
+    loop {
+        let ret = stack.ndn().chunk_manager().store().get(&chunk_id).await;
+        if let Ok(mut reader) = ret {
+            let mut content = vec![0u8; 2048];
+
+            loop {
+                let n = reader.read(content.as_mut_slice()).await?;
+                if n == 0 {
+                    break ;
+                }
+                len += n;
+            }
+
+            return Ok(len);
+        } else {
+            task::sleep(Duration::from_millis(200)).await;
+        }
+    }
+}
+
+async fn nc_task(tunnel: TcpStream, command: DebugCommandNc, stack: Stack, task_id: u32) -> Result<(), String> {
+    let mut tunnel = tunnel;
+    let _ = tunnel.write_all(format!("[{}] connecting stream\r\n", task_id).as_ref()).await;
+
+    let question = b"question?";
+    let mut conn = stack.stream_manager().connect(
+        command.port, 
+        question.to_vec(), 
+        BuildTunnelParams {
+            remote_const: command.remote.desc().clone(), 
+            remote_sn: None, 
+            remote_desc: Some(command.remote.clone())
+    }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
+
+    let _ = tunnel.write_all(format!("[{}] Connect success, read answer\r\n", task_id).as_ref()).await;
+
+    let mut answer = [0; 128];
+    match conn.read(&mut answer).await {
+        Ok(len) => {
+            let s = format!("[{}] Read answer success, len={} content={:?}\r\n", 
+                task_id, len, String::from_utf8(answer[..len].to_vec()).expect(""));
+            let _ = tunnel.write_all(s.as_bytes()).await;
+        },
+        Err(e) => {
+            let s = format!("[{}] Read answer fail, err={}\r\n", task_id, e);
+            let _ = tunnel.write_all(s.as_bytes()).await;
+            return Ok(());
+        }
+    }
+
+    let _ = conn.write_all(b"hello world").await;
+
+    let mut buf = [0u8; 128];
+    match conn.read(&mut buf).await {
+        Ok(len) => {
+            let s = format!("[{}] Read data success, len={} content={:?}\r\n", 
+                task_id, len, String::from_utf8(buf[..len].to_vec()).expect(""));
+            let _ = tunnel.write_all(s.as_bytes()).await;
+        },
+        Err(e) => {
+            let s = format!("[{}] Read data fail, err={}\r\n", task_id, e);
+            let _ = tunnel.write_all(s.as_bytes()).await;
+            return Ok(());
+        }
+    }
+
+    let _ = tunnel.write_all(format!("[{}] Ok: stream connected\r\n", task_id).as_ref()).await;
+
+    if command.bench > 0 {
+        let _ = tunnel.write_all(format!("[{}] start bench size={}MB\r\n", task_id, command.bench).as_ref()).await;
+
+        let buf = rand_char(1024);
+        let mut i: u32 = 0;
+        let max = command.bench * 1024;
+        let begin = Instant::now();
+        loop {
+            match conn.write_all(&buf).await {
+                Ok(_) => {
+                    i += 1;
+                },
+                Err(e) => {
+                    let _ = tunnel.write_all(format!("[{}] write err={}\r\n", task_id, e).as_ref()).await;
+                    break;
+                }
+            }
+            if i >= max {
+                break;
+            }
+        }
+        let cost = begin.elapsed().as_secs_f64();
+         let speed = if cost > 0.0 {
+            i as f64 / cost
+        } else {
+            999999.9
+        };
+        let _ = tunnel.write_all(format!("[{}] bench over. cost={:.3}s len={}KB speed={:.1}KB/s\r\n",
+           task_id, cost, i, speed).as_ref()).await;
+    }
+
+    let _ = conn.shutdown(Shutdown::Both);
+
+    Ok(())
 }

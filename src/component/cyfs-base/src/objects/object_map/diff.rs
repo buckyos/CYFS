@@ -1004,7 +1004,7 @@ mod test_path_diff {
         // let x_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
         let x_value = ObjectId::from_str("5aSixgPg3hDa1oU9eAtRcKTyVKg5X2bVXWPVhk3U5c7G").unwrap();
 
-        let path = ObjectMapPath::new(root_id.clone(), cache.clone());
+        let path = ObjectMapPath::new(root_id.clone(), cache.clone(), false);
         path.insert_with_path("/a/b/c", &x_value).await.unwrap();
         path.insert_with_path("/a/b/d", &x_value).await.unwrap();
         //path.insert_with_path("/a/x", &x_value).await.unwrap();
@@ -1017,7 +1017,7 @@ mod test_path_diff {
         // let x_value = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
         let x_value = ObjectId::from_str("5aSixgPCivmQfASRbjAvBiwgxhU8LrNtYtC2D6Lis2NQ").unwrap();
 
-        let path = ObjectMapPath::new(root_id.clone(), cache.clone());
+        let path = ObjectMapPath::new(root_id.clone(), cache.clone(), false);
         path.insert_with_path("/a/b/c", &x_value).await.unwrap();
         path.insert_with_path("/a/b/d", &x_value).await.unwrap();
         path.insert_with_path("/a/x", &x_value).await.unwrap();

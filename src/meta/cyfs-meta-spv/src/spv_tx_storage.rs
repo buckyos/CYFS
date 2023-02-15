@@ -1,12 +1,15 @@
+use std::convert::{TryFrom};
 use cyfs_base::*;
 use cyfs_base_meta::*;
-use sqlx::{Row};
+use sqlx::{Row, Sqlite};
 use crate::db_helper::*;
 use async_std::sync::{Mutex, MutexGuard};
 use std::sync::Arc;
 use crate::helper::get_meta_err_code;
 use crate::db_sql::*;
 use log::*;
+use sqlx::query::Query;
+use sqlx::sqlite::SqliteArguments;
 use crate::NFTStorage;
 
 pub struct SPVTxStorage {
@@ -208,6 +211,17 @@ impl SPVTxStorage {
             conn.execute_sql(sqlx::query(sql)).await?;
         }
 
+        static INIT_OBJECTS_TABLE_SQL: &str = r#"
+        CREATE TABLE IF NOT EXISTS "objects" (
+            "objectid"	TEXT NOT NULL,
+            "bodyhash"	TEXT NOT NULL,
+            "height"	INTEGER NOT NULL,
+            "raw"	BLOB NOT NULL,
+            PRIMARY KEY("objectId","bodyhash")
+        );
+        "#;
+        conn.execute_sql(sqlx::query(INIT_OBJECTS_TABLE_SQL)).await?;
+
         Ok(())
     }
 
@@ -397,6 +411,40 @@ impl SPVTxStorage {
         Ok(())
     }
 
+    fn prepare_add_object(&self, tx: &MetaTx, height: i64) -> BuckyResult<Query<Sqlite, SqliteArguments>>
+    {
+        let tx_id = tx.desc().object_id();
+        let data = tx.body().as_ref().ok_or(BuckyError::from(BuckyErrorCode::InvalidData)).map_err(|e| {
+            error!("skip store tx {} because no body data", &tx_id);
+            e
+        })?;
+
+        let saved = SavedMetaObject::clone_from_slice(&data.content().data).map_err(|e| {
+            error!("skip store tx {} because data not an SavedMetaObject, err {}", &tx_id, e);
+            e
+        })?;
+
+        let any = AnyNamedObject::try_from(saved).map_err(|e| {
+            error!("skip store tx {} because data not an AnyNamedObject, err {}", &tx_id, e);
+            e
+        })?;
+
+        let body_hash = any.body_hash().map_err(|e| {
+            error!("skip store tx {} because object calculate body hash err {}", &tx_id, e);
+            e
+        })?.ok_or(BuckyError::from(BuckyErrorCode::InvalidData)).map_err(|e| {
+            error!("skip store tx {} because object no body", &tx_id);
+            e
+        })?;
+
+        let id = any.object_id();
+        let raw = any.to_vec()?;
+
+        static INSERT_OBJECT: &str = "INSERT INTO objects VALUES (?1, ?2, ?3, ?4)";
+        Ok(sqlx::query(INSERT_OBJECT).bind(id.to_string()).bind(body_hash.to_base58()).bind(height).bind(raw))
+
+    }
+
     pub async fn add_block(&self, block: &Block) -> BuckyResult<()> {
         static INSERT_TX_SQL: &str = "INSERT INTO tx (hash, number, _from, _to, coin_id, value, desc, create_time, result, use_fee, nonce, gas_coin_id, gas_price, max_fee) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)";
         static INSERT_TX_INDEX_SQL: &str = "INSERT INTO tx_index (hash, address, number) VALUES (?1, ?2, ?3)";
@@ -417,6 +465,16 @@ impl SPVTxStorage {
 
             for body in content.body.get_obj() {
                 match body {
+                    MetaTxBody::CreateDesc(_) => {
+                        if let Ok(query) = self.prepare_add_object(tx, block.header().number()) {
+                            conn.execute_sql(query).await?;
+                        }
+                    }
+                    MetaTxBody::UpdateDesc(_) => {
+                        if let Ok(query) = self.prepare_add_object(tx, block.header().number()) {
+                            conn.execute_sql(query).await?;
+                        }
+                    }
                     MetaTxBody::TransBalance(trans) => {
                         conn.execute_sql(sqlx::query(INSERT_TX_INDEX_SQL)
                             .bind(tx_hash.clone())
@@ -916,6 +974,34 @@ impl SPVTxStorage {
         } else {
             Ok(ret.unwrap().get("amount"))
         }
+    }
+
+    pub async fn get_objects(&self, object_id: &str, body_hash: Option<String>, begin: Option<i64>, end: Option<i64>) -> BuckyResult<Vec<AnyNamedObject>> {
+        let mut sql = "select raw from objects where objectid = ?".to_owned();
+        if body_hash.is_some() {
+            sql = sql + " and bodyhash = ?";
+        }
+        if begin.is_some() {
+            sql = sql + " and height >= ?";
+        }
+        if end.is_some() {
+            sql = sql + " and height < ?";
+        }
+        let mut conn = self.get_conn().await?;
+        let mut query = sqlx::query(&sql).bind(object_id);
+        if let Some(body_hash) = body_hash {
+            query = query.bind(body_hash);
+        }
+        if let Some(begin) = begin {
+            query = query.bind(begin);
+        }
+        if let Some(end) = end {
+            query = query.bind(end);
+        }
+        let ret = conn.query_all(query).await?;
+        Ok(ret.iter().map(|iter| {
+            AnyNamedObject::clone_from_slice(iter.get("raw")).unwrap()
+        }).collect())
     }
 
     async fn add_service(&self, service: &SNService) -> BuckyResult<()> {

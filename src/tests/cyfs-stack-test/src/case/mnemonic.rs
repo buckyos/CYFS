@@ -26,6 +26,10 @@ async fn check_user() {
     user2.user_data().check_equal(&USER2_DATA);
 }
 
+pub async fn test() {
+    check_user().await;
+}
+
 #[cfg(test)]
 mod test {
     #[test]

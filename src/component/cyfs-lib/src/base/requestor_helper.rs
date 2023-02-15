@@ -809,12 +809,19 @@ impl RequestorHelper {
             0
         };
 
-        let time = NaiveDateTime::from_timestamp(secs as i64, nsecs as u32);
-
-        let dt = DateTime::<Utc>::from_utc(time, Utc);
-        let s = dt.to_rfc2822();
-
-        req.insert_header(name, s);
+        let time = NaiveDateTime::from_timestamp_opt(secs as i64, nsecs as u32);
+        match time {
+            Some(time) => {
+                let dt = DateTime::<Utc>::from_utc(time, Utc);
+                let s = dt.to_rfc2822();
+        
+                req.insert_header(name, s);
+            }
+            None => {
+                error!("invalid timestamp format! {}.{}", secs, nsecs);
+            }
+        }
+        
     }
 
     pub async fn request_to_service(

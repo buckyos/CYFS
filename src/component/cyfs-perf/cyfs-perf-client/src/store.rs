@@ -19,8 +19,8 @@ pub(crate) struct PerfStore {
 }
 
 impl PerfStore {
-    pub fn new(id: String, stack: &SharedCyfsStack) -> Self {
-        let cache = RemoteNOCStorage::new_noc_collection_sync(&id, stack);
+    pub fn new(id: String, stack: &UniCyfsStackRef, device_id: &DeviceId) -> Self {
+        let cache = RemoteNOCStorage::new_noc_collection_sync_uni(&id, stack, device_id);
         let locked = Arc::new(AtomicBool::new(false));
         Self { cache, locked }
     }
@@ -59,7 +59,7 @@ impl PerfStore {
     }
 
     // 尝试保存到noc，保存成功后会清空isolates内容
-    pub fn save(&self, isolates: &HashMap<String, PerfIsolate>) {
+    pub fn save(&self, isolates: &HashMap<String, PerfIsolateInstance>) {
         // 锁定状态下，不可修改数据
         if self.is_locked() {
             warn!("perf store still in locked state!");

@@ -12,10 +12,6 @@ use std::sync::Arc;
 pub struct ObjectMapSingleOpEnv {
     sid: u64,
 
-    // 用以创建objectmap
-    owner: Option<ObjectId>,
-    dec_id: Option<ObjectId>,
-
     // 所属dec的root
     root_holder: ObjectMapRootHolder,
 
@@ -36,16 +32,12 @@ impl ObjectMapSingleOpEnv {
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         root_cache: &ObjectMapRootCacheRef,
-        owner: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
         access: Option<OpEnvPathAccess>,
     ) -> Self {
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         Self {
             sid,
-            owner,
-            dec_id,
             root_holder: root_holder.clone(),
             root: AsyncMutex::new(None),
             cache,
@@ -86,11 +78,11 @@ impl ObjectMapSingleOpEnv {
     }
 
     // 创建一个新的object_map
-    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType) -> BuckyResult<()> {
+    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType, owner: Option<ObjectId>, dec_id: Option<ObjectId>,) -> BuckyResult<()> {
         let obj = ObjectMap::new(
             content_type.clone(),
-            self.owner.clone(),
-            self.dec_id.clone(),
+            owner,
+            dec_id,
         )
         .no_create_time()
         .build();
@@ -135,12 +127,12 @@ impl ObjectMapSingleOpEnv {
     pub async fn load_with_inner_path(&self, obj_map_id: &ObjectId, inner_path: Option<String>) -> BuckyResult<()> {
         let value = match &inner_path {
             Some(inner_path) if inner_path.len() > 0  => {
-                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone());
+                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone(), false);
                 let value = object_path.get_by_path(&inner_path).await?;
                 if value.is_none() {
                     let msg = format!(
                         "load single_op_env with inner_path but not found! root={}, inner_path={}",
-                        obj_map_id, obj_map_id,
+                        obj_map_id, inner_path,
                     );
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -172,7 +164,7 @@ impl ObjectMapSingleOpEnv {
         let root = self.root_holder.get_current_root();
 
         let value = if key.len() > 0 {
-            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone(), false);
             let value = object_path.get_by_key(path, key).await?;
             if value.is_none() {
                 let msg = format!(

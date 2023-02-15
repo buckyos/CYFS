@@ -1,14 +1,15 @@
 use super::gateway_monitor::GATEWAY_MONITOR;
-use crate::config::{init_system_config, DeviceConfigManager};
+use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER, SystemConfigMonitor};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
+use crate::status::OOD_STATUS_MANAGER;
 use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering, AtomicBool};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -45,28 +46,30 @@ impl Default for ActionActive {
 #[derive(Clone)]
 pub struct Daemon {
     mode: ServiceMode,
-    device_config_manager: Arc<DeviceConfigManager>,
     no_monitor: bool,
     last_active: Arc<ActionActive>,
+    check_update_waker: Arc<Mutex<Option<AbortHandle>>>,
+    wakedup_once: Arc<AtomicBool>,
 }
 
 impl Daemon {
     // add code here
     pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
-        let device_config_manager = DeviceConfigManager::new();
-
         Self {
             mode,
-            device_config_manager: Arc::new(device_config_manager),
             no_monitor,
             last_active: Arc::new(ActionActive::default()),
+            check_update_waker: Arc::new(Mutex::new(None)),
+            wakedup_once: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub async fn run(&self) -> BuckyResult<()> {
         init_system_config().await?;
 
-        self.device_config_manager.init()?;
+        DEVICE_CONFIG_MANAGER.init()?;
+
+        OOD_STATUS_MANAGER.start().await?;
 
         // 关注绑定事件
         let notify = BindNotify {
@@ -76,6 +79,8 @@ impl Daemon {
 
         let _ = GATEWAY_MONITOR.init().await;
 
+        SystemConfigMonitor::start(self.clone());
+
         self.start_check_active();
 
         self.start_check_service_state();
@@ -83,6 +88,16 @@ impl Daemon {
         self.run_check_update(notify).await;
 
         Ok(())
+    }
+
+    pub fn wakeup_check_update(&self) {
+        if let Some(abort_handle) = self.check_update_waker.lock().unwrap().take() {
+            info!("will wakeup check update now!");
+            abort_handle.abort();
+        } else {
+            info!("wakeup check udpate but still in checking loop! now will mark");
+            self.wakedup_once.store(true, Ordering::SeqCst);
+        }
     }
 
     async fn run_check_update(&self, notify: BindNotify) {
@@ -98,7 +113,7 @@ impl Daemon {
                 .map(|v| v.config.fid.clone());
 
             // 首先尝试下载同步配置
-            match self.device_config_manager.fetch_config().await {
+            match DEVICE_CONFIG_MANAGER.fetch_config().await {
                 Ok(changed) => {
                     if changed {
                         need_load_config = true;
@@ -112,7 +127,7 @@ impl Daemon {
             }
 
             if need_load_config {
-                if let Err(e) = self.device_config_manager.load_and_apply_config().await {
+                if let Err(e) = DEVICE_CONFIG_MANAGER.load_and_apply_config().await {
                     // 加载配置失败，那么需要等下一个周期继续尝试load
                     error!("load config failed! now will retry on next loop! {}", e);
                 } else {
@@ -176,21 +191,28 @@ impl Daemon {
                 }
             }
 
-            // 检查绑定状态
-            let timer = task::sleep(Duration::from_secs(60 * 10));
-            if OOD_CONTROLLER.is_bind() {
-                timer.await;
-            } else {
-                let (abort_handle, abort_registration) = AbortHandle::new_pair();
-                *notify.abort_handle.lock().unwrap() = Some(abort_handle);
+            let ret = self.wakedup_once.swap(false, Ordering::SeqCst);
+            if ret {
+                continue;
+            }
 
-                match Abortable::new(timer, abort_registration).await {
-                    Ok(_) => {
-                        debug!("check loop wait timeout, now will check once");
-                    }
-                    Err(futures::future::Aborted { .. }) => {
-                        info!("check loop waked up, now will check once");
-                    }
+            let timer = task::sleep(Duration::from_secs(60 * 30));
+
+            let (abort_handle, abort_registration) = AbortHandle::new_pair();
+
+            // check ood's binding status
+            if !OOD_CONTROLLER.is_bind() {
+                *notify.abort_handle.lock().unwrap() = Some(abort_handle.clone());
+            }
+            *self.check_update_waker.lock().unwrap() = Some(abort_handle);
+
+            match Abortable::new(timer, abort_registration).await {
+                Ok(_) => {
+                    self.check_update_waker.lock().unwrap().take();
+                    debug!("check update loop wait timeout, now will check once");
+                }
+                Err(futures::future::Aborted { .. }) => {
+                    info!("check update loop waked up, now will check once");
                 }
             }
         }
@@ -210,7 +232,7 @@ impl Daemon {
     }
 
     fn start_check_active(&self) {
-        const ACTIVE_TIMEOUT: u64 = 1000 * 1000 * 60 * 30;
+        const ACTIVE_TIMEOUT: u64 = 1000 * 1000 * 60 * 30 * 3;
 
         let this = self.clone();
         task::spawn(async move {

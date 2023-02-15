@@ -450,6 +450,13 @@ impl Into<u32> for BuckyErrorCode {
     }
 }
 
+impl Into<i32> for BuckyErrorCode {
+    fn into(self) -> i32 {
+        let v: u16 = self.into();
+        v as i32
+    }
+}
+
 impl Into<u16> for BuckyErrorCode {
     fn into(self) -> u16 {
         match self {

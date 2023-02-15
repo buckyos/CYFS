@@ -11,8 +11,8 @@ description = "Rust sn-miner-rust package"
 [dependencies]
 log = "0.4"
 async-std = "1.11"
-cyfs-util = {path="../../component/cyfs-util"}
-cyfs-base = {path="../../component/cyfs-base"}
-cyfs-debug = {path="../../component/cyfs-debug"}
-cyfs-bdt = {path="../../component/cyfs-bdt"}
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
 clap = "2"

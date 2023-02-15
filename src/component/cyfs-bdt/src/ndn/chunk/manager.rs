@@ -116,10 +116,14 @@ impl ChunkManager {
         Self { 
             stack: weak_stack, 
             store: Box::new(EmptyChunkWrapper::new(store)), 
-            raw_caches: RawCacheManager::new(stack.config().ndn.chunk.raw_caches.clone()), 
+            raw_caches: RawCacheManager::new(stack.local_device_id().clone(), stack.config().ndn.chunk.raw_caches.clone()), 
             caches: Mutex::new(Default::default()), 
             downloaders: Mutex::new(Downloaders::new())
         }
+    }
+
+    pub(crate) fn on_statistic(&self) -> String {
+        format!("ChunkCacheCount:{}, UsedMem: {}",  self.caches.lock().unwrap().len(), self.raw_caches().used_mem())
     }
 
     pub fn store(&self) -> &dyn ChunkReader {
@@ -139,6 +143,7 @@ impl ChunkManager {
             caches.remove(chunk);
         } 
         let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
+        info!("{} create new cache {}", self, cache);
         caches.insert(chunk.clone(), cache.to_weak());
         cache
     }
@@ -146,7 +151,9 @@ impl ChunkManager {
     pub fn create_downloader(&self, chunk: &ChunkId, task: Box<dyn LeafDownloadTask>) -> ChunkDownloader {
         let cache = self.create_cache(chunk);
         let mut downloaders = self.downloaders.lock().unwrap();
-        downloaders.create_downloader(&self.stack, cache, task)
+        let downloader = downloaders.create_downloader(&self.stack, cache, task);
+        info!("{} create new downloader {}", self, downloader);
+        downloader
     }
 
     pub(in super::super) fn on_schedule(&self, _now: Timestamp) {
@@ -156,6 +163,20 @@ impl ChunkManager {
         };
         for downloader in downloaders {
             downloader.on_drain(0);
+        }
+
+        {
+            let mut remove = LinkedList::new();
+            let mut caches = self.caches.lock().unwrap();
+            for (chunk, cache) in caches.iter() {
+                if cache.to_strong().is_none() {
+                    remove.push_back(chunk.clone());
+                }
+            }
+
+            for chunk in remove {
+                caches.remove(&chunk);
+            }
         }
     } 
 }

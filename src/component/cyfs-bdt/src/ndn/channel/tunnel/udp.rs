@@ -1,11 +1,10 @@
 use log::*;
 use std::{
     collections::{LinkedList},
-    time::{Duration},
+    time::{Duration, Instant},
     cell::RefCell, 
     sync::Mutex
 };
-// use cyfs_debug::Mutex;
 use async_std::{
     sync::Arc, 
 };
@@ -71,6 +70,11 @@ struct RespEstimateStub {
     recved: u64,
 }
 
+struct PacePackage {
+    send_time: Instant,
+    data: Vec<u8>,
+}
+
 struct TunnelImpl {
     config: channel::Config, 
     raw_tunnel: RawTunnel, 
@@ -78,7 +82,8 @@ struct TunnelImpl {
     active_timestamp: Timestamp, 
     cc: Mutex<CcImpl>, 
     resp_estimate: Mutex<RespEstimateStub>, 
-    uploaders: Uploaders
+    uploaders: Uploaders,
+    package_queue: Arc<Mutex<LinkedList<PacePackage>>>, 
 }
 
 #[derive(Clone)]
@@ -106,7 +111,8 @@ impl UdpTunnel {
                 seq: TempSeq::default(), 
                 recved: 0
             }), 
-            uploaders: Uploaders::new()
+            uploaders: Uploaders::new(),
+            package_queue: Arc::new(Mutex::new(Default::default())),
         }))
     }
 
@@ -132,6 +138,8 @@ impl UdpTunnel {
                 let mut pre_buf_index: Option<BufferIndex> = None;
                 let mut sent = 0;
                 let tunnel = &self.0.raw_tunnel;
+                let mut send_bytes = 0;
+                let mut last_est_seq = TempSeq::default();
                 for _ in 0..piece_count {
                     let mut buf_index = if let Some(bi) = &pre_buf_index {
                         if bi.index == 0 {
@@ -150,7 +158,9 @@ impl UdpTunnel {
                         buf_index.len = piece_len;
                         if pre_buf_index.is_some() {
                             std::mem::swap(pre_buf_index.as_mut().unwrap(), &mut buf_index);
-                            let _ = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]);
+                            if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
+                                send_bytes += size;
+                            }
                         } else {
                             pre_buf_index = Some(buf_index);
                         }
@@ -173,7 +183,16 @@ impl UdpTunnel {
                     };
                     debug!("{} send estimate sequence:{:?} sent:{}", self, est_seq, sent);
                     PieceData::reset_estimate(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..], est_seq);
-                    let _ = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]);
+                    last_est_seq = est_seq;
+
+                    if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
+                        send_bytes += size;
+                    }
+                }
+
+                {
+                    let mut cc = self.0.cc.lock().unwrap();
+                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, last_est_seq.value() as u64);
                 }
             })
         });      
@@ -232,7 +251,8 @@ impl ChannelTunnel for UdpTunnel {
                     self,
                     est_seq
                 );
-                let _ = tunnel.send_raw_data(&mut buffer[..]);
+                if let Ok(_) = tunnel.send_raw_data(&mut buffer[..]) {
+                }
             }
         } else {
             let mut est_stub = self.0.resp_estimate.lock().unwrap();
@@ -253,7 +273,7 @@ impl ChannelTunnel for UdpTunnel {
                 let rtt = Duration::from_micros(bucky_time_now() - stub.send_time);
                 let delay = rtt / 2;
                 
-                cc.cc.on_estimate(rtt, delay);
+                cc.cc.on_estimate(rtt, delay, false);
                 debug!("{} estimate rtt:{:?} delay:{:?} rto:{:?}", self, rtt, delay, cc.cc.rto());
 
                 est_index = Some(cc.est_stubs.len() - 1 - index);
@@ -266,8 +286,10 @@ impl ChannelTunnel for UdpTunnel {
             let mut resp_count = 0;
 
             let est_stubs = cc.est_stubs.split_off(est_index + 1);
+            let mut send_time = 0;
             for stub in &cc.est_stubs {
                 resp_count += stub.sent;
+                send_time = stub.send_time;
             }
             cc.est_stubs = est_stubs;
 
@@ -277,11 +299,13 @@ impl ChannelTunnel for UdpTunnel {
             debug!("{} cc on ack on_air:{}, ack:{}", self, on_air, resp_count);
             cc.no_resp_counter = 0;
             cc.break_counter = 0;
+
             cc.cc.on_ack(
                 (on_air * PieceData::max_payload()) as u64, 
                 (resp_count * PieceData::max_payload()) as u64, 
-            	None,
-            	bucky_time_now());
+                Some(est_index as u64), 
+            	send_time,
+                false);
         }
         
         Ok(())

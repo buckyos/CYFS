@@ -2,12 +2,11 @@ use log::*;
 use async_std::{
     future, 
     task, 
-    sync::{Arc}
 };
 use std::{
     time::Duration, 
     fmt, 
-    sync::{RwLock}, 
+    sync::{RwLock, Arc, Weak}, 
     collections::{BTreeMap, LinkedList}, 
     ops::Deref,
     convert::TryFrom
@@ -118,14 +117,8 @@ enum TunnelStateImpl {
     Dead(TunnelDeadState)
 }
 
-enum TunnelRecycleState {
-    InUse, 
-    Recycle(Timestamp)
-}
-
 struct TunnelContainerState {
     last_update: Timestamp, 
-    recyle_state: TunnelRecycleState, 
     tunnel_state: TunnelStateImpl, 
     tunnel_entries: BTreeMap<EndpointPair, DynamicTunnel>
 }
@@ -151,7 +144,6 @@ impl TunnelContainer {
             remote_const, 
             sequence_generator: TempSeqGenerator::new(), 
             state: RwLock::new(TunnelContainerState {
-                recyle_state: TunnelRecycleState::InUse, 
                 tunnel_entries: BTreeMap::new(), 
                 last_update: bucky_time_now(), 
                 tunnel_state: TunnelStateImpl::Connecting(TunnelConnectingState {
@@ -168,22 +160,6 @@ impl TunnelContainer {
             tunnel.mtu()
         } else {
             MTU-12
-        }
-    }
-
-    fn mark_in_use(&self) {
-        let mut state = self.0.state.write().unwrap();
-        state.recyle_state = TunnelRecycleState::InUse;
-    }
-
-    fn mark_recycle(&self, when: Timestamp) -> Timestamp {
-        let mut state = self.0.state.write().unwrap();
-        match &state.recyle_state {
-            TunnelRecycleState::InUse => {
-                state.recyle_state = TunnelRecycleState::Recycle(when);
-                when
-            }, 
-            TunnelRecycleState::Recycle(when) => *when
         }
     }
 
@@ -313,7 +289,8 @@ impl TunnelContainer {
             Ok(())
         } else {
             let tunnel = self.default_tunnel()?;
-            tunnel.as_ref().send_package(package)
+            let _ = tunnel.as_ref().send_package(package)?;
+            Ok(())
         }     
     }
 
@@ -529,7 +506,8 @@ impl TunnelContainer {
                         let builder = ConnectStreamBuilder::new(
                             tunnel_impl.stack.clone(), 
                             build_params, 
-                            stream);
+                            stream,
+                            self.clone());
                         state.last_update = bucky_time_now();
                         state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                             waiter: StateWaiter::new(), 
@@ -546,7 +524,8 @@ impl TunnelContainer {
                             let builder = ConnectStreamBuilder::new(
                                 tunnel_impl.stack.clone(), 
                                 build_params, 
-                                stream);
+                                stream, 
+                                self.clone());
                             connecting.build_state = TunnelBuildState::ConnectStream(builder.clone());
                             (None, Some(builder), None, None)
                         }, 
@@ -560,7 +539,8 @@ impl TunnelContainer {
                     let builder = ConnectStreamBuilder::new(
                         tunnel_impl.stack.clone(), 
                         build_params, 
-                        stream);
+                        stream,
+                        self.clone());
 
                     state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                         waiter: StateWaiter::new(), 
@@ -992,7 +972,7 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                         return Ok(());
                     }
                     let stream = stream.unwrap();
-                    let acceptor = stream.as_ref().acceptor();
+                    let acceptor = stream.acceptor();
                     if acceptor.is_none() {
                         debug!("{} ignore accept stream builder for stream of {} no more connecting", self, remote_seq);
                         return Ok(());
@@ -1262,32 +1242,49 @@ impl OnPackage<AckProxy, &DeviceId> for TunnelContainer {
     }
 }
 
-
+struct ContainerRef(TunnelContainer);
 
 #[derive(Clone)]
-pub struct TunnelGuard(Arc<TunnelContainer>);
+pub struct TunnelGuard(Arc<ContainerRef>);
+
+#[derive(Clone)]
+pub struct WeakTunnelGuard(Weak<ContainerRef>);
+
+impl WeakTunnelGuard {
+    pub fn to_strong(&self) -> Option<TunnelGuard> {
+        self.0.upgrade().map(|s| TunnelGuard(s))
+    }
+}
 
 impl TunnelGuard {
     pub(super) fn new(tunnel: TunnelContainer) -> Self {
-        Self(Arc::new(tunnel))
+        Self(Arc::new(ContainerRef(tunnel)))
     }
 
-    pub(super) fn mark_in_use(&self) {
-        self.0.mark_in_use()
+    pub fn to_weak(&self) -> WeakTunnelGuard {
+        WeakTunnelGuard(Arc::downgrade(&self.0))
     }
 
-    pub(super) fn mark_recycle(&self, when: Timestamp) -> Option<Timestamp> {
-        if Arc::strong_count(&self.0) > 1 {
-            None
-        } else {
-            Some(self.0.mark_recycle(when))
-        }
+    pub fn ref_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+}
+
+impl Drop for ContainerRef {
+    fn drop(&mut self) {
+        self.0.reset();
     }
 }
 
 impl Deref for TunnelGuard {
     type Target = TunnelContainer;
     fn deref(&self) -> &TunnelContainer {
-        &(*self.0)
+        &self.0.0
+    }
+}
+
+impl AsRef<TunnelContainer> for TunnelGuard {
+    fn as_ref(&self) -> &TunnelContainer {
+        &self.0.0
     }
 }

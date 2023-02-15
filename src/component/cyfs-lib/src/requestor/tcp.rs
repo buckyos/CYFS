@@ -56,7 +56,9 @@ impl HttpRequestor for TcpHttpRequestor {
             ));
         }
 
-        match async_h1::connect(tcp_stream, req.take().unwrap()).await {
+        let req = req.take().unwrap();
+        let req = self.add_default_headers(req);
+        match async_h1::connect(tcp_stream, req).await {
             Ok(resp) => {
                 info!(
                     "http-tcp request to {} success! during={}ms",

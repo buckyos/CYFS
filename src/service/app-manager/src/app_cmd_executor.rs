@@ -356,10 +356,15 @@ impl AppCmdExecutor {
                 SubErrorCode::AppNotFound
             })?;
 
+        let (no_service, web_dir) = self
+            .app_controller
+            .install_app(app_id, version, &dec_app)
+            .await?;
+
         // 获取权限配置并且设置到local status
         let permissions = self
             .app_controller
-            .query_app_permission(app_id, version, &dec_app)
+            .get_app_permission(app_id)
             .await
             .map_err(|e| {
                 warn!("get app acl failed, app:{}, err: {}", app_id, e);
@@ -372,11 +377,6 @@ impl AppCmdExecutor {
                 let _ = self.non_helper.put_local_status(&status_clone).await;
             }
         }
-
-        let (no_service, web_dir) = self
-            .app_controller
-            .install_app(app_id, version, &dec_app)
-            .await?;
 
         let mut target_status_code = AppLocalStatusCode::Stop;
         if no_service {

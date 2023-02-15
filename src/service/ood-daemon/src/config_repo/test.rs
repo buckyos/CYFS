@@ -1,14 +1,13 @@
-use crate::config::DeviceConfigManager;
+use crate::config::DEVICE_CONFIG_MANAGER;
 use crate::init_system_config;
 
 async fn test() {
     init_system_config().await.unwrap();
+    
+    DEVICE_CONFIG_MANAGER.init().unwrap();
 
-    let config_manager = DeviceConfigManager::new();
-    config_manager.init().unwrap();
-
-    config_manager.fetch_config().await.unwrap();
-    config_manager.fetch_config().await.unwrap();
+    DEVICE_CONFIG_MANAGER.fetch_config().await.unwrap();
+    DEVICE_CONFIG_MANAGER.fetch_config().await.unwrap();
 }
 
 #[test]

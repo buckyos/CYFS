@@ -3,6 +3,7 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 use log::*;
+use serde::Serialize;
 
 const APP_MAIN_PATH: &str = "/app";
 
@@ -71,6 +72,52 @@ impl NonHelper {
             error!("store status on map failed. status:{}", status.output());
             return Err(e);
         }
+
+        // 上报到ood-daemon
+        /*
+        {
+            "auto_update": true,
+            "id": "9tGpLNnDwJ1nReZqJgWev5eoe23ygViGDC4idnCK1Dy5",
+            "name": "app-manager",
+            "process_state": "Run",
+            "version": "1.0.0.713"
+        }
+         */
+        #[derive(Serialize)]
+        struct AppStatusInfo {
+            pub auto_update: bool,
+            pub id: DecAppId,
+            pub name: String,
+            pub process_state: String,
+            pub version: String
+        }
+        impl From<&AppLocalStatus> for AppStatusInfo {
+            fn from(value: &AppLocalStatus) -> Self {
+                Self {
+                    auto_update: value.auto_update(),
+                    id: value.app_id().clone(),
+                    name: "unknown".to_string(),
+                    process_state: value.status().to_string(),
+                    version: value.version().unwrap_or("unknown").to_owned(),
+                }
+            }
+        }
+
+        let mut info = AppStatusInfo::from(status);
+        let stack = self.shared_stack.clone();
+        async_std::task::spawn(async move {
+            let app_id = info.id.object_id();
+            if let Ok(resp) = stack
+                .non_service()
+                .get_object(NONGetObjectRequest::new_noc(app_id.clone(), None))
+                .await {
+                if let Ok(app) = DecApp::clone_from_slice(&resp.object.object_raw) {
+                    info.name = app.name().to_owned();
+                }
+            }
+
+            let _ = surf::post(format!("http://127.0.0.1:{}/service_status/{}", OOD_DAEMON_LOCAL_STATUS_PORT, &app_id)).body(serde_json::to_value(info).unwrap()).send().await;
+        });
 
         Ok(())
     }
@@ -433,20 +480,11 @@ impl NonHelper {
         target: Option<ObjectId>,
         flag: u32,
     ) -> BuckyResult<NONGetObjectOutputResponse> {
+        let mut req = NONGetObjectRequest::new_router(target, obj_id.clone(), None);
+        req.common.flags = flag;
         self.shared_stack
             .non_service()
-            .get_object(NONGetObjectRequest {
-                common: NONOutputRequestCommon {
-                    req_path: None,
-                    source: None,
-                    dec_id: None,
-                    level: NONAPILevel::Router,
-                    target,
-                    flags: flag,
-                },
-                object_id: obj_id.clone(),
-                inner_path: None,
-            })
+            .get_object(req)
             .await
     }
 

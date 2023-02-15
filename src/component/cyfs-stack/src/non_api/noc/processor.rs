@@ -33,6 +33,7 @@ impl NOCLevelInputProcessor {
     // noc processor with inner_path service
     pub(crate) fn new_with_inner_path_service(
         noc: NamedObjectCacheRef,
+        relation: NamedObjectRelationCacheRef,
         named_data_components: &NamedDataComponents,
         router_handlers: RouterHandlersManager,
         zone_manager: ZoneManagerRef,
@@ -41,7 +42,7 @@ impl NOCLevelInputProcessor {
 
         // add inner_path supports
         let inner_path_processor =
-            NONInnerPathServiceProcessor::new(raw_processor, named_data_components, noc);
+            NONInnerPathServiceProcessor::new(raw_processor, named_data_components, noc, relation);
 
         // 增加pre-noc前置处理器
         let pre_processor = NONHandlerPreProcessor::new(

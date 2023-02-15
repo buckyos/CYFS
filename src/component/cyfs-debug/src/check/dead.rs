@@ -142,7 +142,7 @@ impl ProcessDeadHelper {
         let this = self.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(dur);
-            info!("process still alive {:?}", std::thread::current().id(),);
+            info!("process still alive {:?}, {}", std::thread::current().id(), cyfs_base::get_version());
             this.check_task_alive();
         });
     }

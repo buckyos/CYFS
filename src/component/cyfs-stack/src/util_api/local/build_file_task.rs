@@ -5,15 +5,45 @@ use cyfs_util::*;
 use sha2::Digest;
 use std::sync::Arc;
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::util_proto::BuildFileParams)]
 pub struct BuildFileParams {
     pub local_path: String,
     pub owner: ObjectId,
     pub dec_id: ObjectId,
-    pub chunk_size: u32,
+    pub chunk_size: u32, 
+    pub chunk_method: TransPublishChunkMethod, 
     pub access: Option<u32>,
 }
+
+impl ProtobufTransform<super::util_proto::BuildFileParams> for BuildFileParams {
+    fn transform(
+        value: super::util_proto::BuildFileParams,
+    ) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            owner: ObjectId::clone_from_slice(value.owner.as_slice())?,
+            dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice())?,
+            chunk_size: value.chunk_size, 
+            chunk_method: value.chunk_method.map(|v| TransPublishChunkMethod::try_from(v as u8)).unwrap_or(Ok(TransPublishChunkMethod::default()))?, 
+            access: value.access
+        })
+    }
+}
+
+impl ProtobufTransform<&BuildFileParams> for super::util_proto::BuildFileParams {
+    fn transform(value: &BuildFileParams) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            owner: value.owner.as_slice().to_vec(),
+            dec_id: value.dec_id.as_slice().to_vec(),
+            chunk_size: value.chunk_size, 
+            chunk_method: Some(Into::<u8>::into(value.chunk_method) as i32), 
+            access: value.access
+        })
+    }
+}
+
 
 pub struct BuildFileTaskFactory {
     noc: NamedObjectCacheRef,
@@ -39,6 +69,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.chunk_method, 
             params.access,
             self.noc.clone(),
             self.ndc.clone(),
@@ -62,7 +93,8 @@ impl TaskFactory for BuildFileTaskFactory {
             params.local_path,
             params.owner,
             params.dec_id,
-            params.chunk_size,
+            params.chunk_size, 
+            params.chunk_method, 
             params.access,
             task_state,
             self.noc.clone(),
@@ -191,7 +223,8 @@ pub struct BuildFileTask {
     local_path: String,
     owner: ObjectId,
     dec_id: ObjectId,
-    chunk_size: u32,
+    chunk_size: u32, 
+    chunk_method: TransPublishChunkMethod, 
     access: Option<u32>,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
@@ -202,7 +235,8 @@ impl BuildFileTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -225,7 +259,8 @@ impl BuildFileTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             noc,
             ndc,
@@ -236,7 +271,8 @@ impl BuildFileTask {
         local_path: String,
         owner: ObjectId,
         dec_id: ObjectId,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<u32>,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
@@ -257,7 +293,8 @@ impl BuildFileTask {
             local_path,
             owner,
             dec_id,
-            chunk_size,
+            chunk_size, 
+            chunk_method, 
             access,
             noc,
             ndc,
@@ -310,7 +347,7 @@ impl BuildFileTask {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: self.access,
         };
 
         match self.noc.put_object(&req).await {
@@ -403,7 +440,7 @@ mod build_file_task_test {
     impl NamedObjectCache for MemoryNoc {
         async fn put_object(
             &self,
-            req: &NamedObjectCachePutObjectRequest,
+            _req: &NamedObjectCachePutObjectRequest,
         ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
             Ok(NamedObjectCachePutObjectResponse {
                 result: NamedObjectCachePutObjectResult::Accept,
@@ -414,34 +451,34 @@ mod build_file_task_test {
 
         async fn get_object_raw(
             &self,
-            req: &NamedObjectCacheGetObjectRequest,
+            _req: &NamedObjectCacheGetObjectRequest,
         ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
             todo!();
         }
 
         async fn delete_object(
             &self,
-            req: &NamedObjectCacheDeleteObjectRequest,
+            _req: &NamedObjectCacheDeleteObjectRequest,
         ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
             todo!();
         }
 
         async fn exists_object(
             &self,
-            req: &NamedObjectCacheExistsObjectRequest,
+            _req: &NamedObjectCacheExistsObjectRequest,
         ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
             todo!();
         }
 
         async fn update_object_meta(
             &self,
-            req: &NamedObjectCacheUpdateObjectMetaRequest,
+            _req: &NamedObjectCacheUpdateObjectMetaRequest,
         ) -> BuckyResult<()> {
             todo!();
         }
 
         async fn check_object_access(&self,
-            req: &NamedObjectCacheCheckObjectAccessRequest
+            _req: &NamedObjectCacheCheckObjectAccessRequest
         ) -> BuckyResult<Option<()>> {
             todo!();
         }
@@ -463,94 +500,94 @@ mod build_file_task_test {
             todo!()
         }
 
-        async fn insert_file(&self, req: &InsertFileRequest) -> BuckyResult<()> {
+        async fn insert_file(&self, _req: &InsertFileRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn remove_file(&self, req: &RemoveFileRequest) -> BuckyResult<usize> {
+        async fn remove_file(&self, _req: &RemoveFileRequest) -> BuckyResult<usize> {
             todo!()
         }
 
         async fn file_update_quick_hash(
             &self,
-            req: &FileUpdateQuickhashRequest,
+            _req: &FileUpdateQuickhashRequest,
         ) -> BuckyResult<()> {
             todo!()
         }
 
         async fn get_file_by_hash(
             &self,
-            req: &GetFileByHashRequest,
+            _req: &GetFileByHashRequest,
         ) -> BuckyResult<Option<FileCacheData>> {
             Ok(None)
         }
 
         async fn get_file_by_file_id(
             &self,
-            req: &GetFileByFileIdRequest,
+            _req: &GetFileByFileIdRequest,
         ) -> BuckyResult<Option<FileCacheData>> {
             todo!()
         }
 
         async fn get_files_by_quick_hash(
             &self,
-            req: &GetFileByQuickHashRequest,
+            _req: &GetFileByQuickHashRequest,
         ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
         async fn get_files_by_chunk(
             &self,
-            req: &GetFileByChunkRequest,
+            _req: &GetFileByChunkRequest,
         ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
         async fn get_dirs_by_file(
             &self,
-            req: &GetDirByFileRequest,
+            _req: &GetDirByFileRequest,
         ) -> BuckyResult<Vec<FileDirRef>> {
             todo!()
         }
 
-        async fn insert_chunk(&self, req: &InsertChunkRequest) -> BuckyResult<()> {
+        async fn insert_chunk(&self, _req: &InsertChunkRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn remove_chunk(&self, req: &RemoveChunkRequest) -> BuckyResult<usize> {
+        async fn remove_chunk(&self, _req: &RemoveChunkRequest) -> BuckyResult<usize> {
             todo!()
         }
 
         async fn update_chunk_state(
             &self,
-            req: &UpdateChunkStateRequest,
+            _req: &UpdateChunkStateRequest,
         ) -> BuckyResult<ChunkState> {
             todo!()
         }
 
-        async fn update_chunk_ref_objects(&self, req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
+        async fn update_chunk_ref_objects(&self, _req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn get_chunk(&self, req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>> {
+        async fn get_chunk(&self, _req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>> {
             todo!()
         }
 
         async fn get_chunks(
             &self,
-            req: &Vec<GetChunkRequest>,
+            _req: &Vec<GetChunkRequest>,
         ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
             todo!()
         }
 
         async fn get_chunk_ref_objects(
             &self,
-            req: &GetChunkRefObjectsRequest,
+            _req: &GetChunkRefObjectsRequest,
         ) -> BuckyResult<Vec<ChunkObjectRef>> {
             todo!()
         }
 
-        async fn exists_chunks(&self, req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
+        async fn exists_chunks(&self, _req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
             todo!();
         }
     }
@@ -596,6 +633,7 @@ mod build_file_task_test {
                 chunk_size: 4 * 1024 * 1024,
                 dec_id: dec_id.to_owned(),
                 access: None,
+                chunk_method: TransPublishChunkMethod::default(),
             };
             let task = task_manager
                 .create_task(
@@ -636,6 +674,7 @@ mod build_file_task_test {
                 chunk_size: 4 * 1024 * 1024,
                 dec_id: dec_id.to_owned(),
                 access: None,
+                chunk_method: TransPublishChunkMethod::default(),
             };
             let task = task_manager
                 .create_task(

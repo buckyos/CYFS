@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-util'
-version = '0.6.4'
+version = '0.6.6'
 authors = ['weiqiushi <weiqiushi@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -38,7 +38,7 @@ flexi_logger = '=0.19.5'
 log-panics = { version = '2.0', features = ['with-backtrace'] }
 sysinfo = '0.27'
 dirs = '4.0'
-thread_local = "1.1"
+thread_local = '1.1'
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = '0.3.6', features = [
@@ -55,7 +55,7 @@ nix = '0.24'
 dirs = '4.0'
 
 [build-dependencies]
-cyfs-base = { path = '../cyfs-base', version = "0.6" }
+cyfs-base = { path = '../cyfs-base', version = '0.6' }
 
 [dev-dependencies]
 rand = '0.8'
