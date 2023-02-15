@@ -35,16 +35,15 @@ use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use crate::GroupNONDriver;
 use cyfs_base::*;
 
-use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
-use cyfs_group::GroupRPathMgr;
+use cyfs_bdt::{DeviceCache, SnStatus, StackGuard};
 use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
+use cyfs_group::GroupManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
-
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -106,7 +105,7 @@ pub struct CyfsStackImpl {
     global_state_meta: GlobalStateMetaService,
 
     // group
-    group_manager: GroupRPathMgr,
+    group_manager: GroupManager,
 }
 
 impl CyfsStackImpl {
@@ -429,7 +428,7 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
-        let group_manager = GroupRPathMgr::new(
+        let group_manager = GroupManager::new(
             signer,
             Box::new(GroupNONDriver::new(non_service.clone())),
             bdt_stack.clone(),
@@ -773,7 +772,6 @@ impl CyfsStackImpl {
         let task = async_std::task::spawn(async move {
             // 初始化known_objects
             for object in known_objects.list.into_iter() {
-
                 let req = NamedObjectCachePutObjectRequest {
                     source: RequestSourceInfo::new_local_system(),
                     object,
@@ -789,7 +787,7 @@ impl CyfsStackImpl {
         if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
             task.await;
         }
-        
+
         Ok(noc)
     }
 
@@ -1119,7 +1117,7 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
-    pub fn group_mgr(&self) -> &GroupRPathMgr {
+    pub fn group_mgr(&self) -> &GroupManager {
         &self.stack.group_manager
     }
 
