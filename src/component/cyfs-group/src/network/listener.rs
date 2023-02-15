@@ -3,14 +3,14 @@ use std::time::{Duration, Instant};
 use cyfs_base::{ObjectId, RawDecode};
 use cyfs_bdt::DatagramTunnelGuard;
 
-use crate::{GroupRPathMgr, HotstuffPackage};
+use crate::{GroupManager, HotstuffPackage};
 
 pub struct Listener;
 
 impl Listener {
     pub fn spawn(
         datagram: DatagramTunnelGuard,
-        processor: GroupRPathMgr,
+        processor: GroupManager,
         local_device_id: ObjectId,
     ) {
         async_std::task::spawn(async move {
@@ -20,7 +20,7 @@ impl Listener {
 
     async fn run(
         datagram: DatagramTunnelGuard,
-        processor: GroupRPathMgr,
+        processor: GroupManager,
         local_device_id: ObjectId,
     ) {
         loop {

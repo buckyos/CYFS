@@ -35,9 +35,9 @@ use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use crate::GroupNONDriver;
 use cyfs_base::*;
 
-use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
-use cyfs_group::GroupRPathMgr;
+use cyfs_bdt::{DeviceCache, SnStatus, StackGuard};
 use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
+use cyfs_group::GroupManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
@@ -105,7 +105,7 @@ pub struct CyfsStackImpl {
     global_state_meta: GlobalStateMetaService,
 
     // group
-    group_manager: GroupRPathMgr,
+    group_manager: GroupManager,
 }
 
 impl CyfsStackImpl {
@@ -431,7 +431,7 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
-        let group_manager = GroupRPathMgr::new(
+        let group_manager = GroupManager::new(
             signer,
             Box::new(GroupNONDriver::new(non_service.clone())),
             bdt_stack.clone(),
@@ -1162,7 +1162,7 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
-    pub fn group_mgr(&self) -> &GroupRPathMgr {
+    pub fn group_mgr(&self) -> &GroupManager {
         &self.stack.group_manager
     }
 
