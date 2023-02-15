@@ -4,12 +4,19 @@ use cyfs_lib::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::Entry, HashMap};
+use std::fmt::{Display, Formatter};
 
 // 统计所在的时间间隔
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerfTimeRange {
     pub begin: u64,
     pub end: u64,
+}
+
+impl Display for PerfTimeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.begin, self.end)
+    }
 }
 
 impl Default for PerfTimeRange {

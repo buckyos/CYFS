@@ -1,17 +1,17 @@
-use std::fs::{create_dir_all};
+use crate::{Chunk, ChunkCache, ChunkMut, ChunkType, MMapChunk, MMapChunkMut, MemChunk};
+use cyfs_base::*;
+use cyfs_chunk_lib::{ChunkMeta};
+use cyfs_debug::Mutex;
+use futures_lite::AsyncWriteExt;
+use num_traits::abs;
+use num_traits::float::Float;
+use scan_dir::ScanDir;
+use std::fs::create_dir_all;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::u64;
-use cyfs_base::*;
 use sysinfo::{DiskExt, RefreshKind, SystemExt};
-use crate::{Chunk, ChunkCache, ChunkMut, MMapChunk, MMapChunkMut, MemChunk, ChunkType};
-use num_traits::float::Float;
-use futures_lite::AsyncWriteExt;
-use num_traits::abs;
-use scan_dir::ScanDir;
-use cyfs_chunk_lib::{ChunkMeta, ChunkRead};
-use cyfs_debug::Mutex;
 
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) struct LocalChunkCacheMetaRecord {
@@ -52,7 +52,7 @@ impl LocalChunkCacheMetaRecord {
     pub fn get_weight(&self, path: &str) -> Option<u32> {
         for (item, weight) in self.list.iter() {
             if path == item.as_str() {
-                return Some(*weight)
+                return Some(*weight);
             }
         }
         None
@@ -71,40 +71,30 @@ impl LocalChunkCacheMeta {
 
     pub fn add_update_record(&mut self, disk_cache_list: Vec<(String, u32)>) {
         let record = match self.list.last() {
-            Some(last) => {
-                LocalChunkCacheMetaRecord::new(Some(last.hash()), disk_cache_list)
-            },
-            None => {
-                LocalChunkCacheMetaRecord::new(None, disk_cache_list)
-            }
+            Some(last) => LocalChunkCacheMetaRecord::new(Some(last.hash()), disk_cache_list),
+            None => LocalChunkCacheMetaRecord::new(None, disk_cache_list),
         };
         self.list.push(record);
     }
 
     pub fn last_hash(&self) -> Option<HashValue> {
         match self.list.last() {
-            Some(last) => {
-                last.prev_hash.clone()
-            },
-            None => None
+            Some(last) => last.prev_hash.clone(),
+            None => None,
         }
     }
 
     pub fn is_latest(&self, disk_cache_list: &Vec<(String, u32)>) -> bool {
         match self.list.last() {
-            Some(last) => {
-                last.is_same(disk_cache_list)
-            },
-            None => false
+            Some(last) => last.is_same(disk_cache_list),
+            None => false,
         }
     }
 
     pub fn get_latest_weight(&self, path: &str) -> Option<u32> {
         match self.list.last() {
-            Some(last) => {
-                last.get_weight(path)
-            },
-            None => None
+            Some(last) => last.get_weight(path),
+            None => None,
         }
     }
 
@@ -114,10 +104,8 @@ impl LocalChunkCacheMeta {
 
     pub fn get_latest_record(&self) -> Option<LocalChunkCacheMetaRecord> {
         match self.list.last() {
-            Some(last) => {
-                Some(last.clone())
-            },
-            None => None
+            Some(last) => Some(last.clone()),
+            None => None,
         }
     }
 
@@ -141,7 +129,7 @@ pub(crate) fn get_cache_path_list() -> Vec<(PathBuf, u64)> {
     cache_list
 }
 
-pub(crate) fn get_disk_info_of_path(path: &Path) -> (u64, u64){
+pub(crate) fn get_disk_info_of_path(path: &Path) -> (u64, u64) {
     let system = sysinfo::System::new_with_specifics(RefreshKind::new().with_disks_list());
     let dist_list = system.disks();
     let mut total = 0;
@@ -149,7 +137,10 @@ pub(crate) fn get_disk_info_of_path(path: &Path) -> (u64, u64){
     let mut max_match_path = PathBuf::new();
     for disk in dist_list {
         let disk_mount = disk.mount_point().to_path_buf();
-        if path.starts_with(disk_mount.as_path()) && max_match_path.to_string_lossy().to_string().len() < disk_mount.to_string_lossy().to_string().len() {
+        if path.starts_with(disk_mount.as_path())
+            && max_match_path.to_string_lossy().to_string().len()
+                < disk_mount.to_string_lossy().to_string().len()
+        {
             max_match_path = disk_mount;
             total = disk.total_space();
             available = disk.available_space();
@@ -160,21 +151,25 @@ pub(crate) fn get_disk_info_of_path(path: &Path) -> (u64, u64){
 
 pub(crate) async fn get_path_size(path: PathBuf) -> BuckyResult<u64> {
     async_std::task::spawn_blocking(move || {
-        ScanDir::files().skip_dirs(true).walk(path.as_path(), |it| {
-            let mut sum = 0;
-            for (entry, _) in it {
-                match entry.metadata() {
-                    Ok(meta) => sum += meta.len(),
-                    Err(_) => {}
+        ScanDir::files()
+            .skip_dirs(true)
+            .walk(path.as_path(), |it| {
+                let mut sum = 0;
+                for (entry, _) in it {
+                    match entry.metadata() {
+                        Ok(meta) => sum += meta.len(),
+                        Err(_) => {}
+                    }
                 }
-            }
-            sum
-        }).map_err(|_e| {
-            let msg = format!("scan path {} err", path.to_string_lossy().to_string());
-            log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
-        })
-    }).await
+                sum
+            })
+            .map_err(|_e| {
+                let msg = format!("scan path {} err", path.to_string_lossy().to_string());
+                log::error!("{}", msg.as_str());
+                BuckyError::new(BuckyErrorCode::Failed, msg)
+            })
+    })
+    .await
 }
 
 pub(crate) trait DiskScanner: Send + Sync {
@@ -196,13 +191,19 @@ pub(crate) struct LocalChunkCache<CACHE: TSingleDiskChunkCache + ChunkCache, SCA
     isolate: String,
 }
 
-impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChunkCache<CACHE, SCANNER> {
+impl<CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner>
+    LocalChunkCache<CACHE, SCANNER>
+{
     pub async fn new(isolate: &str, scanner: SCANNER) -> BuckyResult<Self> {
         let obj = Self {
             disk_cache_list: RwLock::new(Vec::new()),
             cache_meta: Mutex::new(LocalChunkCacheMeta::new()),
             scanner,
-            isolate: if isolate.is_empty() { "default".to_string() } else { isolate.to_string() }
+            isolate: if isolate.is_empty() {
+                "default".to_string()
+            } else {
+                isolate.to_string()
+            },
         };
         obj.refresh_cache().await?;
         Ok(obj)
@@ -225,21 +226,21 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
         // 遍历磁盘列表
         let cache_list = self.scanner.get_cache_path_list();
         for (path, space) in cache_list.iter() {
-            log::info!("read cache path {} {}", path.to_string_lossy().to_string(), *space);
+            log::info!(
+                "read cache path {} {}",
+                path.to_string_lossy().to_string(),
+                *space
+            );
             let path = path.as_path().join(self.isolate.as_str());
             if !path.exists() {
                 let _ = create_dir_all(path.as_path());
             }
             let cache = match self.get_cache(path.as_path()) {
-                Some(cache) => {
-                    cache
-                },
-                None => {
-                    Arc::new(CACHE::new(path.to_path_buf()))
-                }
+                Some(cache) => cache,
+                None => Arc::new(CACHE::new(path.to_path_buf())),
             };
             let cache_meta = cache.get_local_cache_meta()?;
-            let weight = (space/1024/1024/1024) as u32;
+            let weight = (space / 1024 / 1024 / 1024) as u32;
 
             // 获取最新的cache元数据列表
             if cache_meta.record_count() as i32 > max_record_count {
@@ -255,12 +256,20 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             let mut meta_list = Vec::new();
             for (cache, weight) in disk_cache_list.iter_mut() {
                 let path_str = cache.get_cache_path().to_string_lossy().to_string();
-                if let Some(latest_weight) = global_last_record.get_latest_weight(path_str.as_str()) {
+                if let Some(latest_weight) = global_last_record.get_latest_weight(path_str.as_str())
+                {
                     //如果当前空间大于上次记录空间，表示该区域已经扩容
                     if *weight > latest_weight {
-                        let path_size = (get_path_size(cache.get_cache_path().to_path_buf()).await?/1024/1024/1024) as u32;
+                        let path_size = (get_path_size(cache.get_cache_path().to_path_buf())
+                            .await?
+                            / 1024
+                            / 1024
+                            / 1024) as u32;
                         //如果新扩容区域小于上次记录空间的20%或扩容空间小于50G，则保持全新不变
-                        if ((*weight + path_size - latest_weight) as f32 / (latest_weight as f32) < 0.2 ) || (*weight + path_size - latest_weight < 50) {
+                        if ((*weight + path_size - latest_weight) as f32 / (latest_weight as f32)
+                            < 0.2)
+                            || (*weight + path_size - latest_weight < 50)
+                        {
                             *weight = latest_weight;
                         } else {
                             *weight = *weight + path_size;
@@ -269,10 +278,16 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
                     } else if *weight > 10 || *weight as f32 / (latest_weight as f32) > 0.1 {
                         *weight = latest_weight;
                     } else {
-                        let path_size = (get_path_size(cache.get_cache_path().to_path_buf()).await?/1024/1024/1024) as u32;
+                        let path_size = (get_path_size(cache.get_cache_path().to_path_buf())
+                            .await?
+                            / 1024
+                            / 1024
+                            / 1024) as u32;
 
                         //如果理论剩余空间和真实剩余空间的比例小于15%或理论剩余空间和真实剩余空间的差值小于5G，则保持权重不变
-                        if abs(1f32 - (latest_weight - path_size) as f32 / (*weight as f32)) < 0.15 || abs(latest_weight as i64 - path_size as i64 - *weight as i64) < 5 {
+                        if abs(1f32 - (latest_weight - path_size) as f32 / (*weight as f32)) < 0.15
+                            || abs(latest_weight as i64 - path_size as i64 - *weight as i64) < 5
+                        {
                             *weight = latest_weight;
                         } else {
                             *weight = path_size + *weight;
@@ -286,7 +301,10 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
 
             if !global_last_record.is_latest(&meta_list) {
                 global_last_record.add_update_record(meta_list);
-                log::info!("chunk cache change.item count {}", global_last_record.record_count());
+                log::info!(
+                    "chunk cache change.item count {}",
+                    global_last_record.record_count()
+                );
 
                 for (cache, _) in disk_cache_list.iter_mut() {
                     cache.set_local_cache_meta(&global_last_record)?;
@@ -317,7 +335,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
         }
         for (disk_cache, weight) in disk_cache_list.iter() {
             let hash = Self::hash(chunk_id, disk_cache.get_cache_id());
-            let v = (hash as f64/u64::MAX as f64).ln() / (*weight as f64);
+            let v = (hash as f64 / u64::MAX as f64).ln() / (*weight as f64);
             if v > max {
                 max = v;
                 cache = Some(disk_cache);
@@ -341,7 +359,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
         }
         for (disk_cache, weight) in disk_cache_list.iter() {
             let hash = Self::hash(chunk_id, disk_cache.get_cache_id());
-            let v = (hash as f64/u64::MAX as f64).ln() / (*weight as f64);
+            let v = (hash as f64 / u64::MAX as f64).ln() / (*weight as f64);
             if v > max {
                 max = v;
                 cache = Some(disk_cache);
@@ -357,7 +375,11 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
         }
     }
 
-    async fn find_chunk_from_prev_async(&self, chunk_id: &ChunkId, cache: &Arc<CACHE>) -> BuckyResult<()> {
+    async fn find_chunk_from_prev_async(
+        &self,
+        chunk_id: &ChunkId,
+        cache: &Arc<CACHE>,
+    ) -> BuckyResult<()> {
         let cache_meta = self.cache_meta.lock().unwrap().clone();
         let mut index = cache_meta.record_count() as i64 - 2;
         while index >= 0 {
@@ -367,7 +389,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             for (cache_path, weight) in record.list.iter() {
                 let tmp_cache = Arc::new(CACHE::new(PathBuf::from(cache_path.to_string())));
                 let hash = Self::hash(chunk_id, tmp_cache.get_cache_id());
-                let v = (hash as f64/u64::MAX as f64).ln() / (*weight as f64);
+                let v = (hash as f64 / u64::MAX as f64).ln() / (*weight as f64);
                 if v > max {
                     max = v;
                     max_cache = Some(tmp_cache);
@@ -378,7 +400,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
                 if let Ok(chunk) = tmp_cache.get_chunk(chunk_id, ChunkType::MMapChunk).await {
                     cache.put_chunk(chunk_id, chunk).await?;
                     tmp_cache.delete_chunk(chunk_id).await?;
-                    return Ok(())
+                    return Ok(());
                 }
             }
             index -= 1;
@@ -396,7 +418,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             for (cache_path, weight) in record.list.iter() {
                 let tmp_cache = Arc::new(CACHE::new(PathBuf::from(cache_path.to_string())));
                 let hash = Self::hash(chunk_id, tmp_cache.get_cache_id());
-                let v = (hash as f64/u64::MAX as f64).ln() / (*weight as f64);
+                let v = (hash as f64 / u64::MAX as f64).ln() / (*weight as f64);
                 if v > max {
                     max = v;
                     max_cache = Some(tmp_cache);
@@ -405,7 +427,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             if max_cache.is_some() {
                 let tmp_cache = max_cache.unwrap();
                 if tmp_cache.is_exist(chunk_id).await {
-                    return Ok(tmp_cache)
+                    return Ok(tmp_cache);
                 }
             }
             index -= 1;
@@ -415,13 +437,17 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
 }
 
 #[async_trait::async_trait]
-impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> ChunkCache for LocalChunkCache<CACHE, SCANNER> {
-    async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
+impl<CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> ChunkCache
+    for LocalChunkCache<CACHE, SCANNER>
+{
+    async fn get_chunk(
+        &self,
+        chunk_id: &ChunkId,
+        chunk_type: ChunkType,
+    ) -> BuckyResult<Box<dyn Chunk>> {
         let cache = self.get_disk_cache(chunk_id)?;
         match cache.get_chunk(chunk_id, chunk_type).await {
-            Ok(chunk) => {
-                Ok(chunk)
-            },
+            Ok(chunk) => Ok(chunk),
             Err(e) => {
                 if e.code() == BuckyErrorCode::NotFound {
                     self.find_chunk_from_prev_async(chunk_id, &cache).await?;
@@ -459,24 +485,26 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> ChunkCach
     async fn is_exist(&self, chunk_id: &ChunkId) -> bool {
         let cache = match self.get_disk_cache(chunk_id) {
             Ok(cache) => cache,
-            Err(_) => return false
+            Err(_) => return false,
         };
         if !cache.is_exist(chunk_id).await {
             match self.find_chunk_from_prev_async(chunk_id, &cache).await {
                 Ok(()) => true,
-                Err(_) => false
+                Err(_) => false,
             }
         } else {
             true
         }
     }
 
-    async fn get_chunk_meta(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
+    async fn get_chunk_meta(
+        &self,
+        chunk_id: &ChunkId,
+        chunk_type: ChunkType,
+    ) -> BuckyResult<ChunkMeta> {
         let cache = self.get_disk_cache(chunk_id)?;
         match cache.get_chunk_meta(chunk_id, chunk_type).await {
-            Ok(chunk) => {
-                Ok(chunk)
-            },
+            Ok(chunk) => Ok(chunk),
             Err(e) => {
                 if e.code() == BuckyErrorCode::NotFound {
                     self.find_chunk_from_prev_async(chunk_id, &cache).await?;
@@ -513,19 +541,26 @@ impl SingleDiskChunkCache {
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
         #[cfg(target_os = "windows")]
         {
+            use std::borrow::Cow;
+
             let hash_str = file_id.to_base36();
             let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
             let (mut first, mut mid) = tmp.split_at(tmp.len() - 3);
-   
+
             /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
             match mid {
                 "con" | "aux" | "nul" | "prn" => {
                     (first, mid) = tmp.split_at(tmp.len() - 4);
                 }
-                _ => {},
+                _ => {}
             }
-            
-            let path = self.path.join(last).join(mid);
+
+            let last = match last {
+                "con" | "aux" | "nul" | "prn" => Cow::Owned(format!("{}_", last)),
+                _ => Cow::Borrowed(last),
+            };
+
+            let path = self.path.join(last.as_ref()).join(mid);
             if is_create && !path.exists() {
                 if let Err(e) = create_dir_all(path.as_path()) {
                     log::error!("create dir failed! {}, {}", path.display(), e);
@@ -550,10 +585,16 @@ impl SingleDiskChunkCache {
 
     pub async fn remove_file(&self, file_id: &ChunkId) -> BuckyResult<()> {
         let file_path = self.get_file_path(file_id, false);
-        let _ = async_std::fs::remove_file(file_path.as_path()).await.map_err(|e| {
-            log::error!("remove file {} failed.err={}", file_path.to_string_lossy().to_string(), &e);
-            BuckyError::from(e)
-        });
+        let _ = async_std::fs::remove_file(file_path.as_path())
+            .await
+            .map_err(|e| {
+                log::error!(
+                    "remove file {} failed.err={}",
+                    file_path.to_string_lossy().to_string(),
+                    &e
+                );
+                BuckyError::from(e)
+            });
         Ok(())
     }
 
@@ -566,7 +607,11 @@ impl SingleDiskChunkCache {
         let file_meta = match std::fs::metadata(file_path.as_path()) {
             Ok(meta) => meta,
             Err(e) => {
-                let msg = format!("read file {} meta err.{}", file_path.to_string_lossy().to_string(), e);
+                let msg = format!(
+                    "read file {} meta err.{}",
+                    file_path.to_string_lossy().to_string(),
+                    e
+                );
                 log::error!("{}", msg);
                 return false;
             }
@@ -577,6 +622,67 @@ impl SingleDiskChunkCache {
         } else {
             true
         }
+    }
+
+    async fn write_with_verify(
+        chunk_id: ChunkId,
+        mut chunk: Box<dyn Chunk>,
+        mut file: async_std::fs::File,
+        file_path: &Path,
+    ) -> BuckyResult<()> {
+        use sha2::Digest;
+
+        let mut sha256 = sha2::Sha256::new();
+        let mut buf = Vec::with_capacity(1024 * 256);
+        unsafe {
+            buf.set_len(1024 * 256);
+        }
+
+        let mut file_len = 0;
+        loop {
+            match chunk.read(&mut buf).await {
+                Ok(bytes) => {
+                    if bytes == 0 {
+                        break Ok(());
+                    }
+
+                    sha256.input(&buf[0..bytes]);
+                    file_len += bytes;
+
+                    file.write_all(&buf[0..bytes]).await.map_err(|e| {
+                        let msg = format!(
+                            "write chunk slice to file failed! chunk={}, slice bytes={}, file={}, {}",
+                            chunk_id,
+                            bytes,
+                            file_path.display(),
+                            e
+                        );
+                        log::error!("{}", msg);
+                        let e: BuckyError = e.into();
+                        e.with_msg(msg)
+                    })?;
+                }
+                Err(e) => {
+                    break Err(e);
+                }
+            }
+        }?;
+
+        if file_len != chunk_id.len() {
+            let msg = format!("mismatched chunk length! chunk={}, len={}, got={}", chunk_id, chunk_id.len(), file_len);
+            log::error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let hash: HashValue = sha256.result().into();
+        let actual_id = ChunkId::new(&hash, file_len as u32);
+        if actual_id != chunk_id {
+            let msg = format!("mismatched chunk hash value! chunk={}, len={}, got={}", chunk_id, chunk_id.len(), actual_id);
+            log::error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        Ok(())
     }
 }
 
@@ -605,7 +711,8 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
         if !meta_path.exists() {
             return Ok(LocalChunkCacheMeta::new());
         }
-        let (meta, _) = LocalChunkCacheMeta::decode_from_file(meta_path.as_path(), &mut Vec::new())?;
+        let (meta, _) =
+            LocalChunkCacheMeta::decode_from_file(meta_path.as_path(), &mut Vec::new())?;
         Ok(meta)
     }
 
@@ -618,21 +725,33 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
 
 #[async_trait::async_trait]
 impl ChunkCache for SingleDiskChunkCache {
-    async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
-        log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
+    async fn get_chunk(
+        &self,
+        chunk_id: &ChunkId,
+        chunk_type: ChunkType,
+    ) -> BuckyResult<Box<dyn Chunk>> {
+        log::debug!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
             #[cfg(target_os = "windows")]
             {
                 if !self.upgrade.try_update(&file_path, chunk_id) {
-                    let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                    let msg = format!(
+                        "get chunk's file but not exist! chunk={}, file={}",
+                        chunk_id,
+                        file_path.display()
+                    );
                     log::warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
             }
             #[cfg(not(target_os = "windows"))]
             {
-                let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                let msg = format!(
+                    "get chunk's file but not exist! chunk={}, file={}",
+                    chunk_id,
+                    file_path.display()
+                );
                 log::warn!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
             }
@@ -642,13 +761,20 @@ impl ChunkCache for SingleDiskChunkCache {
             ChunkType::MMapChunk => {
                 let chunk: Box<dyn Chunk> = Box::new(MMapChunk::open(file_path, None).await?);
                 Ok(chunk)
-            },
+            }
             ChunkType::MemChunk => {
-                let buf = async_std::fs::read(file_path.as_path()).await.map_err(|e| {
-                    let msg = format!("open chunk's file error! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
-                    log::error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::IoError, msg)
-                })?;
+                let buf = async_std::fs::read(file_path.as_path())
+                    .await
+                    .map_err(|e| {
+                        let msg = format!(
+                            "open chunk's file error! chunk={}, file={}, {}",
+                            chunk_id,
+                            file_path.display(),
+                            e
+                        );
+                        log::error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::IoError, msg)
+                    })?;
                 let chunk: Box<dyn Chunk> = Box::new(MemChunk::from(buf));
                 Ok(chunk)
             }
@@ -659,7 +785,12 @@ impl ChunkCache for SingleDiskChunkCache {
         let file_path = self.get_file_path(chunk_id, true);
         log::info!("new chunk {}", file_path.to_string_lossy().to_string());
         if file_path.exists() {
-            let msg = format!("[{}:{}] file {} exist", file!(), line!(), file_path.to_string_lossy().to_string());
+            let msg = format!(
+                "[{}:{}] file {} exist",
+                file!(),
+                line!(),
+                file_path.to_string_lossy().to_string()
+            );
             log::error!("{}", msg.as_str());
             return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
         }
@@ -683,40 +814,92 @@ impl ChunkCache for SingleDiskChunkCache {
         // log::info!("will put chunk, chunk={}, len={}, local file={}", chunk_id, chunk_id.len(), file_path.display());
 
         if file_path.exists() {
-            let msg = format!("put chunk but local file already exist! chunk={}, file={},", chunk_id, file_path.display());
+            let msg = format!(
+                "put chunk but local file already exist! chunk={}, file={},",
+                chunk_id,
+                file_path.display()
+            );
             log::info!("{}", msg.as_str());
             return Ok(());
         }
 
-        let mut file = async_std::fs::OpenOptions::new().read(true).write(true).create(true).open(file_path.as_path()).await.map_err(|e| {
-            let msg = format!("put chunk but open local file failed! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
-            log::error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
+        let mut file = async_std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(file_path.as_path())
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "put chunk but open local file failed! chunk={}, file={}, {}",
+                    chunk_id,
+                    file_path.display(),
+                    e
+                );
+                log::error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
 
         chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
 
+        if let Err(e) = Self::write_with_verify(chunk_id.to_owned(), chunk, file.clone(), &file_path).await {
+            if let Err(e) = async_std::fs::remove_file(&file_path).await {
+                log::error!("remove chunk local cache file failed! chunk={}, {}", chunk_id, e);
+            }
+
+            return Err(e);
+        }
+
+        /*
         let reader = ChunkRead::new(chunk);
-        let len = async_std::io::copy(reader, file.clone()).await.map_err(|e| {
-            let msg = format!("write chunk to file failed! chunk={}, len={}, file={}, {}", chunk_id, chunk_id.len(), file_path.display(), e);
-            log::error!("{}", msg);
-            let e: BuckyError = e.into();
-            e.with_msg(msg)
-        })?;
+        let len = async_std::io::copy(reader, file.clone())
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "write chunk to file failed! chunk={}, len={}, file={}, {}",
+                    chunk_id,
+                    chunk_id.len(),
+                    file_path.display(),
+                    e
+                );
+                log::error!("{}", msg);
+                let e: BuckyError = e.into();
+                e.with_msg(msg)
+            })?;
 
         if len != chunk_id.len() as u64 {
-            let msg = format!("write chunk to file but got unmatch len! chunk={}, len={}, read={}, file={}", chunk_id, chunk_id.len(), len, file_path.display());
+            let msg = format!(
+                "write chunk to file but got unmatch len! chunk={}, len={}, read={}, file={}",
+                chunk_id,
+                chunk_id.len(),
+                len,
+                file_path.display()
+            );
+            log::error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+        }
+        */
+
+        if let Err(e) = file.flush().await {
+            if let Err(e) = async_std::fs::remove_file(&file_path).await {
+                log::error!("remove chunk local cache file failed! chunk={}, {}", chunk_id, e);
+            }
+
+            let msg = format!(
+                "put chunk to local file but flush failed! chunk={}, file={}, {}",
+                chunk_id,
+                file_path.display(),
+                e
+            );
             log::error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
-        file.flush().await.map_err(|e| {
-            let msg = format!("put chunk to local file but flush failed! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
-            log::error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
-
-        log::info!("put chunk to local file complete! chunk={}, file={}", chunk_id, file_path.display());
+        log::info!(
+            "put chunk to local file complete! chunk={}, file={}",
+            chunk_id,
+            file_path.display()
+        );
         Ok(())
     }
 
@@ -724,25 +907,41 @@ impl ChunkCache for SingleDiskChunkCache {
         self.chunk_exist(chunk_id)
     }
 
-    async fn get_chunk_meta(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
+    async fn get_chunk_meta(
+        &self,
+        chunk_id: &ChunkId,
+        chunk_type: ChunkType,
+    ) -> BuckyResult<ChunkMeta> {
         log::debug!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
-            let msg = format!("local chunk file not exists! chunk={}, file={}", file_path.display(), chunk_id);
+            let msg = format!(
+                "local chunk file not exists! chunk={}, file={}",
+                file_path.display(),
+                chunk_id
+            );
             log::warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
         match chunk_type {
-            ChunkType::MMapChunk => {
-                Ok(ChunkMeta::MMapChunk(file_path.to_string_lossy().to_string(), None))
-            },
+            ChunkType::MMapChunk => Ok(ChunkMeta::MMapChunk(
+                file_path.to_string_lossy().to_string(),
+                None,
+            )),
             ChunkType::MemChunk => {
-                let buf = async_std::fs::read(file_path.as_path()).await.map_err(|e| {
-                    let msg = format!("open local chunk file failed! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::IoError, msg)
-                })?;
+                let buf = async_std::fs::read(file_path.as_path())
+                    .await
+                    .map_err(|e| {
+                        let msg = format!(
+                            "open local chunk file failed! chunk={}, file={}, {}",
+                            chunk_id,
+                            file_path.display(),
+                            e
+                        );
+                        log::error!("{}", msg.as_str());
+                        BuckyError::new(BuckyErrorCode::IoError, msg)
+                    })?;
                 Ok(ChunkMeta::MemChunk(buf))
             }
         }
@@ -751,15 +950,18 @@ impl ChunkCache for SingleDiskChunkCache {
 
 #[cfg(test)]
 mod test_local_chunk_cache {
+    use crate::{
+        Chunk, ChunkCache, ChunkMut, ChunkRead, ChunkType, ChunkWrite, DiskScanner,
+        LocalChunkCache, LocalChunkCacheMeta, TSingleDiskChunkCache,
+    };
+    use cyfs_base::{hash_data, BuckyError, BuckyErrorCode, BuckyResult, ChunkId, HashValue};
+    use cyfs_chunk_lib::ChunkMeta;
+    use futures_lite::{AsyncReadExt, AsyncWriteExt};
     use std::collections::HashMap;
     use std::io::{SeekFrom, Write};
     use std::ops::{Deref, DerefMut};
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
-    use futures_lite::{AsyncReadExt, AsyncWriteExt};
-    use cyfs_chunk_lib::ChunkMeta;
-    use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ChunkId, hash_data, HashValue};
-    use crate::{ChunkCache, Chunk, ChunkMut, ChunkType, DiskScanner, LocalChunkCache, LocalChunkCacheMeta, TSingleDiskChunkCache, ChunkRead, ChunkWrite};
 
     pub type RandomId = HashValue;
 
@@ -786,20 +988,44 @@ mod test_local_chunk_cache {
             unsafe {
                 if HAS_RUN {
                     let mut list = Vec::new();
-                    list.push((PathBuf::from("/test1".to_string()), 1024*1024*1024*50));
-                    list.push((PathBuf::from("/test2".to_string()), 1024*1024*1024*100));
-                    list.push((PathBuf::from("/test3".to_string()), 1024*1024*1024*150));
-                    list.push((PathBuf::from("/test4".to_string()), 1024*1024*1024*200));
-                    list.push((PathBuf::from("/test5".to_string()), 1024*1024*1024*200));
+                    list.push((PathBuf::from("/test1".to_string()), 1024 * 1024 * 1024 * 50));
+                    list.push((
+                        PathBuf::from("/test2".to_string()),
+                        1024 * 1024 * 1024 * 100,
+                    ));
+                    list.push((
+                        PathBuf::from("/test3".to_string()),
+                        1024 * 1024 * 1024 * 150,
+                    ));
+                    list.push((
+                        PathBuf::from("/test4".to_string()),
+                        1024 * 1024 * 1024 * 200,
+                    ));
+                    list.push((
+                        PathBuf::from("/test5".to_string()),
+                        1024 * 1024 * 1024 * 200,
+                    ));
                     list
                 } else {
                     HAS_RUN = true;
                     let mut list = Vec::new();
-                    list.push((PathBuf::from("/test1".to_string()), 1024*1024*1024*50));
-                    list.push((PathBuf::from("/test2".to_string()), 1024*1024*1024*100));
-                    list.push((PathBuf::from("/test3".to_string()), 1024*1024*1024*150));
-                    list.push((PathBuf::from("/test4".to_string()), 1024*1024*1024*200));
-                    list.push((PathBuf::from("/test5".to_string()), 1024*1024*1024*200));
+                    list.push((PathBuf::from("/test1".to_string()), 1024 * 1024 * 1024 * 50));
+                    list.push((
+                        PathBuf::from("/test2".to_string()),
+                        1024 * 1024 * 1024 * 100,
+                    ));
+                    list.push((
+                        PathBuf::from("/test3".to_string()),
+                        1024 * 1024 * 1024 * 150,
+                    ));
+                    list.push((
+                        PathBuf::from("/test4".to_string()),
+                        1024 * 1024 * 1024 * 200,
+                    ));
+                    list.push((
+                        PathBuf::from("/test5".to_string()),
+                        1024 * 1024 * 1024 * 200,
+                    ));
                     list
                 }
             }
@@ -819,7 +1045,7 @@ mod test_local_chunk_cache {
                 path,
                 cache_id,
                 chunk_map: Mutex::new(Default::default()),
-                meta: Mutex::new(LocalChunkCacheMeta::new())
+                meta: Mutex::new(LocalChunkCacheMeta::new()),
             }
         }
 
@@ -844,15 +1070,17 @@ mod test_local_chunk_cache {
 
     #[async_trait::async_trait]
     impl ChunkCache for SingleDiskChunkCacheMock {
-        async fn get_chunk(&self, chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
+        async fn get_chunk(
+            &self,
+            chunk_id: &ChunkId,
+            _chunk_type: ChunkType,
+        ) -> BuckyResult<Box<dyn Chunk>> {
             return match self.chunk_map.lock().unwrap().get(chunk_id) {
-                Some(chunk) => {
-                    Ok(Box::new(ChunkMock {buf: Vec::from(chunk.as_ref().deref())}))
-                },
-                None => {
-                    Err(BuckyError::new(BuckyErrorCode::NotFound, ""))
-                }
-            }
+                Some(chunk) => Ok(Box::new(ChunkMock {
+                    buf: Vec::from(chunk.as_ref().deref()),
+                })),
+                None => Err(BuckyError::new(BuckyErrorCode::NotFound, "")),
+            };
         }
 
         async fn new_chunk(&self, _chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>> {
@@ -863,7 +1091,11 @@ mod test_local_chunk_cache {
             todo!()
         }
 
-        async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+        async fn put_chunk(
+            &self,
+            chunk_id: &ChunkId,
+            mut chunk: Box<dyn Chunk>,
+        ) -> BuckyResult<()> {
             log::info!("will put chunk, chunk={}, file={}", chunk_id);
 
             chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
@@ -872,18 +1104,31 @@ mod test_local_chunk_cache {
             let mut buf = Vec::with_capacity(chunk_id.len());
 
             let len = reader.read_to_end(&mut buf).await.map_err(|e| {
-                let msg = format!("read chunk to buffer failed! chunk={}, len={}, {}", chunk_id, chunk_id.len(), e);
+                let msg = format!(
+                    "read chunk to buffer failed! chunk={}, len={}, {}",
+                    chunk_id,
+                    chunk_id.len(),
+                    e
+                );
                 log::error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
             if len != chunk_id.len() {
-                let msg = format!("read chunk to buffer but got unmatch len! chunk={}, len={}, read={}", chunk_id, chunk_id.len(), len);
+                let msg = format!(
+                    "read chunk to buffer but got unmatch len! chunk={}, len={}, read={}",
+                    chunk_id,
+                    chunk_id.len(),
+                    len
+                );
                 log::error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
             }
 
-            self.chunk_map.lock().unwrap().insert(chunk_id.clone(), Box::new(ChunkMock{buf}));
+            self.chunk_map
+                .lock()
+                .unwrap()
+                .insert(chunk_id.clone(), Box::new(ChunkMock { buf }));
             Ok(())
         }
 
@@ -891,12 +1136,16 @@ mod test_local_chunk_cache {
             todo!()
         }
 
-        async fn get_chunk_meta(&self, _chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
+        async fn get_chunk_meta(
+            &self,
+            _chunk_id: &ChunkId,
+            _chunk_type: ChunkType,
+        ) -> BuckyResult<ChunkMeta> {
             todo!()
         }
     }
     pub struct ChunkMock {
-        buf: Vec<u8>
+        buf: Vec<u8>,
     }
 
     #[async_trait::async_trait]
@@ -959,22 +1208,35 @@ mod test_local_chunk_cache {
     #[test]
     fn test_alloc() {
         async_std::task::block_on(async move {
-            let cache = LocalChunkCache::<SingleDiskChunkCacheMock, _>::new("", TestDiskScanner).await.unwrap();
+            let cache = LocalChunkCache::<SingleDiskChunkCacheMock, _>::new("", TestDiskScanner)
+                .await
+                .unwrap();
             let mut chunk_list = Vec::new();
             for i in 0..1000000u32 {
                 let random_id = RandomId::new_id();
-                let chunk_id = ChunkId::new(&random_id, 8192*1024);
+                let chunk_id = ChunkId::new(&random_id, 8192 * 1024);
                 chunk_list.push(chunk_id.clone());
-                cache.put_chunk(&chunk_id, &mut ChunkMock{buf: i.to_be_bytes().to_vec()}).await.unwrap();
-                let chunk = cache.get_chunk(&chunk_id, ChunkType::MemChunk).await.unwrap();
+                cache
+                    .put_chunk(
+                        &chunk_id,
+                        &mut ChunkMock {
+                            buf: i.to_be_bytes().to_vec(),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                let chunk = cache
+                    .get_chunk(&chunk_id, ChunkType::MemChunk)
+                    .await
+                    .unwrap();
                 let mut reader = ChunkRead::new(chunk);
-                let mut buf = [0u8;4];
+                let mut buf = [0u8; 4];
                 let len = reader.read(&mut buf).await.unwrap();
                 assert_eq!(len, 4);
                 let tmp = u32::from_be_bytes(buf);
                 assert_eq!(u32::from_be_bytes(buf), i);
 
-                let chunk = Box::new(ChunkMock{buf: Vec::new()});
+                let chunk = Box::new(ChunkMock { buf: Vec::new() });
                 let mut write = ChunkWrite::new(chunk);
                 let len = write.write(&buf).await.unwrap();
                 assert_eq!(len, 4);
@@ -982,7 +1244,11 @@ mod test_local_chunk_cache {
             {
                 let list = cache.disk_cache_list.read().unwrap();
                 for (item, weight) in list.iter() {
-                    println!("weight {} count {}", *weight, item.chunk_map.lock().unwrap().len());
+                    println!(
+                        "weight {} count {}",
+                        *weight,
+                        item.chunk_map.lock().unwrap().len()
+                    );
                 }
             }
 

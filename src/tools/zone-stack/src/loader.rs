@@ -50,7 +50,7 @@ impl Loader {
         info!("init stack success! device_id={}", device_id);
 
         Ok(())
-    }
+}
 
     async fn load_device_info_from_profile(zone: &ZoneData) -> BuckyResult<DeviceInfo> {
         info!("will use zone data: {:?}", zone);

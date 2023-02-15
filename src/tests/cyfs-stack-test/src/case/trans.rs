@@ -165,6 +165,7 @@ async fn add_dir_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        chunk_method: TransPublishChunkMethod::Track,
         access: None,
 
         // 关联的dirs
@@ -244,6 +245,7 @@ async fn add_file_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        chunk_method: TransPublishChunkMethod::Track,
         access: None,
 
         // 关联的dirs
@@ -292,6 +294,7 @@ async fn add_file_impl2(
         local_path: local_path.to_path_buf(),
         owner: USER1_DATA.get().unwrap().people_id.object_id().to_owned(),
         chunk_size: 1024 * 1024 * 4,
+        chunk_method: TransPublishChunkMethod::Track,
         access: None,
     };
     let ret = stack.util().build_file_object(req).await.unwrap();
@@ -313,6 +316,7 @@ async fn add_file_impl2(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        chunk_method: TransPublishChunkMethod::Track,
         access: None,
         
         // 关联的dirs
@@ -599,6 +603,8 @@ async fn test_shared_data() {
         unreachable!();
     }
 
+    info!("pub chunk as shared data success!");
+    
     {
         let req = NDNGetDataRequest::new_ndc(id.object_id().to_owned(), None);
 
@@ -616,7 +622,10 @@ async fn test_shared_data() {
         let new_id = shared_chunk.calculate_id();
         assert_eq!(new_id, id);
     }
+
+    info!("test shared data success!");
 }
+
 async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) {
     let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("trans");
     let local_path = data_dir.join("test-chunk");

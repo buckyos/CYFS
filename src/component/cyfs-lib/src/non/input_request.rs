@@ -61,6 +61,17 @@ impl fmt::Display for NONGetObjectInputRequest {
     }
 }
 
+impl NONGetObjectInputRequest {
+    pub fn is_with_inner_path_relation(&self) -> bool {
+        match self.object_id.obj_type_code() {
+            ObjectTypeCode::ObjectMap | ObjectTypeCode::Dir => {
+                self.inner_path.is_some()
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct NONGetObjectInputResponse {
     pub object_update_time: Option<u64>,

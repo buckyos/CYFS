@@ -37,18 +37,11 @@ pub(crate) struct GlobalRootIndex {
 impl GlobalRootIndex {
     pub fn new(
         category: GlobalStateCategory,
-        device_id: &DeviceId,
+        isolate_id: &ObjectId,
         noc: NamedObjectCacheRef,
         revision: RevisionList,
     ) -> Self {
-        let id = match category {
-            GlobalStateCategory::RootState => {
-                format!("cyfs-global-root-state-{}", device_id.to_string())
-            }
-            GlobalStateCategory::LocalCache => {
-                format!("cyfs-global-local-cache-{}", device_id.to_string())
-            }
-        };
+        let id = Self::make_id(category, isolate_id);
 
         Self {
             category,
@@ -57,6 +50,26 @@ impl GlobalRootIndex {
             storage: NOCStorageWrapper::new(&id, noc),
             revision,
         }
+    }
+
+    fn make_id(category: GlobalStateCategory, isolate_id: &ObjectId) -> String {
+        match category {
+            GlobalStateCategory::RootState => {
+                format!("cyfs-global-root-state-{}", isolate_id.to_string())
+            }
+            GlobalStateCategory::LocalCache => {
+                format!("cyfs-global-local-cache-{}", isolate_id.to_string())
+            }
+        }
+    }
+
+    pub async fn exists(
+        category: GlobalStateCategory,
+        isolate_id: &ObjectId,
+        noc: &NamedObjectCacheRef,
+    ) -> BuckyResult<bool> {
+        let id = Self::make_id(category, isolate_id);
+        NOCStorageWrapper::exists(&id, noc).await
     }
 
     pub async fn load(&self) -> BuckyResult<()> {
@@ -107,7 +120,7 @@ impl GlobalRootIndex {
             if prev_root_id.is_some() {
                 if root_info.root_state != prev_root_id {
                     let msg = format!(
-                        "direct set global root but unmatch! category={}, prev={:?}, current={:?}, new={:?}",
+                        "direct set global state root but unmatch! category={}, prev={:?}, current={:?}, new={:?}",
                         self.category, prev_root_id, root_info.root_state, new_root_info
                     );
                     error!("{}", msg);
@@ -116,7 +129,7 @@ impl GlobalRootIndex {
             }
 
             info!(
-                "direct set global root! category={}, current={:?}, new={:?}",
+                "direct set global state root! category={}, current={:?}, new={:?}",
                 self.category, root_info, new_root_info
             );
             prev_root_info = root_info.clone();
@@ -127,7 +140,7 @@ impl GlobalRootIndex {
         self.storage.save(&new_root_info).await.map_err(|e| {
             let mut root_info = self.root.write().unwrap();
             error!(
-                "save global root to noc failed! category={}, state={:?}, {}",
+                "save global state root to noc failed! category={}, state={:?}, {}",
                 self.category, root_info.root_state, e
             );
 

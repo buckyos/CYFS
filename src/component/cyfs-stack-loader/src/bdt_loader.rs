@@ -1,5 +1,6 @@
 use crate::VAR_MANAGER;
 use cyfs_base::*;
+use cyfs_bdt_ext::SNMode;
 use cyfs_util::TomlHelper;
 
 use std::str::FromStr;
@@ -13,6 +14,9 @@ const BDT_PORT_KEY: &str = "CYFS_BDT_PORT";
 // udp_sn_only
 const UDP_SN_ONLY_KEY: &str = "CYFS_UDP_SN_ONLY";
 
+// sn_mode
+const SN_MODE_KEY: &str = "CYFS_SN_MODE";
+
 // bdt层的配置参数
 pub(crate) struct BdtParams {
     pub device: String,
@@ -24,6 +28,8 @@ pub(crate) struct BdtParams {
 
     // disable udp transport but sn online via udp
     pub udp_sn_only: Option<bool>,
+
+    pub sn_mode: SNMode,
 }
 
 impl Default for BdtParams {
@@ -34,6 +40,7 @@ impl Default for BdtParams {
             endpoint: vec![],
             tcp_port_mapping: None,
             udp_sn_only: None,
+            sn_mode: SNMode::default(),
         }
     }
 }
@@ -123,6 +130,9 @@ impl BdtConfigLoader {
                 "udp_sn_only" => {
                     self.params.udp_sn_only = Some(TomlHelper::decode_from_boolean(v)?);
                 }
+                "sn_mode" => {
+                    self.params.sn_mode = TomlHelper::decode_from_string(v)?;
+                }
                 _ => {
                     warn!("unknown stack.bdt.config field: {}", k.as_str());
                 }
@@ -131,6 +141,10 @@ impl BdtConfigLoader {
 
         if let Some(udp_sn_only) = Self::load_udp_sn_only_from_env() {
             self.params.udp_sn_only = Some(udp_sn_only);
+        }
+
+        if let Some(sn_mode) = Self::load_sn_mode_from_env() {
+            self.params.sn_mode = sn_mode;
         }
 
         Ok(())
@@ -344,6 +358,27 @@ impl BdtConfigLoader {
                     Some(true)
                 } else {
                     Some(false)
+                }
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn load_sn_mode_from_env() -> Option<SNMode> {
+        match std::env::var(SN_MODE_KEY) {
+            Ok(val) => {
+                info!(
+                    "got sn_mode from env var: env={}, val={}",
+                    SN_MODE_KEY, val
+                );
+
+                let value = val.trim();
+                match SNMode::from_str(&value) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        error!("invalid sn_mode value got from env! val={}, {}", value, e);
+                        None
+                    }
                 }
             }
             Err(_) => None,

@@ -234,7 +234,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             min_cwnd: 2, 
-            init_cwnd: 200, 
+            init_cwnd: 10, 
             probe_rtt_time: Duration::from_millis(200), 
             probe_rtt_based_on_bdp: true, 
             drain_to_target: true, 
@@ -648,30 +648,32 @@ impl Bbr {
 
 
 impl CcImpl for Bbr {
-    fn cwnd(&self) -> u64 {
-        let cwnd_rate = (self.pacing_rate as f64) / 1000.0;
+    fn on_sent(&mut self, now: Timestamp, bytes: u64, last_packet_number: u64) {
+        self.max_sent_packet_number = last_packet_number;
+        self.max_bandwidth.on_sent(now, bytes);
+    }
 
-        if self.is_at_full_bandwidth && cwnd_rate > 0.0 {
-            (cwnd_rate * (self.min_rtt.as_millis() as f64)) as u64
+    fn cwnd(&self) -> u64 {
+        if self.mode == Mode::ProbeRtt {
+            self.get_probe_rtt_cwnd()
+        } else if self.recovery_state.in_recovery()
+            && self.mode != Mode::Startup {
+            self.cwnd.min(self.recovery_window)
         } else {
-            if self.mode == Mode::ProbeRtt {
-                self.get_probe_rtt_cwnd()
-            } else if self.recovery_state.in_recovery()
-                && self.mode != Mode::Startup {
-                self.cwnd.min(self.recovery_window)
-            } else {
-                self.cwnd
-            }
+            self.cwnd
         }
     }
 
-    fn on_estimate(&mut self, rtt: Duration, _rto: Duration, _delay: Duration) {
-        self.rtt = rtt;
+    fn on_estimate(&mut self, rtt: Duration, _rto: Duration, _delay: Duration, app_limited: bool) {
+        let now = bucky_time_now();
+
+        if self.is_min_rtt_expired(now, app_limited) || self.min_rtt > rtt {
+            self.min_rtt = rtt;
+        }
     }
 
-    fn on_ack(&mut self, flight: u64, ack: u64, largest_packet_num_acked: Option<u64>, sent_time: Timestamp) { //ret cwnd
+    fn on_ack(&mut self, flight: u64, ack: u64, largest_packet_num_acked: Option<u64>, sent_time: Timestamp, app_limited: bool) { //ret cwnd
         let now = bucky_time_now();
-        let app_limited = false;
 
         self.max_bandwidth.on_ack(
             now,
@@ -681,10 +683,6 @@ impl CcImpl for Bbr {
             app_limited
         );
         self.acked_bytes += ack;
-
-        if self.is_min_rtt_expired(now, app_limited) || self.min_rtt > self.rtt {
-            self.min_rtt = self.rtt;
-        }
 
         let ack_in_wnd = self.max_bandwidth.bytes_acked_this_window();
         let excess_acked = self.ack_aggregation.update_ack_aggregation_bytes(
@@ -740,9 +738,13 @@ impl CcImpl for Bbr {
 
     fn on_no_resp(&mut self, rto: Duration, lost: u64) -> Duration {
         self.loss_state.lost_bytes += lost;
-        rto
+        rto * 2
     }
 
     fn on_time_escape(&mut self, _: Timestamp) {
+    }
+
+    fn rate(&self) -> u64 {
+        self.max_bandwidth.get_estimate()
     }
 }

@@ -2,13 +2,13 @@ use super::service_info::*;
 use crate::config::*;
 use crate::repo::REPO_MANAGER;
 use cyfs_base::{BuckyError, BuckyResult};
+use cyfs_util::process::ProcessStatusCode;
 use ood_control::OOD_CONTROLLER;
-use cyfs_util::{process::ProcessStatusCode};
 
+use cyfs_debug::Mutex;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 #[derive(Debug)]
 struct ServiceInnerState {
@@ -21,7 +21,7 @@ struct ServiceInnerState {
 impl ServiceInnerState {
     fn new() -> Self {
         Self {
-            state: ServiceState::STOP,
+            state: ServiceState::Stop,
             process: None,
         }
     }
@@ -68,6 +68,10 @@ impl Service {
         &self.fid
     }
 
+    pub fn package_local_status(&self) -> ServicePackageLocalState {
+        self.info.lock().unwrap().state
+    }
+
     // bind成功后才可以调用
     pub fn current(&self) -> PathBuf {
         self.info.lock().unwrap().current()
@@ -87,7 +91,7 @@ impl Service {
 
     // bind后，初始化一个service
     pub async fn init(&self) -> BuckyResult<()> {
-        assert!(self.state() == ServiceState::STOP);
+        assert!(self.state() == ServiceState::Stop);
 
         let mut need_sync = true;
         match self.load_package() {
@@ -108,7 +112,7 @@ impl Service {
                 );
 
                 error!("{}", msg);
-                Err(BuckyError::from(msg))
+                Err(BuckyError::new(e.code(), msg))
             } else {
                 info!("sync service package success! service={}", self.name);
 
@@ -150,7 +154,7 @@ impl Service {
 
         self.stop_process_by_cmd();
 
-        self.change_state(ServiceState::STOP);
+        self.change_state(ServiceState::Stop);
     }
 
     pub fn sync_state(&self, target_state: ServiceState) {
@@ -188,10 +192,10 @@ impl Service {
         );
 
         match target_state {
-            ServiceState::RUN => {
+            ServiceState::Run => {
                 self.start();
             }
-            ServiceState::STOP => {
+            ServiceState::Stop => {
                 self.stop();
             }
         }
@@ -206,7 +210,10 @@ impl Service {
 
         let process = self.state.lock().unwrap().process.take();
         if process.is_none() {
-            error!("try kill process but process object is none! name={}", self.name);
+            error!(
+                "try kill process but process object is none! name={}",
+                self.name
+            );
             return;
         }
 
@@ -294,11 +301,14 @@ impl Service {
         }
 
         if self.state.lock().unwrap().process.is_some() {
-            warn!("start process but state.process is not empty! name={}", self.name());
+            warn!(
+                "start process but state.process is not empty! name={}",
+                self.name()
+            );
             return;
         }
 
-        // assert_eq!(self.state(), ServiceState::STOP);
+        // assert_eq!(self.state(), ServiceState::Stop);
 
         let v = start_script.as_ref().unwrap();
 
@@ -316,7 +326,7 @@ impl Service {
 
                 // 保存process句柄
                 self.state.lock().unwrap().process = Some(p);
-                self.change_state(ServiceState::RUN);
+                self.change_state(ServiceState::Run);
             }
             Err(e) => {
                 error!(
@@ -342,7 +352,10 @@ impl Service {
                 let mut process = process.unwrap();
                 match process.try_wait() {
                     Ok(Some(status)) => {
-                        info!("service exited, name={}, status={}, current state={}", self.name, status, state.state);
+                        info!(
+                            "service exited, name={}, status={}, current state={}",
+                            self.name, status, state.state
+                        );
                         match process.wait() {
                             Ok(_) => {
                                 info!("wait service process complete! name={}", self.name);
@@ -351,7 +364,7 @@ impl Service {
                                 info!("wait service process error! name={}, err={}", self.name, e);
                             }
                         }
-                        state.state = ServiceState::STOP;
+                        state.state = ServiceState::Stop;
                     }
                     Ok(None) => {
                         debug!("service still running: {}", self.name);
@@ -359,9 +372,9 @@ impl Service {
                         // 仍然在运行，需要保留进程object并继续等待
                         state.process = Some(process);
 
-                        if state.state != ServiceState::RUN {
+                        if state.state != ServiceState::Run {
                             warn!("process object exists and still running but state is not run! service={}, current state={}", self.name, state.state);
-                            state.state = ServiceState::RUN;
+                            state.state = ServiceState::Run;
                         }
                     }
                     Err(e) => {
@@ -434,7 +447,7 @@ impl Service {
         let ret = self.check_status_by_cmd();
         if ret.is_none() {
             // 默认为停止
-            self.change_state(ServiceState::STOP);
+            self.change_state(ServiceState::Stop);
             return;
         }
 
@@ -447,7 +460,7 @@ impl Service {
                 );
 
                 self.stop();
-                self.change_state(ServiceState::STOP);
+                self.change_state(ServiceState::Stop);
             } else {
                 debug!(
                     "check service in running: exit code={}, service={}, fid={}",
@@ -455,10 +468,10 @@ impl Service {
                     self.name(),
                     self.fid
                 );
-                self.change_state(ServiceState::RUN);
+                self.change_state(ServiceState::Run);
             }
         } else {
-            self.change_state(ServiceState::STOP);
+            self.change_state(ServiceState::Stop);
         }
     }
 
@@ -529,6 +542,8 @@ impl Service {
             self.name, self.full_fid,
         );
 
+        self.info.lock().unwrap().state = ServicePackageLocalState::Downloading;
+
         let file = {
             REPO_MANAGER
                 .fetch_service(self.full_fid.as_str())
@@ -538,6 +553,8 @@ impl Service {
                         "download service package failed! service={}, fid={}, err={}",
                         self.name, self.full_fid, e
                     );
+
+                    self.info.lock().unwrap().state = ServicePackageLocalState::NotExists;
 
                     e
                 })?
@@ -549,12 +566,17 @@ impl Service {
         );
 
         // 拷贝文件前，确保服务已经停止
-        self.sync_state(ServiceState::STOP);
+        self.sync_state(ServiceState::Stop);
 
         // 加载新的包文件
-        let ret = self.info.lock().unwrap().load_package_file(&file)?;
+        let ret = self.info.lock().unwrap().load_package_file(&file).map_err(|e| {
+            self.info.lock().unwrap().state = ServicePackageLocalState::Invalid;
+            e
+        })?;
 
-        self.sync_state(ServiceState::STOP);
+        self.info.lock().unwrap().state = ServicePackageLocalState::Ready;
+
+        self.sync_state(ServiceState::Stop);
 
         Ok(ret)
     }

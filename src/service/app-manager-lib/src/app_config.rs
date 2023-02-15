@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /*
 [config]
 sandbox = "default"    // default\no\docker
+repo_mode = "local"     // named_data/local
 
 [app]
 include = []
@@ -34,12 +35,15 @@ pub struct AppManagerConfig {
 pub struct ManagerConfig {
     #[serde(default)]
     pub sandbox: SandBoxMode,
+    #[serde(default)]
+    pub repo_mode: RepoMode
 }
 
 impl Default for ManagerConfig {
     fn default() -> Self {
         Self {
-            sandbox: SandBoxMode::default()
+            sandbox: SandBoxMode::default(),
+            repo_mode: RepoMode::default()
         }
     }
 }

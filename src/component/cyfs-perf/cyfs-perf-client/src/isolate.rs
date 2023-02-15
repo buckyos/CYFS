@@ -231,11 +231,15 @@ impl PerfItemMerge<PerfIsolateImpl> for PerfIsolateImpl {
 }
 
 #[derive(Clone)]
-pub struct PerfIsolate(Arc<Mutex<PerfIsolateImpl>>);
+pub struct PerfIsolateInstance(Arc<Mutex<PerfIsolateImpl>>);
 
-impl PerfIsolate {
+impl PerfIsolateInstance {
     pub fn new(id: &str) -> Self {
         Self(Arc::new(Mutex::new(PerfIsolateImpl::new(id))))
+    }
+
+    pub fn into_isolate(self) -> PerfIsolateRef {
+        Arc::new(Box::new(self))
     }
 
     pub fn begin_request(&self, id: &str, key: &str) {
@@ -271,5 +275,32 @@ impl PerfIsolate {
 
     pub fn get_id(&self) -> String {
         self.0.lock().unwrap().id.clone()
+    }
+}
+
+impl PerfIsolate for PerfIsolateInstance {
+    fn begin_request(&self, id: &str, key: &str) {
+        Self::begin_request(&self, id, key)
+    }
+    fn end_request(&self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
+        Self::end_request(&self, id, key, err, bytes)
+    }
+
+    fn acc(&self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
+        Self::acc(&self, id, err, size)
+    }
+
+    fn action(
+        &self,
+        id: &str,
+        err: BuckyErrorCode,
+        name: &str,
+        value: &str,
+    ) {
+        Self::action(&self, id, err, name, value)
+    }
+
+    fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
+        Self::record(&self, id, total, total_size)
     }
 }

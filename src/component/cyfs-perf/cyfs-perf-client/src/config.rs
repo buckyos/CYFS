@@ -18,6 +18,18 @@ pub enum PerfServerConfig {
 
     // 系统默认值，优先使用本地配置，其次使用链上的值
     Default,
+
+    // 只存储到本地，不上报到任何Server
+    None
+}
+
+impl PerfServerConfig {
+    pub fn is_none(&self) -> bool {
+        match self {
+            PerfServerConfig::None => true,
+            _ => false
+        }
+    }
 }
 
 impl Default for PerfServerConfig {
@@ -33,6 +45,7 @@ impl PerfServerLoader {
             PerfServerConfig::OOD => None,
             PerfServerConfig::Specified(device_id) => Some(device_id),
             PerfServerConfig::Default => Self::load_default_perf_server().await,
+            PerfServerConfig::None => None
         }
     }
 

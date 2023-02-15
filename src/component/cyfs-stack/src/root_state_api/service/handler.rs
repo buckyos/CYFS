@@ -299,6 +299,8 @@ impl OpEnvRequestHandler {
             path: output_req.path,
             key: output_req.key,
             content_type: output_req.content_type,
+            owner: output_req.owner,
+            dec: output_req.dec,
         };
 
         info!("recv op_env create_new request: {}", req);

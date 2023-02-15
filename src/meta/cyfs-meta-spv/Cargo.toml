@@ -10,10 +10,10 @@ description = "Rust cyfs-meta-spv package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-base={path="../../component/cyfs-base"}
-cyfs-base-meta={path="../../component/cyfs-base-meta"}
-cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
-cyfs-debug = {path="../../component/cyfs-debug"}
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
 ethabi = { version = "14.0.0", path = "../../3rd/ethabi" }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -28,7 +28,10 @@ clap = "2.34.0"
 
 
 [target.'cfg(all(target_os="windows", target_env = "gnu"))'.dependencies]
-sqlx = { version = "0.5.11", features = [ "runtime-async-std-native-tls", "sqlite" ] }
+sqlx = { version = "0.5.11", features = [
+    "runtime-async-std-native-tls",
+    "sqlite",
+] }
 
 [target.'cfg(any(not(target_os="windows"), not(target_env = "gnu")))'.dependencies]
-sqlx = { version = "0.5.11", features = [ "runtime-async-std-rustls", "sqlite" ] }
+sqlx = { version = "0.5.11", features = ["runtime-async-std-rustls", "sqlite"] }

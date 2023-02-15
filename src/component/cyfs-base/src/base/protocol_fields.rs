@@ -1,3 +1,5 @@
+pub const CYFS_API_EDITION: &str = "cyfs-api-edition";
+
 pub const CYFS_OBJECT_ID: &str = "cyfs-object-id";
 pub const CYFS_OBJECT: &str = "cyfs-object";
 

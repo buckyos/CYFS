@@ -101,6 +101,10 @@ impl NOCStorageWrapper {
         }
     }
 
+    pub async fn exists(id: &str, noc: &NamedObjectCacheRef) -> BuckyResult<bool> {
+        NOCRawStorage::exists(id, noc).await
+    }
+
     pub fn id(&self) -> &str {
         self.storage.id()
     }
@@ -187,6 +191,10 @@ where
     pub fn swap(&mut self, mut value: T) -> T {
         std::mem::swap(&mut self.coll, &mut value);
         value
+    }
+
+    pub async fn exists(id: &str, noc: &NamedObjectCacheRef) -> BuckyResult<bool> {
+        NOCStorageWrapper::exists(id, noc).await
     }
 
     pub async fn load(&mut self) -> BuckyResult<()> {

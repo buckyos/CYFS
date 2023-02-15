@@ -29,7 +29,7 @@ log = "0.4"
 async-trait = "0.1.53"
 ood-daemon = { path = "../ood-daemon" }
 cyfs-client = { path = "../../tools/cyfs-client" }
-zip = "0.6"
+zip-extract = "0.1.1"
 fs_extra = "1.2"
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
@@ -47,3 +47,4 @@ toml = "0.5"
 clap = '2.34.0'
 wait-timeout = '0.2.0'
 once_cell = "1.17.0"
+surf = { version = '2.3.2', default-features = false, features = ['h1-client-rustls'] }

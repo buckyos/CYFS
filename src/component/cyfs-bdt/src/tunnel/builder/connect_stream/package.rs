@@ -46,7 +46,7 @@ pub struct ConnectPackageStream(Arc<ConnectPackageStreamImpl>);
 
 impl std::fmt::Display for ConnectPackageStream {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "ConnectPackageStream {{stream:{}}}", self.0.stream.as_ref())
+        write!(f, "ConnectPackageStream {{stream:{}}}", self.0.stream)
     }
 }
 
@@ -69,7 +69,7 @@ impl ConnectPackageStream {
             let ca = a.clone();
             let stream = stream.clone();
             task::spawn(async move {
-                let opt_waiter = match stream.as_ref().wait_establish().await {
+                let opt_waiter = match stream.wait_establish().await {
                     Ok(_) => {
                         let state = &mut *ca.0.state.write().unwrap();
                         match state {
@@ -115,16 +115,20 @@ impl ConnectPackageStream {
     pub fn begin(&self) {
         // 只要还处于 connecting1 状态， 不断重发syn session data
         let ca = self.clone();
-        let syn_session_data = ca.0.stream.as_ref().syn_session_data();
+        let syn_session_data = ca.0.stream.syn_session_data();
         if let Some(syn_session_data) = syn_session_data {
-            let resend_interval = ca.0.stream.as_ref().stack().config().stream.stream.package.connect_resend_interval;
+            let resend_interval = ca.0.stream.stack().config().stream.stream.package.connect_resend_interval;
             task::spawn(async move {
                 //在进入pre establish之前，重发 syn session data
                 loop {
                     match ca.state() {
                         ConnectStreamState::Connecting1 => {
                             trace!("{} send sync session data", ca);
-                            let _ = ca.0.stream.as_ref().tunnel().send_packages(vec![DynamicPackage::from(syn_session_data.clone_with_data())]);
+                            if let Some(tunnel) = ca.0.stream.tunnel() {
+                                let _ = tunnel.send_packages(vec![DynamicPackage::from(syn_session_data.clone_with_data())]);
+                            } else {
+                                break;
+                            }
                         }, 
                         _ => break
                     };

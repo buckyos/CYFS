@@ -158,7 +158,16 @@ impl TxExecutor {
 
 
         // update balance = balance - max_fee
-        self.ref_state.to_rc()?.dec_balance(&CoinTokenId::Coin(tx.desc().content().gas_coin_id), caller.id(), total_fee).await.map_err(|_| crate::meta_err!(ERROR_INVALID))?;
+        if let Err(e) = self.ref_state.to_rc()?.dec_balance(&CoinTokenId::Coin(tx.desc().content().gas_coin_id), caller.id(), total_fee).await {
+            return match e.code() {
+                BuckyErrorCode::MetaError(meta_code) => {
+                    Ok(Receipt::new(meta_code as u32, 0))
+                },
+                _ => {
+                    Err(e)
+                }
+            }
+        }
 
         let mut context = ExecuteContext::new(&self.ref_state.to_rc()?,
                                               owner_block,

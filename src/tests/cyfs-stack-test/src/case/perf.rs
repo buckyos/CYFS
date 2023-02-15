@@ -1,6 +1,7 @@
+use std::time::Duration;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_perf_client::{PerfClient, PerfIsolate, PerfServerConfig};
+use cyfs_perf_client::{PerfClient, PerfConfig, PerfIsolateInstance, PerfServerConfig};
 use zone_simulator::*;
 
 fn new_dec(name: &str) -> ObjectId {
@@ -16,19 +17,29 @@ fn new_dec(name: &str) -> ObjectId {
 pub async fn test() {
     let dec_id = new_dec("test-perf");
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+    stack.online().await.unwrap();
+    let device = stack.local_device();
+    let owner = device.desc().owner().as_ref().unwrap().clone();
+    let device_id = device.desc().device_id();
 
     let perf = PerfClient::new(
         "test-perf".to_owned(),
         "1.0.0".to_owned(),
         Some(dec_id),
-        PerfServerConfig::Default,
-        stack,
+        PerfConfig {
+            reporter: PerfServerConfig::Default,
+            save_to_file: false,
+            report_interval: Duration::from_secs(60*10),
+        },
+        stack.uni_stack().clone(),
+        device_id,
+        owner
     );
 
     let ret = perf.start().await;
     assert!(ret.is_ok());
 
-    let isolate = perf.new_isolate("main");
+    let isolate = perf.get_isolate("main");
     test_flush(perf.clone()).await;
     test_request(isolate.clone()).await;
     test_acc(isolate.clone()).await;
@@ -36,7 +47,7 @@ pub async fn test() {
     // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 }
 
-async fn test_request(perf: PerfIsolate) {
+async fn test_request(perf: PerfIsolateInstance) {
     async_std::task::spawn(async move {
         loop {
             perf.begin_request("connect", "address");
@@ -48,7 +59,7 @@ async fn test_request(perf: PerfIsolate) {
     });
 }
 
-async fn test_acc(perf: PerfIsolate) {
+async fn test_acc(perf: PerfIsolateInstance) {
     async_std::task::spawn(async move {
         loop {
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;

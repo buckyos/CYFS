@@ -1,15 +1,15 @@
 use crate::config::*;
-use crate::isolate::PerfIsolate;
+use crate::isolate::PerfIsolateInstance;
 use crate::reporter::*;
 use crate::store::PerfStore;
 use cyfs_base::*;
-use cyfs_core::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
 
-use std::collections::{hash_map, HashMap};
+use std::collections::{HashMap};
 use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
 
 // pub const PERF_DEC_ID_STR: &str = "5aSixgP8EPf6HkP54Qgybddhhsd1fgrkg7Atf2icJiiS";
 
@@ -17,12 +17,21 @@ pub struct PerfClientInner {
     id: String,
     version: String,
     dec_id: Option<ObjectId>,
-    perf_server_config: PerfServerConfig,
+    perf_config: PerfConfig,
 
-    cyfs_stack: SharedCyfsStack,
+    cyfs_stack: UniCyfsStackRef,
     store: PerfStore,
 
-    isolates: Mutex<HashMap<String, PerfIsolate>>,
+    isolates: Mutex<HashMap<String, PerfIsolateInstance>>,
+
+    local_device: DeviceId,
+    owner: ObjectId
+}
+
+pub struct PerfConfig {
+    pub reporter: PerfServerConfig,
+    pub save_to_file: bool,
+    pub report_interval: Duration
 }
 
 impl PerfClientInner {
@@ -30,11 +39,11 @@ impl PerfClientInner {
         id: String,
         version: String,
         dec_id: Option<ObjectId>,
-        perf_server_config: PerfServerConfig,
-        stack: SharedCyfsStack,
+        perf_config: PerfConfig,
+        stack: UniCyfsStackRef,
+        local_device: DeviceId,
+        owner: ObjectId
     ) -> Self {
-        let device_id = stack.local_device_id();
-
         let dec_name = match &dec_id {
             Some(id) => id.to_string(),
             None => "system".to_owned(),
@@ -42,42 +51,44 @@ impl PerfClientInner {
 
         // 这里需要使用一个足够区分度的id，避免多个dec和内核共享协议栈情况下，同时使用PerfClient导致的冲突
         // TODO version区别对待和，不同版本的数据是否可以合并
-        let store_object_id = format!("{}-{}-{}-cyfs-perf-store", device_id, dec_name, id);
+        let store_object_id = format!("{}-{}-{}-cyfs-perf-store", &local_device, dec_name, id);
 
-        let store = PerfStore::new(store_object_id, &stack);
+        let store = PerfStore::new(store_object_id, &stack, &local_device);
 
         Self {
             id,
             version,
             dec_id,
-            perf_server_config,
+            perf_config,
             cyfs_stack: stack,
             store,
             isolates: Mutex::new(HashMap::new()),
+            local_device,
+            owner
         }
     }
 
     pub(crate) async fn start(&self) -> BuckyResult<()> {
-        let req = UtilGetZoneOutputRequest::new(None, None);
-        let resp = self.cyfs_stack.util().get_zone(req).await?;
-        let people_id = resp.zone.owner().to_owned();
-
         if let Err(e) = self.store.start().await {
             // FIXME 启动失败如何处理？一般只有从noc加载失败才会出问题
             error!("perf client start error! {}", e);
         }
 
-        let perf_server = PerfServerLoader::load_perf_server(self.perf_server_config.clone()).await;
+        let save_to_local = self.perf_config.reporter.is_none();
+        let perf_server = PerfServerLoader::load_perf_server(self.perf_config.reporter.clone()).await;
 
         let reporter = PerfReporter::new(
             self.id.clone(),
             self.version.clone(),
-            resp.device_id,
-            people_id,
+            self.local_device.clone(),
+            self.owner.clone(),
             self.dec_id.clone(),
             perf_server,
             self.cyfs_stack.clone(),
             self.store.clone(),
+            save_to_local,
+            self.perf_config.save_to_file,
+            self.perf_config.report_interval,
         );
 
         reporter.start();
@@ -128,32 +139,12 @@ impl PerfClientInner {
         Ok(())
     }
 
-    pub fn is_isolates_exists(&self, id: &str) -> bool {
-        self.isolates.lock().unwrap().contains_key(id)
-    }
-
-    pub fn new_isolate(&self, id: &str) -> PerfIsolate {
+    pub fn get_isolate(&self, id: &str) -> PerfIsolateInstance {
         let mut isolates = self.isolates.lock().unwrap();
-        match isolates.entry(id.to_owned()) {
-            hash_map::Entry::Vacant(v) => {
-                log::info!("new isolate module: id={}", id);
-
-                let isolate = PerfIsolate::new(id);
-                let temp_isolate = isolate.clone();
-                v.insert(isolate);
-                temp_isolate.clone()
-            }
-            hash_map::Entry::Occupied(o) => {
-                let msg = format!("isolate module already exists: id={}", id);
-                log::error!("{}", msg);
-
-                o.get().clone()
-            }
-        }
-    }
-
-    pub fn get_isolate(&self, id: &str) -> Option<PerfIsolate> {
-        self.isolates.lock().unwrap().get(id).map(|v| v.clone())
+        isolates.entry(id.to_owned()).or_insert_with(|| {
+            log::info!("create isolate module: id={}", id);
+            PerfIsolateInstance::new(id)
+        }).clone()
     }
 }
 
@@ -165,11 +156,16 @@ impl PerfClient {
         id: String,
         version: String,
         dec_id: Option<ObjectId>,
-        perf_server_config: PerfServerConfig,
-        stack: SharedCyfsStack,
+        perf_config: PerfConfig,
+        stack: UniCyfsStackRef,
+        local_device: DeviceId, owner: ObjectId
     ) -> Self {
-        let ret = PerfClientInner::new(id, version, dec_id, perf_server_config, stack);
+        let ret = PerfClientInner::new(id, version, dec_id, perf_config, stack, local_device, owner);
         Self(Arc::new(ret))
+    }
+
+    pub fn get_isolate(&self, id: &str) -> PerfIsolateInstance {
+        self.0.get_isolate(id)
     }
 
     pub async fn start(&self) -> BuckyResult<()> {
@@ -190,5 +186,17 @@ impl Deref for PerfClient {
     type Target = PerfClientInner;
     fn deref(&self) -> &PerfClientInner {
         &self.0
+    }
+}
+
+
+#[async_trait::async_trait]
+impl PerfManager for PerfClient {
+    async fn flush(&self) -> BuckyResult<()> {
+        self.0.flush().await
+    }
+
+    fn get_isolate(&self, id: &str) -> PerfIsolateRef {
+        self.0.get_isolate(id).into_isolate()
     }
 }

@@ -365,6 +365,10 @@ impl RequestSourceInfo {
         }
     }
 
+    pub fn is_fuzzy_verified(&self) -> bool {
+        self.verified.is_some()
+    }
+
     pub fn check_target_dec_permission(&self, op_target_dec: &Option<ObjectId>) -> bool {
         self.check_target_dec_permission2(op_target_dec.as_ref())
     }
@@ -404,17 +408,32 @@ impl RequestSourceInfo {
         self.dec == *dec
     }
 
-    pub fn mask(&self, dec_id: &ObjectId, permissions: impl Into<AccessPermissions>) -> u32 {
+    pub fn mask(&self, own_dec_id: &ObjectId, permissions: impl Into<AccessPermissions>) -> u32 {
         let permissions = permissions.into();
         let mut access = AccessString::new(0);
-        if self.dec == *dec_id {
+        if self.dec == *own_dec_id {
             access.set_group_permissions(AccessGroup::OwnerDec, permissions);
         } else {
             access.set_group_permissions(AccessGroup::OthersDec, permissions);
         }
 
-        let group = self.zone.zone_category.into();
-        access.set_group_permissions(group, permissions);
+        /*
+        A and B two dec
+        A creates objX, the permission is the default permission, that is, B in the same zone can access
+        B After obtaining the ID of objX, configure the rpath permission so that objX can be accessed outside the zone
+
+        The key point here is that this behavior is inevitable. As long as B can access the obj, 
+        it is theoretically impossible to prevent B from spreading the obj out of the zone? 
+        So if other dec is allowed to access in the same zone at the object level access(Only true at the object access layer), 
+        it can be allowed
+        */
+        if self.is_fuzzy_verified() {
+            access.set_group_permissions(AccessGroup::CurrentDevice, permissions);
+            access.set_group_permissions(AccessGroup::CurrentZone, permissions);
+        } else {
+            let group = self.zone.zone_category.into();
+            access.set_group_permissions(group, permissions);
+        }
 
         access.value()
     }
@@ -568,5 +587,67 @@ mod test {
 
         let default = AccessString::default().value();
         assert_ne!(default & mask, mask)
+    }
+
+    #[test]
+    fn test_verified() {
+        let owner = ObjectId::default();
+        let dec_a = cyfs_core::DecApp::generate_id(owner.clone(), "dec-a");
+        let dec_b = cyfs_core::DecApp::generate_id(owner.clone(), "dec-b");
+
+        let source = RequestSourceInfo {
+            zone: DeviceZoneInfo {
+                device: None,
+                zone: None,
+                zone_category: DeviceZoneCategory::OtherZone,
+            },
+            dec: dec_a.clone(),
+            protocol: RequestProtocol::HttpBdt,
+            verified: None,
+        };
+
+        {
+            let mut source = source.clone();
+            let object_access = AccessString::default().value();
+
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_ne!(object_access & mask, mask);
+
+            source.set_verified(dec_a);
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_eq!(object_access & mask, mask);
+        }
+
+        {
+            let mut source = source.clone();
+
+            // remove other dec access
+            let mut access = AccessString::default();
+            access.clear_group_permissions(AccessGroup::OthersDec);
+            let object_access = access.value();
+
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_ne!(object_access & mask, mask);
+
+            source.set_verified(dec_a);
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_ne!(object_access & mask, mask);
+        }
+
+        {
+            let mut source = source.clone();
+
+            // remove other dec access
+            let mut access = AccessString::default();
+            access.clear_group_permissions(AccessGroup::CurrentZone);
+            let object_access = access.value();
+
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_ne!(object_access & mask, mask);
+
+            source.set_verified(dec_a);
+            let mask = source.mask(&dec_b, RequestOpType::Read);
+            assert_ne!(object_access & mask, mask);
+        }
     }
 }

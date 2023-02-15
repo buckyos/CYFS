@@ -1,18 +1,19 @@
-use async_std::sync::Mutex as AsyncMutex;
+use super::service::Service;
+use super::service_info::ServicePackageLocalState;
+use crate::config::*;
+use crate::daemon::GATEWAY_MONITOR;
+use crate::status::*;
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use cyfs_debug::Mutex;
 use cyfs_lib::ZoneRole;
-use futures::future::join_all;
+
+use async_std::sync::Mutex as AsyncMutex;
 use lazy_static::lazy_static;
 use std::fmt;
 use std::fmt::Formatter;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
-
-use super::service::Service;
-use crate::config::*;
-use crate::daemon::GATEWAY_MONITOR;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
-use cyfs_debug::Mutex;
 
 #[derive(Clone)]
 pub struct ServiceItem {
@@ -26,11 +27,11 @@ impl ServiceItem {
             true => match GATEWAY_MONITOR.zone_role() {
                 ZoneRole::ActiveOOD => self.config.target_state,
                 _ => match self.config.name.as_str() {
-                    GATEWAY_SERVICE => ServiceState::RUN,
-                    _ => ServiceState::STOP,
+                    GATEWAY_SERVICE => ServiceState::Run,
+                    _ => ServiceState::Stop,
                 },
             },
-            false => ServiceState::STOP,
+            false => ServiceState::Stop,
         }
     }
 }
@@ -241,7 +242,7 @@ impl ServiceManager {
         let service_info = service_info.unwrap();
 
         let service = service_info.service.unwrap();
-        service.sync_state(ServiceState::STOP);
+        service.sync_state(ServiceState::Stop);
         service.remove();
     }
 
@@ -288,12 +289,13 @@ impl ServiceManager {
         let service_path = self.service_root.join(&service_config.name);
         if !service_path.is_dir() {
             if let Err(e) = std::fs::create_dir_all(service_path.as_path()) {
-                error!(
+                let msg = format!(
                     "create service dir error! dir={}, err={}",
                     service_path.display(),
                     e
                 );
-                return Err(BuckyError::from(e));
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
             }
         }
 
@@ -419,7 +421,7 @@ impl ServiceManager {
 
         // 首先停止老的服务
         if let Some(old_service) = old_service {
-            old_service.sync_state(ServiceState::STOP);
+            old_service.sync_state(ServiceState::Stop);
         }
 
         // 尝试启动新的服务
@@ -460,28 +462,32 @@ impl ServiceManager {
     pub async fn sync_service_packages(&self) {
         let _lock = self.sync_lock.lock().await;
 
-        debug!("will sync all service packages");
-
-        let mut futures = Vec::new();
-
         let service_list = self.service_list.lock().unwrap().clone();
+        if service_list.is_empty() {
+            warn!("sync all service packages but is empty!");
+            return;
+        }
+
+        debug!("will sync all service packages");
         for (name, service_info) in service_list {
             if service_info.service.is_none() {
-                error!("service not init! name={}", name);
+                error!("service not init yet! name={}", name);
                 continue;
             }
 
-            if service_info.target_state() == ServiceState::RUN {
-                futures.push(Self::sync_service_package(service_info));
+            if service_info.target_state() == ServiceState::Run {
+                if let Err(e) = Self::sync_service_package(&service_info).await {
+                    error!(
+                        "sync service package failed! service={}, {}",
+                        service_info.config.name, e
+                    );
+                }
             }
         }
-
-        if !futures.is_empty() {
-            let _ret = join_all(futures).await;
-        }
+        debug!("sync all service packages complete!");
     }
 
-    async fn sync_service_package(service_info: ServiceItem) -> BuckyResult<()> {
+    async fn sync_service_package(service_info: &ServiceItem) -> BuckyResult<()> {
         let service = service_info.service.as_ref().unwrap();
         match service.sync_package().await {
             Ok(changed) => {
@@ -501,6 +507,36 @@ impl ServiceManager {
 
         let service = service_item.service.as_ref().unwrap();
         service.sync_state(target_state);
+    }
+
+    pub fn collect_status(&self) -> Vec<OODServiceStatusItem> {
+        let mut list = vec![];
+        let services = self.service_list.lock().unwrap();
+        for (_name, item) in services.iter() {
+            let package_state = match &item.service {
+                Some(service) => service.package_local_status(),
+                None => ServicePackageLocalState::Init,
+            };
+
+            let process_state = match &item.service {
+                Some(service) => service.state(),
+                None => ServiceState::Stop,
+            };
+
+            let item = OODServiceStatusItem {
+                id: item.config.id.clone(),
+                name: item.config.name.clone(),
+                version: item.config.version.clone(),
+                enable: item.config.enable,
+                target_state: item.config.target_state,
+                package_state,
+                process_state,
+            };
+
+            list.push(item);
+        }
+
+        list
     }
 }
 

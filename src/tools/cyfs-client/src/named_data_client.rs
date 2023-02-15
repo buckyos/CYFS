@@ -187,13 +187,13 @@ impl NamedCacheClient {
             let port = rand::thread_rng().gen_range(30000, 50000) as u16;
             for ip in cyfs_util::get_all_ips().unwrap() {
                 if ip.is_ipv4() {
-                    endpoints.push(Endpoint::from((Protocol::Tcp, ip, port)));
                     endpoints.push(Endpoint::from((Protocol::Udp, ip, port)));
                 }
             }
         }
 
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
+
         if let Some(sn_list) = &self.config.sn_list {
             info!("named data client use param`s sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()
@@ -241,12 +241,12 @@ impl NamedCacheClient {
         }
     }
 
-    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+    pub fn reset_known_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         if let Some(stack) = self.stack.get() {
             info!("named data client reset sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()
             }).collect::<Vec<ObjectId>>());
-            stack.reset_sn_list(sn_list).wait_online().await?;
+            stack.reset_known_sn(sn_list);
             Ok(())
         } else {
             Err(BuckyError::from(BuckyErrorCode::NotInit))
@@ -552,7 +552,7 @@ impl NamedCacheClient {
         return Err(BuckyError::from(BuckyErrorCode::NotFound));
     }
 
-    pub async fn get_dir(&self, id_str: &str, owner_str: Option<&str>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
+    pub async fn get_dir(&self, id_str: &str, owner_str: Option<&str>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<(Dir, usize)> {
         let id = self.get_id_from_str(id_str).await?;
         let mut owner = None;
         if let Some(str) = owner_str {
@@ -562,7 +562,7 @@ impl NamedCacheClient {
         self.get_dir_by_obj(&id, owner, inner_path, dest_path).await
     }
 
-    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
+    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<(Dir, usize)> {
         info!("get dir by id {}, inner path {}", id, inner_path.unwrap_or("none"));
 
         let desc = self.get_desc(&id, owner).await?;
@@ -634,7 +634,7 @@ impl NamedCacheClient {
                             }
                         }
                     }
-                    Ok(dir.clone())
+                    Ok((dir.clone(), filtred_list.len()))
                 },
                 NDNObjectInfo::Chunk(_) => {
                     // 先不支持chunk格式

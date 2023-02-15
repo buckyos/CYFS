@@ -276,6 +276,55 @@ impl OpEnvLoadByPathOutputRequest {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ObjectMapField {
+    // default owner will been set to current's global-state's owner(isolate)
+    Default,
+    None,
+    Specific(ObjectId),
+}
+
+impl Default for ObjectMapField {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+impl ToString for ObjectMapField {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Default => "default".to_owned(),
+            Self::None => "none".to_owned(),
+            Self::Specific(id) => id.to_string(),
+        }
+    }
+}
+
+impl FromStr for ObjectMapField {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> BuckyResult<Self> {
+        match value {
+            "default" => Ok(Self::Default),
+            "none" => Ok(Self::None),
+            _ => Ok(Self::Specific(ObjectId::from_str(value)?)),
+        }
+    }
+}
+
+impl From<&Option<ObjectId>> for ObjectMapField {
+    fn from(id: &Option<ObjectId>) -> Self {
+        id.as_ref()
+            .map_or(Self::None, |id| Self::Specific(id.clone()))
+    }
+}
+
+impl From<&ObjectId> for ObjectMapField {
+    fn from(id: &ObjectId) -> Self {
+        Self::Specific(id.clone())
+    }
+}
+
 // create_new
 pub struct OpEnvCreateNewOutputRequest {
     pub common: OpEnvOutputRequestCommon,
@@ -283,6 +332,10 @@ pub struct OpEnvCreateNewOutputRequest {
     pub path: Option<String>,
     pub key: Option<String>,
     pub content_type: ObjectMapSimpleContentType,
+
+    // set owner=None same as owner=ObjectMapField::deault()
+    pub owner: Option<ObjectMapField>,
+    pub dec: Option<ObjectMapField>,
 }
 
 impl OpEnvCreateNewOutputRequest {
@@ -292,6 +345,8 @@ impl OpEnvCreateNewOutputRequest {
             path: None,
             key: None,
             content_type,
+            owner: None,
+            dec: None,
         }
     }
 
@@ -307,6 +362,8 @@ impl OpEnvCreateNewOutputRequest {
             path: None,
             key: Some(full_path),
             content_type,
+            owner: None,
+            dec: None,
         }
     }
 
@@ -324,6 +381,8 @@ impl OpEnvCreateNewOutputRequest {
             path: Some(path),
             key: Some(key),
             content_type,
+            owner: None,
+            dec: None,
         }
     }
 }

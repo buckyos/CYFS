@@ -3,8 +3,8 @@ use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
 use crate::non::NONRequestorHelper;
-use crate::stack::SharedObjectStackDecID;
 use crate::requestor::*;
+use crate::stack::SharedObjectStackDecID;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
@@ -289,8 +289,13 @@ impl OpEnvRequestor {
     }
 
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {
-        if self.op_env_type != ObjectMapOpEnvType::Single {
-            let msg = format!("load method only valid for single_op_env! sid={}", self.sid);
+        if self.op_env_type != ObjectMapOpEnvType::Single
+            && self.op_env_type != ObjectMapOpEnvType::IsolatePath
+        {
+            let msg = format!(
+                "load method only valid for single_op_env and isolate_path_op_env! sid={}",
+                self.sid
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
         }
@@ -327,9 +332,11 @@ impl OpEnvRequestor {
     }
 
     async fn load_by_path(&self, req: OpEnvLoadByPathOutputRequest) -> BuckyResult<()> {
-        if self.op_env_type != ObjectMapOpEnvType::Single {
+        if self.op_env_type != ObjectMapOpEnvType::Single
+            && self.op_env_type != ObjectMapOpEnvType::IsolatePath
+        {
             let msg = format!(
-                "load_by_path method only valid for single_op_env! sid={}",
+                "load_by_path method only valid for single_op_env and isolate_path_op_env! sid={}",
                 self.sid
             );
             error!("{}", msg);

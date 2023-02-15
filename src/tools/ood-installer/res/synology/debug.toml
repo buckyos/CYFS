@@ -1,6 +1,9 @@
 [log.global]
 level = "info"
 console = "info"
+#file = "off"
+#file_max_size = 10485760
+#file_max_count = count
 
 [log.cyfs_bdt]
 level = "info"
