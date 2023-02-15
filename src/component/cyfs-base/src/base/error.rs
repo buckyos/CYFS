@@ -125,6 +125,10 @@ pub enum BuckySystemErrorCode {
     ParseError = 261,
     NotHandled = 262,
 
+    InvalidTarget = 263,
+    ErrorTimestamp = 264,
+    DecNotRunning = 265,
+
     // 在system error code里面，meta_error默认值都取值5000
     MetaError = 5000,
 
@@ -240,6 +244,10 @@ pub enum BuckyErrorCode {
     ParseError,
     NotHandled,
 
+    InvalidTarget,
+    ErrorTimestamp,
+    DecNotRunning,
+
     // meta chain的error段，取值范围是[0, BUCKY_META_ERROR_CODE_MAX)
     MetaError(u16),
 
@@ -330,6 +338,10 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
             Self::ParseError => BuckySystemErrorCode::ParseError,
             Self::NotHandled => BuckySystemErrorCode::NotHandled,
 
+            Self::InvalidTarget => BuckySystemErrorCode::InvalidTarget,
+            Self::ErrorTimestamp => BuckySystemErrorCode::ErrorTimestamp,
+            Self::DecNotRunning => BuckySystemErrorCode::DecNotRunning,
+
             Self::MetaError(_) => BuckySystemErrorCode::MetaError,
             Self::DecError(_) => BuckySystemErrorCode::DecError,
         }
@@ -391,7 +403,7 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
             Self::OutofSessionLimit => BuckyErrorCode::OutofSessionLimit,
 
             Self::Redirect => BuckyErrorCode::Redirect,
-            
+
             Self::MongoDBError => BuckyErrorCode::MongoDBError,
             Self::SqliteError => BuckyErrorCode::SqliteError,
             Self::UrlError => BuckyErrorCode::UrlError,
@@ -420,6 +432,10 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
 
             Self::ParseError => BuckyErrorCode::ParseError,
             Self::NotHandled => BuckyErrorCode::NotHandled,
+
+            Self::InvalidTarget => BuckyErrorCode::InvalidTarget,
+            Self::ErrorTimestamp => BuckyErrorCode::ErrorTimestamp,
+            Self::DecNotRunning => BuckyErrorCode::DecNotRunning,
 
             Self::MetaError => BuckyErrorCode::MetaError(0),
             Self::DecError => BuckyErrorCode::DecError(0),

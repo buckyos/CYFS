@@ -41,23 +41,24 @@ pub fn modify_desc(matches: &ArgMatches) {
                             p.encode_to_file(path.as_ref(), false).expect("write desc file err");
                             info!("modify success");
                         },
-                        StandardObject::SimpleGroup(mut g) => {
-                            let content = g.body_mut().as_mut().unwrap().content_mut();
-                            if let Some(members) = get_objids_from_matches(matches, "members") {
-                                content.members_mut().clone_from(&members);
-                            }
+                        StandardObject::Group(mut g) => {
+                            // TODO
+                            // let content = g.body_mut().as_mut().unwrap().content_mut();
+                            // if let Some(members) = get_objids_from_matches(matches, "members") {
+                            //     content.members_mut().clone_from(&members);
+                            // }
 
-                            if let Some(members) = get_objids_from_matches(matches, "add_members") {
-                                for member in members {
-                                    if !content.members_mut().contains(&member) {
-                                        content.members_mut().push(member);
-                                    } else {
-                                        info!("obj {} already in group, skip.", &member);
-                                    }
-                                }
-                            }
+                            // if let Some(members) = get_objids_from_matches(matches, "add_members") {
+                            //     for member in members {
+                            //         if !content.members_mut().contains(&member) {
+                            //             content.members_mut().push(member);
+                            //         } else {
+                            //             info!("obj {} already in group, skip.", &member);
+                            //         }
+                            //     }
+                            // }
 
-                            g.encode_to_file(path.as_ref(), false).expect("write desc file err");
+                            // g.encode_to_file(path.as_ref(), false).expect("write desc file err");
                         }
                         StandardObject::People(mut p) => {
                             let content = p.body_mut().as_mut().unwrap().content_mut();

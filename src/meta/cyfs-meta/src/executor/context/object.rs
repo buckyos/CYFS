@@ -45,9 +45,6 @@ pub fn id_from_desc(desc: &SavedMetaObject) -> ObjectId {
         SavedMetaObject::Data(obj) => {
             obj.id.clone()
         },
-        SavedMetaObject::Org(org) => {
-            org.desc().calculate_id()
-        },
         SavedMetaObject::MinerGroup(group) => {
             group.desc().calculate_id()
         },
@@ -57,6 +54,10 @@ pub fn id_from_desc(desc: &SavedMetaObject) -> ObjectId {
         SavedMetaObject::SNService(service) => {
             service.desc().calculate_id()
         }
+        SavedMetaObject::SimpleGroup => {
+            panic!("SimpleGroup is deprecated, you can use the Group.")
+        }
+        SavedMetaObject::Org => panic!("Org is deprecated, you can use the Group."),
     }
 }
 
