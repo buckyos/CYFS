@@ -1,0 +1,30 @@
+[package]
+name = "group-example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.53"
+async-std = '1.11'
+log = '0.4'
+serde_json = '1.0'
+futures = '0.3.25'
+serde = { version = '1.0', features = ['derive'] }
+prost = { version = '0.11.5' }
+protobuf = { version = '2', features = ['with-bytes'] }
+lazy_static = '1.4'
+sha2 = { version = '0.8' }
+async-recursion = '1.0'
+rand = '0.8.5'
+cyfs-base = { path = '../../component/cyfs-base'}
+cyfs-core = { path = '../../component/cyfs-core' }
+cyfs-bdt = { path = '../../component/cyfs-bdt' }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-lib = { path = '../../component/cyfs-lib' }
+cyfs-chunk-lib = { path = '../../component/cyfs-chunk-lib' }
+cyfs-group = { path = '../../component/cyfs-group' }
+cyfs-stack = { path = '../../component/cyfs-stack' }
+cyfs-meta-lib = { path = '../../component/cyfs-meta-lib' }
+cyfs-bdt-ext = { path = '../../component/cyfs-bdt-ext' }

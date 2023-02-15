@@ -2,8 +2,8 @@
 use crate::SharedMemChunk;
 use crate::{MMapChunk, MemChunk};
 use cyfs_base::*;
-use cyfs_util::AsyncReadWithSeek;
 use cyfs_debug::Mutex;
+use cyfs_util::AsyncReadWithSeek;
 
 use std::future::Future;
 use std::io::SeekFrom;
@@ -134,7 +134,7 @@ impl async_std::io::Seek for ChunkRead {
     }
 }
 
-use async_std::io::{Seek, Read};
+use async_std::io::{Read, Seek};
 use std::ops::Range;
 
 impl AsyncReadWithSeek for ChunkRead {}
@@ -307,5 +307,37 @@ impl async_std::io::Write for ChunkWrite {
 
     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Poll::Ready(Ok(()))
+    }
+}
+
+impl From<&Group> for ChunkMeta {
+    fn from(group: &Group) -> Self {
+        let len = group.raw_measure(&None).unwrap();
+        let mut buf = vec![0u8; len];
+        let remain = group.raw_encode(buf.as_mut_slice(), &None).unwrap();
+        assert_eq!(remain.len(), 0);
+        ChunkMeta::MemChunk(buf)
+    }
+}
+
+impl TryFrom<&ChunkMeta> for Group {
+    type Error = BuckyError;
+
+    fn try_from(value: &ChunkMeta) -> Result<Self, Self::Error> {
+        match value {
+            ChunkMeta::MemChunk(buf) => {
+                let (group, remain) = Group::raw_decode(buf.as_slice())?;
+                assert_eq!(remain.len(), 0);
+                Ok(group)
+            }
+            ChunkMeta::MMapChunk(_, _) => Err(BuckyError::new(
+                BuckyErrorCode::InvalidFormat,
+                format!("expected ChunkMeta::MemChunk, got ChunkMeta::MMapChunk"),
+            )),
+            ChunkMeta::SharedMemChunk(_, _, _) => Err(BuckyError::new(
+                BuckyErrorCode::InvalidFormat,
+                format!("expected ChunkMeta::MemChunk, got ChunkMeta::SharedMemChunk"),
+            )),
+        }
     }
 }

@@ -115,7 +115,7 @@ impl OodResolver {
             let obj_type = object_id.obj_type_code();
 
             // People,SimpleGroup 对象存在ood_list
-            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::SimpleGroup {
+            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::Group {
                 match object.ood_list() {
                     Ok(list) => {
                         if list.len() > 0 {
@@ -241,7 +241,7 @@ impl OodResolver {
             let obj_type = object_id.obj_type_code();
 
             // People,SimpleGroup 对象存在ood_list
-            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::SimpleGroup {
+            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::Group {
                 if object.is_some() {
                     match object.as_ref().unwrap().ood_list() {
                         Ok(list) => {

@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 #[derive(Clone, Debug, RawEncode, RawDecode)]
 pub enum TxCondition {
     //时间
-//BTC 交易确认
+    //BTC 交易确认
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, RawEncode, RawDecode, Eq, PartialEq)]
@@ -38,7 +38,7 @@ impl ProtobufTransform<Vec<u8>> for CoinTokenId {
 pub enum TxCaller {
     People(PeopleDesc),
     Device(DeviceDesc),
-    Group(SimpleGroupDesc),
+    Group(GroupDesc),
     Union(UnionAccountDesc),
     Miner(ObjectId),
     Id(ObjectId),
@@ -50,7 +50,7 @@ impl TryFrom<&StandardObject> for TxCaller {
         match obj {
             StandardObject::People(desc) => Ok(Self::People(desc.desc().clone())),
             StandardObject::Device(desc) => Ok(Self::Device(desc.desc().clone())),
-            StandardObject::SimpleGroup(desc) => Ok(Self::Group(desc.desc().clone())),
+            StandardObject::Group(desc) => Ok(Self::Group(desc.desc().clone())),
             StandardObject::UnionAccount(desc) => Ok(Self::Union(desc.desc().clone())),
             _ => Err(BuckyError::new(BuckyErrorCode::Failed, "Failed")),
         }
