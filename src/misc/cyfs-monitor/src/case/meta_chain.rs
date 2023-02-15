@@ -135,10 +135,18 @@ impl MonitorRunner for MetaChainWriteMonitor {
         let update_time = cyfs_base::bucky_time_now();
         people.body_mut_expect("").set_update_time(update_time);
         let data = SavedMetaObject::People(people.clone());
-        let txid = self.meta_client.update_desc(&StandardObject::People(people), &data, None, None, &self.sec).await.map_err(|e|{
-            error!("update desc err {}", e);
-            e
-        })?;
+        let exist = self.meta_client.get_desc(&people_id).await.is_ok();
+        let txid = if exist {
+            self.meta_client.update_desc(&StandardObject::People(people), &data, None, None, &self.sec).await.map_err(|e|{
+                error!("update desc err {}", e);
+                e
+            })
+        } else {
+            self.meta_client.create_desc(&StandardObject::People(people), &data, 0, 0, 0, &self.sec).await.map_err(|e|{
+                error!("create desc err {}", e);
+                e
+            })
+        }?;
         let mut success = false;
         for _ in 0..3 {
             if let Ok(Some((ret, _))) = self.meta_client.get_tx_receipt(&txid).await {
