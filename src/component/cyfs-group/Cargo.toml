@@ -8,7 +8,7 @@ license = 'BSD-2-Clause'
 description = 'Rust cyfs-group package'
 
 [build-dependencies]
-prost-build = { version = '0.11.5' }
+prost-build = { version = '0.9.0' }
 protoc-rust = '2'
 chrono = '0.4'
 protoc-bin-vendored = '3'
