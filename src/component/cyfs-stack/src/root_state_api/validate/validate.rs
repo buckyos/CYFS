@@ -1,8 +1,6 @@
-use super::super::core::GlobalStateManager;
+use super::super::core::GlobalStateRef;
 use super::cache::*;
 use cyfs_base::*;
-
-use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum GlobalStateValidateRoot {
@@ -45,14 +43,14 @@ enum CheckRoot {
 pub struct GlobalStateValidator {
     device_id: DeviceId,
 
-    global_state: Arc<GlobalStateManager>,
+    global_state: GlobalStateRef,
     op_env_cache: ObjectMapOpEnvCacheRef,
 
     cache: GlobalStatePathCache,
 }
 
 impl GlobalStateValidator {
-    pub fn new(device_id: DeviceId, global_state: Arc<GlobalStateManager>) -> Self {
+    pub fn new(device_id: DeviceId, global_state: GlobalStateRef) -> Self {
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(global_state.root_cache().clone());
         Self {
             device_id,

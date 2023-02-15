@@ -1,6 +1,5 @@
 use super::super::core::*;
 use super::accessor_service::GlobalStateAccessorService;
-use crate::config::StackGlobalConfig;
 use crate::root_state::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -9,7 +8,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateLocalService {
-    global_state: Arc<GlobalStateManager>,
+    global_state: GlobalStateRef,
 
     // only valid for global_state category
     accessor_service: Arc<GlobalStateAccessorService>,
@@ -17,29 +16,35 @@ pub struct GlobalStateLocalService {
 
 impl GlobalStateLocalService {
     pub async fn load(
+        global_state_manager: &GlobalStateManager,
         category: GlobalStateCategory,
         device_id: &DeviceId,
         owner: Option<ObjectId>,
         noc: NamedObjectCacheRef,
-        config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
-        let global_state =
-            GlobalStateManager::load(category, device_id, owner, noc.clone(), config).await?;
-        let global_state = Arc::new(global_state);
+        let global_state = global_state_manager
+            .load_global_state(category, device_id.object_id(), owner, true)
+            .await?
+            .unwrap();
 
-        let accessor_service =
-            GlobalStateAccessorService::new(device_id.to_owned(), global_state.clone(), noc);
-
-        let ret = Self {
-            global_state,
-            accessor_service: Arc::new(accessor_service),
-        };
-
-        Ok(ret)
+        Ok(Self::new(global_state, noc))
     }
 
-    pub fn state(&self) -> &Arc<GlobalStateManager> {
+    fn new(global_state: GlobalStateRef, noc: NamedObjectCacheRef) -> Self {
+        let accessor_service = GlobalStateAccessorService::new(global_state.clone(), noc);
+
+        Self {
+            global_state,
+            accessor_service: Arc::new(accessor_service),
+        }
+    }
+
+    pub fn state(&self) -> &GlobalStateRef {
         &self.global_state
+    }
+
+    pub fn into_global_state_processor(self) -> GlobalStateInputProcessorRef {
+        Arc::new(Box::new(self))
     }
 
     pub fn clone_global_state_processor(&self) -> GlobalStateInputProcessorRef {

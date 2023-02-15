@@ -7,19 +7,16 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateAccessorService {
-    device_id: DeviceId,
-    root_state: Arc<GlobalStateManager>,
+    root_state: GlobalStateRef,
     noc: NamedObjectCacheRef,
 }
 
 impl GlobalStateAccessorService {
     pub fn new(
-        device_id: DeviceId,
-        root_state: Arc<GlobalStateManager>,
+        root_state: GlobalStateRef,
         noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
-            device_id,
             root_state,
             noc,
         }
