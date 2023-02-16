@@ -12,7 +12,7 @@ use once_cell::sync::OnceCell;
 struct ServiceStatusCache {
     name: String,
     status: serde_json::Value,
-    last_update_tick: u64,
+    last_update_time: u64,
 }
 
 #[derive(Clone)]
@@ -91,7 +91,7 @@ impl OODStatusManager {
         for item in list.iter_mut() {
             if item.name == name {
                 item.status = status;
-                item.last_update_tick = bucky_time_now();
+                item.last_update_time = bucky_time_now();
                 return;
             }
         }
@@ -99,7 +99,7 @@ impl OODStatusManager {
         list.push(ServiceStatusCache {
             name: name.to_owned(),
             status,
-            last_update_tick: bucky_time_now(),
+            last_update_time: bucky_time_now(),
         });
     }
 }
