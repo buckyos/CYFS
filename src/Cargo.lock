@@ -172,6 +172,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "surf",
  "tar",
  "toml",
  "version-compare",

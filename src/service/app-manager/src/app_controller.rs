@@ -177,6 +177,7 @@ impl AppController {
                     file_id: None,
                     dirs: None,
                     access: None,
+                    chunk_method: TransPublishChunkMethod::Track,
                 })
                 .await
                 .map_err(|e| {
