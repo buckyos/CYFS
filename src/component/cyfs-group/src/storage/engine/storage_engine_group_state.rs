@@ -1,16 +1,18 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapPathOpEnvRef,
-    ObjectMapRootManagerRef, ObjectMapSimpleContentType, ObjectMapSingleOpEnvRef, OpEnvPathAccess,
+    BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapContentItem,
+    ObjectMapPathOpEnvRef, ObjectMapRootManagerRef, ObjectMapSimpleContentType,
+    ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
+use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
-    GroupStatePath, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
-    GROUP_STATE_PATH_LAST_VOTE_ROUNDS, GROUP_STATE_PATH_RANGE,
+    GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
+    GROUP_STATE_PATH_RANGE,
 };
 
-use super::{StorageEngine, StorageWriter};
+use super::{StorageCacheInfo, StorageEngine, StorageWriter};
 
 const ACCESS: Option<OpEnvPathAccess> = None;
 
@@ -21,14 +23,110 @@ pub struct StorageEngineGroupState {
 }
 
 impl StorageEngineGroupState {
-    pub async fn load(
-        dec_group_state: ObjectMapRootManagerRef,
-        state_path: GroupStatePath,
-    ) -> BuckyResult<StorageEngineGroupState> {
-        Ok(Self {
-            state_mgr: todo!(),
+    pub(crate) async fn load_cache(
+        state_mgr: &ObjectMapRootManagerRef,
+        non_driver: &NONDriverHelper,
+        state_path: &GroupStatePath,
+    ) -> BuckyResult<StorageCacheInfo> {
+        let op_env = state_mgr.create_op_env(ACCESS)?;
+
+        let dec_state_id = op_env.get_by_path(state_path.dec_state()).await?;
+
+        let last_vote_round = op_env
+            .get_by_path(state_path.last_vote_round())
+            .await?
+            .map(|id| parse_u64_obj(&id));
+
+        let mut first_header_block_ids: Vec<ObjectId> = vec![];
+        let commit_range = op_env
+            .get_by_path(state_path.range())
+            .await?
+            .map(|id| parse_range_obj(&id));
+        let commit_block = match commit_range {
+            Some((first_height, header_height)) => {
+                let first_block_id = op_env
+                    .get_by_path(state_path.commit_height(first_height).as_str())
+                    .await?
+                    .expect("first block is lost");
+                first_header_block_ids.push(first_block_id);
+
+                if header_height == first_height {
+                    Some((first_block_id, first_block_id))
+                } else {
+                    let header_block_id = op_env
+                        .get_by_path(state_path.commit_height(header_height).as_str())
+                        .await?
+                        .expect("first block is lost");
+                    first_header_block_ids.push(header_block_id);
+                    Some((first_block_id, header_block_id))
+                }
+            }
+            None => None,
+        };
+
+        let prepare_block_ids = load_object_ids_with_path(&op_env, state_path.prepares()).await?;
+        let pre_commit_block_ids =
+            load_object_ids_with_path(&op_env, state_path.pre_commits()).await?;
+
+        let flip_timestamp = op_env
+            .get_by_path(state_path.flip_time())
+            .await?
+            .map_or(0, |id| parse_u64_obj(&id));
+
+        let adding_proposal_ids = load_object_ids_with_path(&op_env, state_path.adding()).await?;
+        let over_proposal_ids = load_object_ids_with_path(&op_env, state_path.recycle()).await?;
+
+        let load_block_ids = [
+            first_header_block_ids.as_slice(),
+            prepare_block_ids.as_slice(),
+            pre_commit_block_ids.as_slice(),
+        ]
+        .concat();
+
+        let load_blocks = futures::future::join_all(
+            load_block_ids
+                .iter()
+                .map(|id| non_driver.get_block(id, None)),
+        )
+        .await;
+
+        let mut cache = StorageCacheInfo::new(dec_state_id);
+        cache.last_vote_round = last_vote_round.map_or(0, |round| round);
+        cache.finish_proposals.adding = HashSet::from_iter(adding_proposal_ids.into_iter());
+        cache.finish_proposals.over = HashSet::from_iter(over_proposal_ids.into_iter());
+        cache.finish_proposals.flip_timestamp = flip_timestamp;
+
+        let prepare_block_pos = match commit_block {
+            Some((first_block_id, header_block_id)) => {
+                cache.first_block = Some(load_blocks.get(0).unwrap().clone()?);
+                if header_block_id == first_block_id {
+                    cache.header_block = cache.first_block.clone();
+                    1
+                } else {
+                    cache.header_block = Some(load_blocks.get(1).unwrap().clone()?);
+                    2
+                }
+            }
+            None => 0,
+        };
+
+        let (prepare_blocks, pre_commit_blocks) =
+            load_blocks.as_slice()[prepare_block_pos..].split_at(prepare_block_ids.len());
+        for (block, block_id) in prepare_blocks.iter().zip(prepare_block_ids) {
+            cache.prepares.insert(block_id, block.clone()?);
+        }
+        for (block, block_id) in pre_commit_blocks.iter().zip(pre_commit_block_ids) {
+            cache.pre_commits.insert(block_id, block.clone()?);
+        }
+
+        Ok(cache)
+    }
+
+    pub fn new(state_mgr: ObjectMapRootManagerRef, state_path: GroupStatePath) -> Self {
+        Self {
+            state_mgr,
             state_path: Arc::new(state_path),
-        })
+        }
     }
 
     pub async fn create_writer(&self) -> BuckyResult<StorageEngineGroupStateWriter> {
@@ -132,12 +230,14 @@ impl StorageEngineGroupStateWriter {
             .insert_with_path(self.state_path.commit_height(height).as_str(), block_id)
             .await?;
 
-        let range_obj = make_range_obj(min_height, height);
         if height == 1 {
+            let range_obj = make_range_obj(1, height);
             self.op_env
                 .insert_with_key(self.state_path.link(), GROUP_STATE_PATH_RANGE, &range_obj)
                 .await?;
         } else {
+            assert!(min_height < height);
+            let range_obj = make_range_obj(min_height, height);
             let prev_range = make_range_obj(min_height, height - 1);
             let prev_value = self
                 .op_env
@@ -376,13 +476,63 @@ impl StorageWriter for StorageEngineGroupStateWriter {
 fn make_range_obj(min: u64, max: u64) -> ObjectId {
     let mut range_buf = [0u8; 24];
     let (low, high) = range_buf.split_at_mut(12);
-    low.copy_from_slice(&min.to_le_bytes());
-    high.copy_from_slice(&max.to_le_bytes());
+    low[..8].copy_from_slice(&min.to_le_bytes());
+    high[..8].copy_from_slice(&max.to_le_bytes());
     ObjectIdDataBuilder::new().data(&range_buf).build().unwrap()
+}
+
+fn parse_range_obj(obj: &ObjectId) -> (u64, u64) {
+    let range_buf = obj.data();
+    assert_eq!(range_buf.len(), 24);
+    let (low_buf, high_buf) = range_buf.split_at(12);
+    let mut low = [0u8; 8];
+    low.copy_from_slice(&low_buf[..8]);
+    let mut high = [0u8; 8];
+    high.copy_from_slice(&high_buf[..8]);
+
+    (u64::from_le_bytes(low), u64::from_le_bytes(high))
 }
 
 fn make_u64_obj(value: u64) -> ObjectId {
     let mut range_buf = [0u8; 8];
     range_buf.copy_from_slice(&value.to_le_bytes());
     ObjectIdDataBuilder::new().data(&range_buf).build().unwrap()
+}
+
+fn parse_u64_obj(obj: &ObjectId) -> u64 {
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(obj.data());
+    u64::from_le_bytes(buf)
+}
+
+async fn load_object_ids_with_path(
+    op_env: &ObjectMapPathOpEnvRef,
+    full_path: &str,
+) -> BuckyResult<Vec<ObjectId>> {
+    let content = match op_env.list(full_path).await {
+        Ok(content) => content,
+        Err(err) => {
+            if err.code() == BuckyErrorCode::NotFound {
+                return Ok(vec![]);
+            } else {
+                return Err(err);
+            }
+        }
+    };
+
+    let mut object_ids: Vec<ObjectId> = vec![];
+    for item in content.list.iter() {
+        match item {
+            ObjectMapContentItem::Set(id) => object_ids.push(id.clone()),
+            _ => {
+                log::error!("should be a set in path {}", full_path);
+                return Err(BuckyError::new(
+                    BuckyErrorCode::InvalidFormat,
+                    format!("should be a set in path {}", full_path),
+                ));
+            }
+        }
+    }
+
+    Ok(object_ids)
 }
