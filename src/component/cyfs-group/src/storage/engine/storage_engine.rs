@@ -1,4 +1,41 @@
+use std::collections::{HashMap, HashSet};
+
 use cyfs_base::{BuckyResult, ObjectId};
+use cyfs_core::GroupConsensusBlock;
+
+pub struct FinishProposalMgr {
+    pub flip_timestamp: u64,
+    pub over: HashSet<ObjectId>,
+    pub adding: HashSet<ObjectId>,
+}
+
+pub struct StorageCacheInfo {
+    pub dec_state_id: Option<ObjectId>, // commited/header state id
+    pub last_vote_round: u64,           // 参与投票的最后一个轮次
+    pub header_block: Option<GroupConsensusBlock>,
+    pub first_block: Option<GroupConsensusBlock>,
+    pub prepares: HashMap<ObjectId, GroupConsensusBlock>,
+    pub pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
+    pub finish_proposals: FinishProposalMgr,
+}
+
+impl StorageCacheInfo {
+    pub fn new(init_state_id: Option<ObjectId>) -> Self {
+        Self {
+            dec_state_id: init_state_id,
+            last_vote_round: 0,
+            header_block: None,
+            first_block: None,
+            prepares: HashMap::new(),
+            pre_commits: HashMap::new(),
+            finish_proposals: FinishProposalMgr {
+                flip_timestamp: 0,
+                over: HashSet::new(),
+                adding: HashSet::new(),
+            },
+        }
+    }
+}
 
 #[async_trait::async_trait]
 pub trait StorageWriter: Send + Sync {
