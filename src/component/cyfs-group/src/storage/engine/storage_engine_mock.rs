@@ -13,6 +13,7 @@ struct StorageEngineMockFinishProposalMgr {
 pub struct StorageEngineMock {
     last_vote_round: u64,
 
+    result_state_id: Option<ObjectId>,
     block_height_range: (u64, u64),
 
     commit_blocks: HashMap<u64, ObjectId>,
@@ -30,6 +31,7 @@ impl StorageEngineMock {
             commit_blocks: HashMap::new(),
             prepare_blocks: HashSet::new(),
             pre_commit_blocks: HashSet::new(),
+            result_state_id: None,
             finish_proposals: StorageEngineMockFinishProposalMgr {
                 flip_timestamp: 0,
                 over: HashSet::new(),
@@ -108,7 +110,18 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
         Ok(())
     }
 
-    async fn push_commit(&mut self, height: u64, block_id: &ObjectId) -> BuckyResult<()> {
+    async fn push_commit(
+        &mut self,
+        height: u64,
+        block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
+        prev_result_state_id: &Option<ObjectId>,
+        min_height: u64,
+    ) -> BuckyResult<()> {
+        assert!(height > min_height);
+        assert_eq!(height, self.engine.block_height_range.1 + 1);
+        assert_eq!(prev_result_state_id, &self.engine.result_state_id);
+
         if self
             .engine
             .commit_blocks
@@ -123,6 +136,7 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
         }
 
         self.engine.block_height_range.1 = height;
+        self.engine.result_state_id = result_state_id.clone();
 
         Ok(())
     }
@@ -143,12 +157,13 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     async fn push_proposals(
         &mut self,
         proposal_ids: &[ObjectId],
-        timestamp: Option<u64>,
+        timestamp: Option<(u64, u64)>, // (timestamp, prev_timestamp), 0 if the first
     ) -> BuckyResult<()> {
-        if let Some(timestamp) = timestamp {
+        if let Some((timestamp, prev_timestamp)) = timestamp {
             let mut new_over = HashSet::new();
             std::mem::swap(&mut new_over, &mut self.engine.finish_proposals.adding);
             std::mem::swap(&mut new_over, &mut self.engine.finish_proposals.over);
+            assert_eq!(prev_timestamp, self.engine.finish_proposals.flip_timestamp);
             self.engine.finish_proposals.flip_timestamp = timestamp;
         }
 
@@ -170,13 +185,14 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
         Ok(())
     }
 
-    async fn set_last_vote_round(&mut self, round: u64) -> BuckyResult<()> {
+    async fn set_last_vote_round(&mut self, round: u64, prev_value: u64) -> BuckyResult<()> {
+        assert_eq!(self.engine.last_vote_round, prev_value);
         self.engine.last_vote_round = round;
 
         Ok(())
     }
-}
 
-impl<'a> Drop for StorageEngineMockWriter<'a> {
-    fn drop(&mut self) {}
+    async fn commit(mut self) -> BuckyResult<()> {
+        Ok(())
+    }
 }

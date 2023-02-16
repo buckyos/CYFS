@@ -13,7 +13,7 @@ use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{storage::StorageWriter, NONDriverHelper, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION};
 
-use super::{storage_engine_mock::StorageEngineMock, StorageEngine};
+use super::{engine::StorageEngineMock, StorageEngine};
 
 const PROPOSAL_MAX_TIMEOUT_AS_MS: u64 = PROPOSAL_MAX_TIMEOUT.as_millis() as u64;
 
@@ -42,15 +42,14 @@ pub struct GroupStorage {
     rpath: String,
     local_device_id: ObjectId,
     non_driver: NONDriverHelper,
+    group_chunk_id: ObjectId,
 
     dec_state_id: Option<ObjectId>, // commited/header state id
-    group_chunk_id: ObjectId,
     last_vote_round: u64, // 参与投票的最后一个轮次
     header_block: Option<GroupConsensusBlock>,
     first_block: Option<GroupConsensusBlock>,
     prepares: HashMap<ObjectId, GroupConsensusBlock>,
     pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
-
     finish_proposals: FinishProposalMgr,
 
     storage_engine: StorageEngineMock,
@@ -258,7 +257,15 @@ impl GroupStorage {
         }
         if let Some(new_header) = new_header.as_ref() {
             writer
-                .push_commit(new_header.height(), new_header.block_id().object_id())
+                .push_commit(
+                    new_header.height(),
+                    new_header.block_id().object_id(),
+                    new_header.result_state_id(),
+                    self.header_block
+                        .as_ref()
+                        .map_or(&None, |b| b.result_state_id()),
+                    self.first_block.as_ref().map_or(0, |b| b.height()),
+                )
                 .await?;
 
             writer.remove_prepares(remove_prepares.as_slice()).await?;
@@ -272,7 +279,10 @@ impl GroupStorage {
             let timestamp = new_header.named_object().desc().create_time();
             if timestamp - self.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
                 writer
-                    .push_proposals(finish_proposals.as_slice(), Some(timestamp))
+                    .push_proposals(
+                        finish_proposals.as_slice(),
+                        Some((timestamp, self.finish_proposals.flip_timestamp)),
+                    )
                     .await?;
             } else {
                 writer
@@ -280,6 +290,8 @@ impl GroupStorage {
                     .await?;
             }
         }
+
+        writer.commit().await?;
 
         // update memory
         if self
@@ -293,7 +305,6 @@ impl GroupStorage {
         match new_header {
             Some(new_header) => {
                 self.dec_state_id = new_header.result_state_id().clone();
-                self.header_block = Some(new_header);
 
                 let new_pre_commit = new_pre_commit.expect("shoud got new pre-commit block");
                 self.prepares.remove(&new_pre_commit.0);
@@ -309,7 +320,7 @@ impl GroupStorage {
                 }
 
                 if self.first_block.is_none() {
-                    self.first_block = self.header_block.clone();
+                    self.first_block = Some(new_header.clone());
                 }
 
                 let timestamp = new_header.named_object().desc().create_time();
@@ -325,6 +336,7 @@ impl GroupStorage {
                     assert!(is_new);
                 }
 
+                self.header_block = Some(new_header);
                 return Ok(Some((self.header_block.as_ref().unwrap(), removed_blocks)));
             }
             None => {
@@ -359,7 +371,9 @@ impl GroupStorage {
 
         // storage
         let mut writer = self.storage_engine.create_writer().await?;
-        writer.set_last_vote_round(round).await?;
+        writer
+            .set_last_vote_round(round, self.last_vote_round)
+            .await?;
 
         self.last_vote_round = round;
 
