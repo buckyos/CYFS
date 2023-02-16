@@ -25,15 +25,10 @@
 |               |--last-vote-round-->u64 // 最后一次投票的轮次
 |               |
 |               |--range-->(${first_height}, ${header_height}) // 保留的历史block序列号区间
-|               |--str(${height})
-|               |   |--block-->GroupConsensusBlock
+|               |--str(${height})->block
 |               |
-|               |--prepares // Prepare状态的block
-|               |   |--${block.id}
-|               |       |--block
-|               |--pre-commits // pre-commit状态的block
-|               |   |--${block.id}
-|               |       |--block
+|               |--prepares->Set<block> // Prepare状态的block
+|               |--pre-commits->Set<block> // pre-commit状态的block
 |               |
 |               |--finish-proposals
 |               |   |--flip-time-->Timestamp // 取block时间戳
