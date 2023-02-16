@@ -435,6 +435,7 @@ impl CyfsStackImpl {
             signer,
             Box::new(GroupNONDriver::new(non_service.clone())),
             bdt_stack.clone(),
+            global_state_manager.clone_processor(),
         )?;
 
         let mut stack = Self {

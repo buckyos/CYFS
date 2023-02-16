@@ -1,19 +1,17 @@
 use cyfs_base::{ObjectId, ObjectIdDataBuilder};
 
-pub const STATEPATH_SEPARATOR: &str = "/";
-
-pub const STATEPATH_GROUPS: &str = "groups";
-
-pub const STATEPATH_DEC_STATE: &str = ".dec-state";
-
-pub const STATEPATH_LINK: &str = ".link";
-pub const STATEPATH_GROUP_HASH: &str = "group-hash";
-pub const STATEPATH_USERS: &str = "users";
-pub const STATEPATH_USERS_NONCE: &str = "nonce";
-pub const STATEPATH_RANGE: &str = "range";
-pub const STATEPATH_BLOCK: &str = "block";
-
-pub const STATEPATH_RPATHS: &str = ".r-paths";
+pub const STATE_PATH_SEPARATOR: &str = "/";
+pub const GROUP_STATE_PATH_DEC_STATE: &str = ".dec-state";
+pub const GROUP_STATE_PATH_LINK: &str = ".link";
+pub const GROUP_STATE_PATH_GROUP_BLOB: &str = "group-blob";
+pub const GROUP_STATE_PATH_LAST_VOTE_ROUNDS: &str = "last-vote-round";
+pub const GROUP_STATE_PATH_RANGE: &str = "range";
+pub const GROUP_STATE_PATH_PREPARES: &str = "prepares";
+pub const GROUP_STATE_PATH_PRE_COMMITS: &str = "pre-commits";
+pub const GROUP_STATE_PATH_FINISH_PROPOSALS: &str = "finish-proposals";
+pub const GROUP_STATE_PATH_FLIP_TIME: &str = "flip-time";
+pub const GROUP_STATE_PATH_RECYCLE: &str = "recycle";
+pub const GROUP_STATE_PATH_ADDING: &str = "adding";
 
 pub const STATEPATH_GROUP_DEC_RPATH: &str = ".update";
 pub const STATEPATH_GROUP_DEC_LATEST_VERSION: &str = "latest-version";
@@ -23,180 +21,131 @@ lazy_static::lazy_static! {
     pub static ref STATEPATH_GROUP_DEC_ID_STR: String = STATEPATH_GROUP_DEC_ID.to_string();
 }
 
-pub struct StatePath {
-    group_id: ObjectId,
-    group_id_str: String,
-    dec_id: ObjectId,
-    dec_id_str: String,
+pub struct GroupStatePath {
     rpath: String,
+    dec_state: String,
+    link: String,
+    group_blob: String,
+    last_vote_round: String,
+    range: String,
+    prepares: String,
+    pre_commits: String,
+    finish_proposals: String,
+    flip_time: String,
+    recycle: String,
+    adding: String,
 }
 
-impl StatePath {
-    pub fn new(group_id: ObjectId, dec_id: ObjectId, rpath: String) -> Self {
+impl GroupStatePath {
+    pub fn new(rpath: String) -> Self {
         Self {
-            group_id_str: group_id.to_string(),
-            group_id,
-            dec_id_str: dec_id.to_string(),
-            dec_id,
+            dec_state: Self::join(&[rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
+            link: Self::join(&[rpath.as_str(), GROUP_STATE_PATH_LINK]),
+            group_blob: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_GROUP_BLOB,
+            ]),
+            last_vote_round: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_LAST_VOTE_ROUNDS,
+            ]),
+            range: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_RANGE,
+            ]),
+            prepares: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_PREPARES,
+            ]),
+            pre_commits: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_PRE_COMMITS,
+            ]),
+            finish_proposals: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_FINISH_PROPOSALS,
+            ]),
+            flip_time: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_FINISH_PROPOSALS,
+                GROUP_STATE_PATH_FLIP_TIME,
+            ]),
+            recycle: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_FINISH_PROPOSALS,
+                GROUP_STATE_PATH_RECYCLE,
+            ]),
+            adding: Self::join(&[
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_FINISH_PROPOSALS,
+                GROUP_STATE_PATH_ADDING,
+            ]),
             rpath,
         }
     }
 
     pub fn join(fields: &[&str]) -> String {
-        fields.join(STATEPATH_SEPARATOR)
+        fields.join(STATE_PATH_SEPARATOR)
     }
 
-    pub fn dec_state() -> String {
-        STATEPATH_DEC_STATE.to_string()
+    pub fn root(&self) -> &str {
+        self.rpath.as_str()
     }
 
-    pub fn dec_state_group(&self) -> String {
-        Self::join(&[STATEPATH_DEC_STATE, self.group_id_str.as_str()])
+    pub fn dec_state(&self) -> &str {
+        self.dec_state.as_str()
     }
 
-    pub fn dec_state_dec(&self) -> String {
-        Self::join(&[
-            STATEPATH_DEC_STATE,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-        ])
+    pub fn link(&self) -> &str {
+        self.link.as_str()
     }
 
-    pub fn dec_state_rpath(&self) -> String {
-        Self::join(&[
-            STATEPATH_DEC_STATE,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-        ])
+    pub fn group_blob(&self) -> &str {
+        self.group_blob.as_str()
     }
 
-    pub fn dec_state_rpath_with_sub_path(&self, sub_path: &str) -> String {
-        Self::join(&[
-            STATEPATH_DEC_STATE,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            sub_path,
-        ])
+    pub fn last_vote_round(&self) -> &str {
+        self.last_vote_round.as_str()
     }
 
-    pub fn link() -> String {
-        STATEPATH_LINK.to_string()
+    pub fn range(&self) -> &str {
+        self.range.as_str()
     }
 
-    pub fn link_group(&self) -> String {
-        Self::join(&[STATEPATH_LINK, self.group_id_str.as_str()])
+    pub fn commit_height(&self, height: u64) -> String {
+        Self::join(&[self.link.as_str(), height.to_string().as_str()])
     }
 
-    pub fn link_dec(&self) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-        ])
+    pub fn prepares(&self) -> &str {
+        self.prepares.as_str()
     }
 
-    pub fn link_rpath(&self) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-        ])
+    pub fn pre_commits(&self) -> &str {
+        self.pre_commits.as_str()
     }
 
-    pub fn link_group_hash(&self) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            STATEPATH_GROUP_HASH,
-        ])
+    pub fn finish_proposals(&self) -> &str {
+        self.finish_proposals.as_str()
     }
 
-    pub fn link_users(&self) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            STATEPATH_USERS,
-        ])
+    pub fn flip_time(&self) -> &str {
+        self.flip_time.as_str()
     }
 
-    pub fn link_user(&self, user_id: &ObjectId) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            STATEPATH_USERS,
-            user_id.to_string().as_str(),
-        ])
+    pub fn recycle(&self) -> &str {
+        self.recycle.as_str()
     }
 
-    pub fn link_user_nonce(&self, user_id: &ObjectId) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            STATEPATH_USERS,
-            user_id.to_string().as_str(),
-            STATEPATH_USERS_NONCE,
-        ])
-    }
-
-    pub fn link_range(&self) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            STATEPATH_RANGE,
-        ])
-    }
-
-    pub fn link_height(&self, height_seq: u64) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            height_seq.to_string().as_str(),
-        ])
-    }
-
-    pub fn link_block(&self, height_seq: u64) -> String {
-        Self::join(&[
-            STATEPATH_LINK,
-            self.group_id_str.as_str(),
-            self.dec_id_str.as_str(),
-            self.rpath.as_str(),
-            height_seq.to_string().as_str(),
-            STATEPATH_BLOCK,
-        ])
-    }
-
-    pub fn rpaths(&self) -> String {
-        STATEPATH_RPATHS.to_string()
-    }
-}
-
-pub struct GroupUpdateStatePath;
-
-impl GroupUpdateStatePath {
-    pub fn latest_version() -> &'static str {
-        STATEPATH_GROUP_DEC_LATEST_VERSION
-    }
-
-    pub fn version_seq(version_seq: u64) -> String {
-        version_seq.to_string()
-    }
-
-    pub fn group_hash(group_hash: &ObjectId) -> String {
-        group_hash.to_string()
+    pub fn adding(&self) -> &str {
+        self.adding.as_str()
     }
 }
