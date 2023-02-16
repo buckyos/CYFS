@@ -11,9 +11,14 @@ use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
-use crate::{storage::StorageWriter, NONDriverHelper, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION};
+use crate::{
+    storage::StorageWriter, GroupStatePath, NONDriverHelper, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION,
+};
 
-use super::{engine::StorageEngineMock, StorageEngine};
+use super::{
+    engine::{StorageCacheInfo, StorageEngineGroupState, StorageEngineMock},
+    StorageEngine,
+};
 
 const PROPOSAL_MAX_TIMEOUT_AS_MS: u64 = PROPOSAL_MAX_TIMEOUT.as_millis() as u64;
 
@@ -29,12 +34,6 @@ pub enum BlockLinkState {
     InvalidBranch,
 }
 
-struct FinishProposalMgr {
-    flip_timestamp: u64,
-    over: HashSet<ObjectId>,
-    adding: HashSet<ObjectId>,
-}
-
 pub struct GroupStorage {
     group: Group,
     group_id: ObjectId,
@@ -44,15 +43,9 @@ pub struct GroupStorage {
     non_driver: NONDriverHelper,
     group_chunk_id: ObjectId,
 
-    dec_state_id: Option<ObjectId>, // commited/header state id
-    last_vote_round: u64, // 参与投票的最后一个轮次
-    header_block: Option<GroupConsensusBlock>,
-    first_block: Option<GroupConsensusBlock>,
-    prepares: HashMap<ObjectId, GroupConsensusBlock>,
-    pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
-    finish_proposals: FinishProposalMgr,
+    cache: StorageCacheInfo,
 
-    storage_engine: StorageEngineMock,
+    storage_engine: StorageEngineGroupState,
 }
 
 impl GroupStorage {
@@ -63,18 +56,18 @@ impl GroupStorage {
         init_state_id: Option<ObjectId>,
         non_driver: NONDriverHelper,
         local_device_id: ObjectId,
-        // root_state_mgr: GlobalStateManagerRawProcessorRef,
+        root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
         let group_chunk = ChunkMeta::from(&group);
         let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
 
-        // let group_state = root_state_mgr
-        //     .load_root_state(group_id, Some(group_id.clone()), true)
-        //     .await?
-        //     .expect("create group state failed.");
+        let group_state = root_state_mgr
+            .load_root_state(group_id, Some(group_id.clone()), true)
+            .await?
+            .expect("create group state failed.");
 
-        // let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
+        let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
 
         Ok(Self {
             group,
@@ -82,20 +75,13 @@ impl GroupStorage {
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            dec_state_id: init_state_id,
             group_chunk_id: group_chunk_id.object_id(),
-            last_vote_round: 0,
-            header_block: None,
-            first_block: None,
-            prepares: HashMap::new(),
-            pre_commits: HashMap::new(),
-            storage_engine: StorageEngineMock::new(),
+            storage_engine: StorageEngineGroupState::new(
+                dec_group_state,
+                GroupStatePath::new(rpath.to_string()),
+            ),
             local_device_id,
-            finish_proposals: FinishProposalMgr {
-                flip_timestamp: 0,
-                over: HashSet::new(),
-                adding: HashSet::new(),
-            },
+            cache: StorageCacheInfo::new(init_state_id),
         })
     }
 
@@ -104,37 +90,62 @@ impl GroupStorage {
         dec_id: &ObjectId,
         rpath: &str,
         non_driver: NONDriverHelper,
-        // root_state_mgr: GlobalStateManagerRawProcessorRef,
+        local_device_id: ObjectId,
+        root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
-        // unimplemented!()
 
-        Err(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
+        let group = non_driver.get_group(group_id, None, None).await?;
+        let group_chunk = ChunkMeta::from(&group);
+        let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
+
+        let group_state = root_state_mgr
+            .load_root_state(group_id, Some(group_id.clone()), true)
+            .await?
+            .expect("create group state failed.");
+
+        let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
+
+        let state_path = GroupStatePath::new(rpath.to_string());
+        let cache =
+            StorageEngineGroupState::load_cache(&dec_group_state, &non_driver, &state_path).await?;
+
+        Ok(Self {
+            group,
+            group_id: group_id.clone(),
+            dec_id: dec_id.clone(),
+            rpath: rpath.to_string(),
+            non_driver,
+            group_chunk_id: group_chunk_id.object_id(),
+            storage_engine: StorageEngineGroupState::new(dec_group_state, state_path),
+            local_device_id,
+            cache: cache,
+        })
     }
 
     pub fn header_block(&self) -> &Option<GroupConsensusBlock> {
-        &self.header_block
+        &self.cache.header_block
     }
 
     pub fn header_round(&self) -> u64 {
-        self.header_block.as_ref().map_or(0, |b| b.round())
+        self.cache.header_block.as_ref().map_or(0, |b| b.round())
     }
 
     pub fn header_height(&self) -> u64 {
-        self.header_block.as_ref().map_or(0, |b| b.height())
+        self.cache.header_block.as_ref().map_or(0, |b| b.height())
     }
 
     pub fn first_block(&self) -> &Option<GroupConsensusBlock> {
-        &self.first_block
+        &self.cache.first_block
     }
 
     pub fn prepares(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
-        &self.prepares
+        &self.cache.prepares
     }
 
     pub fn pre_commits(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
-        &self.pre_commits
+        &self.cache.pre_commits
     }
 
     pub fn group(&self) -> &Group {
@@ -146,34 +157,37 @@ impl GroupStorage {
     }
 
     pub fn dec_state_id(&self) -> &Option<ObjectId> {
-        &self.dec_state_id
+        &self.cache.dec_state_id
     }
 
     pub async fn get_block_by_height(&self, height: u64) -> BuckyResult<GroupConsensusBlock> {
         let header_height = self.header_height();
         let block = match height.cmp(&header_height) {
             std::cmp::Ordering::Less => {
-                if height == self.first_block.as_ref().map_or(0, |b| b.height()) {
-                    self.first_block.clone()
+                if height == self.cache.first_block.as_ref().map_or(0, |b| b.height()) {
+                    self.cache.first_block.clone()
                 } else {
                     // find in storage
                     let block_id = self.storage_engine.find_block_by_height(height).await?;
                     Some(self.non_driver.get_block(&block_id, None).await?)
                 }
             }
-            std::cmp::Ordering::Equal => self.header_block.clone(),
+            std::cmp::Ordering::Equal => self.cache.header_block.clone(),
             std::cmp::Ordering::Greater => {
                 if height == header_height + 1 {
-                    self.pre_commits
+                    self.cache
+                        .pre_commits
                         .iter()
                         .find(|(_, block)| block.height() == height)
                         .or(self
+                            .cache
                             .prepares
                             .iter()
                             .find(|(_, block)| block.height() == height))
                         .map(|(_, block)| block.clone())
                 } else if height == header_height + 2 {
-                    self.prepares
+                    self.cache
+                        .prepares
                         .iter()
                         .find(|(_, block)| block.height() == height)
                         .map(|(_, block)| block.clone())
@@ -202,16 +216,17 @@ impl GroupStorage {
 
         // prepare update memory
         if let Some(prev_block_id) = prev_block_id {
-            if let Some(prev_block) = self.prepares.get(prev_block_id) {
+            if let Some(prev_block) = self.cache.prepares.get(prev_block_id) {
                 new_pre_commit = Some((prev_block_id.clone(), prev_block.clone()));
 
                 if let Some(prev_prev_block_id) = prev_block.prev_block_id() {
-                    if let Some(prev_prev_block) = self.pre_commits.get(prev_prev_block_id) {
+                    if let Some(prev_prev_block) = self.cache.pre_commits.get(prev_prev_block_id) {
                         assert_eq!(block.height(), header_height + 3);
                         assert_eq!(prev_prev_block.height(), header_height + 1);
                         assert_eq!(
                             prev_prev_block.prev_block_id(),
-                            self.header_block
+                            self.cache
+                                .header_block
                                 .as_ref()
                                 .map(|b| b.block_id().object_id().clone())
                                 .as_ref()
@@ -220,7 +235,7 @@ impl GroupStorage {
                         new_header = Some(prev_prev_block.clone());
                         let new_header_id = prev_prev_block.block_id().object_id();
 
-                        for (id, block) in self.prepares.iter() {
+                        for (id, block) in self.cache.prepares.iter() {
                             if block.prev_block_id().map(|prev_id| {
                                 assert_ne!(prev_id, prev_block_id);
                                 prev_id == new_header_id
@@ -261,10 +276,11 @@ impl GroupStorage {
                     new_header.height(),
                     new_header.block_id().object_id(),
                     new_header.result_state_id(),
-                    self.header_block
+                    self.cache
+                        .header_block
                         .as_ref()
                         .map_or(&None, |b| b.result_state_id()),
-                    self.first_block.as_ref().map_or(0, |b| b.height()),
+                    self.cache.first_block.as_ref().map_or(0, |b| b.height()),
                 )
                 .await?;
 
@@ -277,11 +293,11 @@ impl GroupStorage {
                 .collect();
 
             let timestamp = new_header.named_object().desc().create_time();
-            if timestamp - self.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
+            if timestamp - self.cache.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
                 writer
                     .push_proposals(
                         finish_proposals.as_slice(),
-                        Some((timestamp, self.finish_proposals.flip_timestamp)),
+                        Some((timestamp, self.cache.finish_proposals.flip_timestamp)),
                     )
                     .await?;
             } else {
@@ -295,6 +311,7 @@ impl GroupStorage {
 
         // update memory
         if self
+            .cache
             .prepares
             .insert(block_id.object_id().clone(), block)
             .is_some()
@@ -304,53 +321,60 @@ impl GroupStorage {
 
         match new_header {
             Some(new_header) => {
-                self.dec_state_id = new_header.result_state_id().clone();
+                self.cache.dec_state_id = new_header.result_state_id().clone();
 
                 let new_pre_commit = new_pre_commit.expect("shoud got new pre-commit block");
-                self.prepares.remove(&new_pre_commit.0);
+                self.cache.prepares.remove(&new_pre_commit.0);
 
                 let mut removed_blocks = HashMap::from([new_pre_commit]);
 
-                std::mem::swap(&mut self.pre_commits, &mut removed_blocks);
+                std::mem::swap(&mut self.cache.pre_commits, &mut removed_blocks);
                 let mut removed_blocks: Vec<GroupConsensusBlock> =
                     removed_blocks.into_values().collect();
 
                 for id in remove_prepares.iter() {
-                    removed_blocks.push(self.prepares.remove(id).unwrap());
+                    removed_blocks.push(self.cache.prepares.remove(id).unwrap());
                 }
 
-                if self.first_block.is_none() {
-                    self.first_block = Some(new_header.clone());
+                if self.cache.first_block.is_none() {
+                    self.cache.first_block = Some(new_header.clone());
                 }
 
                 let timestamp = new_header.named_object().desc().create_time();
-                if timestamp - self.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
+                if timestamp - self.cache.finish_proposals.flip_timestamp
+                    > PROPOSAL_MAX_TIMEOUT_AS_MS
+                {
                     let mut new_over = HashSet::new();
-                    std::mem::swap(&mut new_over, &mut self.finish_proposals.adding);
-                    std::mem::swap(&mut new_over, &mut self.finish_proposals.over);
-                    self.finish_proposals.flip_timestamp = timestamp;
+                    std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.adding);
+                    std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.over);
+                    self.cache.finish_proposals.flip_timestamp = timestamp;
                 }
 
                 for proposal in new_header.proposals() {
-                    let is_new = self.finish_proposals.adding.insert(proposal.proposal);
+                    let is_new = self.cache.finish_proposals.adding.insert(proposal.proposal);
                     assert!(is_new);
                 }
 
-                self.header_block = Some(new_header);
-                return Ok(Some((self.header_block.as_ref().unwrap(), removed_blocks)));
+                self.cache.header_block = Some(new_header);
+                return Ok(Some((
+                    self.cache.header_block.as_ref().unwrap(),
+                    removed_blocks,
+                )));
             }
             None => {
                 if let Some(new_pre_commit) = new_pre_commit {
                     assert!(remove_prepares.is_empty());
 
                     if self
+                        .cache
                         .pre_commits
                         .insert(new_pre_commit.0, new_pre_commit.1)
                         .is_some()
                     {
                         assert!(false);
                     }
-                    self.prepares
+                    self.cache
+                        .prepares
                         .remove(&new_pre_commit.0)
                         .expect("any block in pre-commit should be from prepare");
                 }
@@ -361,21 +385,21 @@ impl GroupStorage {
     }
 
     pub fn last_vote_round(&self) -> u64 {
-        self.last_vote_round
+        self.cache.last_vote_round
     }
 
     pub async fn set_last_vote_round(&mut self, round: u64) -> BuckyResult<()> {
-        if round <= self.last_vote_round {
+        if round <= self.cache.last_vote_round {
             return Ok(());
         }
 
         // storage
         let mut writer = self.storage_engine.create_writer().await?;
         writer
-            .set_last_vote_round(round, self.last_vote_round)
+            .set_last_vote_round(round, self.cache.last_vote_round)
             .await?;
 
-        self.last_vote_round = round;
+        self.cache.last_vote_round = round;
 
         Ok(())
     }
@@ -533,15 +557,16 @@ impl GroupStorage {
     }
 
     pub fn find_block_in_cache(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {
-        if let Some(block) = self.header_block.as_ref() {
+        if let Some(block) = self.cache.header_block.as_ref() {
             if block.block_id().object_id() == block_id {
                 return Ok(block.clone());
             }
         }
 
-        self.prepares
+        self.cache
+            .prepares
             .get(block_id)
-            .or(self.pre_commits.get(block_id))
+            .or(self.cache.pre_commits.get(block_id))
             .ok_or(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
             .map(|block| block.clone())
     }
@@ -553,20 +578,24 @@ impl GroupStorage {
             std::cmp::Ordering::Less => {
                 return Err(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
             }
-            std::cmp::Ordering::Equal => self.header_block.as_ref(),
+            std::cmp::Ordering::Equal => self.cache.header_block.as_ref(),
             std::cmp::Ordering::Greater => if round == header_round + 1 {
-                self.pre_commits
+                self.cache
+                    .pre_commits
                     .iter()
                     .find(|(_, block)| block.round() == round)
                     .or(self
+                        .cache
                         .prepares
                         .iter()
                         .find(|(_, block)| block.round() == round))
             } else {
-                self.prepares
+                self.cache
+                    .prepares
                     .iter()
                     .find(|(_, block)| block.round() == round)
                     .or(self
+                        .cache
                         .pre_commits
                         .iter()
                         .find(|(_, block)| block.round() == round))
@@ -615,10 +644,11 @@ impl GroupStorage {
         // find in storage
 
         let is_finished = self
+            .cache
             .finish_proposals
             .adding
             .get(proposal_id)
-            .or(self.finish_proposals.over.get(proposal_id))
+            .or(self.cache.finish_proposals.over.get(proposal_id))
             .is_some();
         Ok(is_finished)
     }
@@ -647,7 +677,7 @@ impl GroupStorage {
         &self,
         round: u64,
     ) -> (BuckyResult<GroupConsensusBlock>, Vec<GroupConsensusBlock>) {
-        if self.header_block.is_none() {
+        if self.cache.header_block.is_none() {
             return (
                 Err(BuckyError::new(BuckyErrorCode::NotFound, "not exist")),
                 vec![],
@@ -655,7 +685,7 @@ impl GroupStorage {
         }
 
         let mut blocks = vec![];
-        let mut block = self.header_block.clone().unwrap();
+        let mut block = self.cache.header_block.clone().unwrap();
         let mut min_height = 1;
         let mut min_round = 1;
         let mut max_height = block.height();
