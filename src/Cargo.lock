@@ -1475,6 +1475,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-backup"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "cyfs-base",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "log 0.4.17",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
 name = "cyfs-base"
 version = "0.6.9"
 dependencies = [
