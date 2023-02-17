@@ -1486,6 +1486,7 @@ dependencies = [
  "cyfs-lib",
  "cyfs-util",
  "log 0.4.17",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "zip",

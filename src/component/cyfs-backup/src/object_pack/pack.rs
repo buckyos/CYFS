@@ -73,4 +73,12 @@ impl ObjectPackFactory {
             }
         }
     }
+
+    pub fn create_zip_reader(path: PathBuf) -> Box<dyn ObjectPackReader> {
+        Self::create_reader(ObjectPackFormat::Zip, path)
+    }
+
+    pub fn create_zip_writer(path: PathBuf) -> Box<dyn ObjectPackWriter> {
+        Self::create_writer(ObjectPackFormat::Zip, path)
+    }
 }
