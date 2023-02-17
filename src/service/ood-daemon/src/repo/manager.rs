@@ -119,6 +119,12 @@ impl RepoManager {
 
     pub async fn fetch_service(&self, fid: &str) -> BuckyResult<PathBuf> {
         let repo_list = self.repo_list.lock().unwrap().clone();
+        if repo_list.is_empty() {
+            let msg = format!("fetch service but repo list is empty! fid={}", fid);
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
+        }
+
         let cache_dir = self.cache_dir.clone();
         let fid = fid.to_owned();
 
@@ -222,13 +228,12 @@ impl RepoManager {
         for item in repo_node.iter() {
             info!("new repo item: {:?}", item);
             if let toml::Value::Table(m) = item {
-                let ret = Self::load_repo_item(&m).await;
-                if !ret.is_ok() {
-                    continue;
-                }
-
-                let repo = ret.unwrap();
+                let repo = Self::load_repo_item(&m).await?;
                 self.repo_list.lock().unwrap().push(Arc::new(repo));
+            } else {
+                let msg = format!("unsupport repo item format!");
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
             }
         }
 
