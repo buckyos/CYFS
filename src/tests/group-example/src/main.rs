@@ -363,7 +363,7 @@ mod Common {
 
         let stack_param = CyfsStackParams {
             config: CyfsStackConfigParams {
-                isolate: Some(device.desc().object_id()),
+                isolate: Some(device.desc().object_id().to_string()),
                 sync_service: false,
                 shared_stack: false,
             },
