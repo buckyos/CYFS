@@ -5,7 +5,6 @@ use cyfs_base::{
     ObjectMapPathOpEnvRef, ObjectMapRootManagerRef, ObjectMapSimpleContentType,
     ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
-use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
     GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
@@ -213,9 +212,11 @@ impl StorageEngineGroupStateWriter {
                 .await?;
         }
 
-        self.op_env
-            .insert_with_path(self.state_path.pre_commits(), block_id)
-            .await
+        let is_changed = self.op_env
+            .insert(self.state_path.pre_commits(), block_id)
+            .await?;
+        assert!(is_changed);
+        Ok(())
     }
 
     async fn push_commit_inner(
@@ -469,7 +470,16 @@ impl StorageWriter for StorageEngineGroupStateWriter {
                 self.prepare_map_id.is_none(),
             )
             .await?;
-        self.op_env.commit().await.map(|_| ())
+        self.op_env.commit().await.map_or_else(
+            |err| {
+                if err.code() == BuckyErrorCode::AlreadyExists {
+                    Ok(())
+                } else {
+                    Err(err)
+                }
+            },
+            |_| Ok(()),
+        )
     }
 }
 
