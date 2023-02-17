@@ -1,23 +1,20 @@
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
-use std::path::{PathBuf, Path};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
-pub type ObjectPackArchiveFile = Box<dyn AsyncRead + Unpin + Sync + Send + 'static>;
+pub type ObjectPackInnerFile = Box<dyn AsyncRead + Unpin + Sync + Send + 'static>;
 
 #[async_trait::async_trait]
 pub trait ObjectPackReader: Send {
     async fn open(&mut self) -> BuckyResult<()>;
     async fn close(&mut self) -> BuckyResult<()>;
 
-    async fn get_data(
-        &mut self,
-        object_id: &ObjectId,
-    ) -> BuckyResult<Option<ObjectPackArchiveFile>>;
+    async fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>>;
 
     async fn reset(&mut self);
-    async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackArchiveFile)>>;
+    async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackInnerFile)>>;
 }
 
 #[async_trait::async_trait]
@@ -51,15 +48,13 @@ pub enum ObjectPackFormat {
     Zip,
 }
 
-pub struct ObjectPackFactory {
-    
-}
+pub struct ObjectPackFactory {}
 
 impl ObjectPackFactory {
     pub fn create_reader(format: ObjectPackFormat, path: PathBuf) -> Box<dyn ObjectPackReader> {
         match format {
             ObjectPackFormat::Zip => {
-                let ret=  super::zip::ZipObjectPackReader::new(path);
+                let ret = super::zip::ZipObjectPackReader::new(path);
                 Box::new(ret)
             }
         }
@@ -68,7 +63,7 @@ impl ObjectPackFactory {
     pub fn create_writer(format: ObjectPackFormat, path: PathBuf) -> Box<dyn ObjectPackWriter> {
         match format {
             ObjectPackFormat::Zip => {
-                let ret=  super::zip::ZipObjectPackWriter::new(path);
+                let ret = super::zip::ZipObjectPackWriter::new(path);
                 Box::new(ret)
             }
         }

@@ -55,7 +55,7 @@ impl ZipObjectPackReader {
 
     fn zip_file_to_reader(
         zip_file: &mut zip::read::ZipFile<'_>,
-    ) -> BuckyResult<ObjectPackArchiveFile> {
+    ) -> BuckyResult<ObjectPackInnerFile> {
         let mut buffer = vec![];
         let bytes = zip_file.read_to_end(&mut buffer).map_err(|e| {
             let msg = format!("read zip file failed! file={}, {}", zip_file.name(), e);
@@ -78,7 +78,7 @@ impl ZipObjectPackReader {
         Ok(Box::new(reader))
     }
 
-    pub fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackArchiveFile>> {
+    pub fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>> {
         let full_file_path = ZipObjectPackWriter::zip_inner_path(object_id);
 
         let reader = self.reader.as_mut().unwrap();
@@ -130,7 +130,7 @@ impl ZipObjectPackReader {
         Ok(object_id)
     }
 
-    pub fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackArchiveFile)>> {
+    pub fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackInnerFile)>> {
         let reader = self.reader.as_mut().unwrap();
 
         let index = self.next_file_index;
@@ -156,17 +156,14 @@ impl ObjectPackReader for ZipObjectPackReader {
         Self::close(self)
     }
 
-    async fn get_data(
-        &mut self,
-        object_id: &ObjectId,
-    ) -> BuckyResult<Option<ObjectPackArchiveFile>> {
+    async fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>> {
         Self::get_data(self, object_id)
     }
 
     async fn reset(&mut self) {
         Self::reset(self)
     }
-    async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackArchiveFile)>> {
+    async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackInnerFile)>> {
         Self::next_data(self)
     }
 }

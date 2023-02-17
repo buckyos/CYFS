@@ -15,7 +15,11 @@ pub struct ObjectPackSerializeReader {
 }
 
 impl ObjectPackSerializeReader {
-    pub fn new( format: ObjectPackFormat, root: PathBuf, file_list: Vec<ObjectPackFileInfo>) -> Self {
+    pub fn new(
+        format: ObjectPackFormat,
+        root: PathBuf,
+        file_list: Vec<ObjectPackFileInfo>,
+    ) -> Self {
         Self {
             format,
             root,
@@ -54,7 +58,7 @@ impl ObjectPackSerializeReader {
         self.next_zip_file_index = 0;
     }
 
-    pub async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackArchiveFile)>> {
+    pub async fn next_data(&mut self) -> BuckyResult<Option<(ObjectId, ObjectPackInnerFile)>> {
         let ret = loop {
             if self.current.is_none() {
                 if self.next_file_index >= self.file_list.len() {
