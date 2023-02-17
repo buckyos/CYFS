@@ -17,7 +17,7 @@ pub struct NamedDataRepo {
 
 impl NamedDataRepo {
     pub async fn new() -> BuckyResult<NamedDataRepo> {
-        let mut repo = NamedDataRepo {
+        let repo = NamedDataRepo {
             client: OnceCell::new(),
         };
 
@@ -27,8 +27,7 @@ impl NamedDataRepo {
         }
     }
 
-    pub async fn init(&mut self) -> BuckyResult<()> {
-
+    pub async fn init(&self) -> BuckyResult<()> {
 
         // service desc确保它有固定外网地址，连接不走sn。这里sn_list就可以传None
         let mut config = NamedCacheClientConfig::default();
