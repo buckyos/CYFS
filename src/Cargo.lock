@@ -1479,10 +1479,12 @@ name = "cyfs-backup"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "async-trait",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
+ "cyfs-util",
  "log 0.4.17",
  "serde",
  "serde_json",
@@ -2298,6 +2300,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "zip",
  "zone-simulator",
 ]
 
