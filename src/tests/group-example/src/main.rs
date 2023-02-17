@@ -337,13 +337,13 @@ mod Common {
     }
 
     fn init_stack_params(
-        people: People,
+        people: &People,
         private_key: &PrivateKey,
-        device: Device,
+        device: &Device,
         admins: Vec<(People, Device)>,
         members: Vec<(People, Device)>,
-        group: Group,
-        dec_app: DecApp,
+        group: &Group,
+        dec_app: &DecApp,
     ) -> Box<(BdtStackParams, CyfsStackParams, CyfsStackKnownObjects)> {
         log::info!("init_stack_params");
 
@@ -443,13 +443,13 @@ mod Common {
     }
 
     pub async fn create_stack(
-        people: People,
+        people: &People,
         private_key: &PrivateKey,
-        device: Device,
+        device: &Device,
         admins: Vec<(People, Device)>,
         members: Vec<(People, Device)>,
-        group: Group,
-        dec_app: DecApp,
+        group: &Group,
+        dec_app: &DecApp,
     ) -> CyfsStack {
         let params =
             init_stack_params(people, private_key, device, admins, members, group, dec_app);
@@ -778,9 +778,9 @@ async fn main_run() {
     let mut admin_stacks: Vec<CyfsStack> = vec![];
     for ((admin, _), (device, private_key)) in admins.iter() {
         let cyfs_stack = create_stack(
-            admin.clone(),
+            admin,
             private_key,
-            device.clone(),
+            device,
             admins
                 .iter()
                 .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
@@ -789,8 +789,8 @@ async fn main_run() {
                 .iter()
                 .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
                 .collect(),
-            group.clone(),
-            dec_app.clone(),
+            &group,
+            &dec_app,
         )
         .await;
         admin_stacks.push(cyfs_stack);
@@ -898,7 +898,7 @@ async fn main_run() {
         });
 
         if i % 10 == 0 {
-            async_std::task::sleep(Duration::from_millis(200)).await;
+            async_std::task::sleep(Duration::from_millis(1000)).await;
             log::info!("will push new proposals, i: {}", i);
         }
     }
