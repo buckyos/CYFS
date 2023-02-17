@@ -234,7 +234,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             min_cwnd: 2, 
-            init_cwnd: 4, 
+            init_cwnd: 10, 
             probe_rtt_time: Duration::from_millis(200), 
             probe_rtt_based_on_bdp: true, 
             drain_to_target: true, 
@@ -738,7 +738,7 @@ impl CcImpl for Bbr {
 
     fn on_no_resp(&mut self, rto: Duration, lost: u64) -> Duration {
         self.loss_state.lost_bytes += lost;
-        rto
+        rto * 2
     }
 
     fn on_time_escape(&mut self, _: Timestamp) {

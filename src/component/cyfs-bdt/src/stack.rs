@@ -122,10 +122,10 @@ impl StackConfig {
                 listener: stream::listener::Config { backlog: 100 },
                 stream: stream::container::Config {
                     nagle: Duration::from_millis(0),
-                    recv_buffer: 1024 * 256,
+                    recv_buffer: 1024 * 1024,
                     recv_timeout: Duration::from_millis(200),
                     drain: 0.5,
-                    send_buffer: 1024 * 256, // 这个值不能小于下边的max_record
+                    send_buffer: 1024 * 512, // 这个值不能小于下边的max_record
                     retry_sn_timeout: Duration::from_secs(2), 
                     connect_timeout: Duration::from_secs(5),
                     tcp: stream::tcp::Config {

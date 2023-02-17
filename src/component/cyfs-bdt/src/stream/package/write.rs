@@ -54,7 +54,7 @@ impl WriteProviderImpl {
                 if d > stream.config().package.break_overtime {
                     (true, true)
                 } else {
-                    debug!("{} cc no ack in rto", stream);
+                    debug!("{} cc no ack in rto, lost={}", stream, lost);
                     self.cc.on_no_resp(lost as u64);
                     (true, false)
                 }
@@ -238,11 +238,11 @@ impl WriteProvider {
         result
     }
 
-    pub fn on_sent(&self, sent_bytes: u64, sent_packages: u64) {
+    pub fn on_sent(&self, sent_bytes: u64, last_packet_number: u64) {
         let state = &mut *cyfs_debug::lock!(self.0).unwrap();
         match state {
             WriteProviderState::Open(provider) => {
-                provider.cc.on_sent(bucky_time_now(), sent_bytes, sent_packages);
+                provider.cc.on_sent(bucky_time_now(), sent_bytes, last_packet_number);
             }
             _ => {}
         }
@@ -312,7 +312,7 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                             trace!("{} newly ack {} to {}", stream, newly_acked, provider.queue.start());
                             provider.cc.on_ack(provider.queue.flight() as u64, 
                             newly_acked as u64, 
-                            Some(1), 
+                            Some(session_data.send_time), 
                             bucky_time_now(),
                             provider.app_limited);
                             debug!("{} update cwnd: {}", stream, provider.cc.cwnd());

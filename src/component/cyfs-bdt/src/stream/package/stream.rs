@@ -86,7 +86,7 @@ impl PackageStream {
             remote_id, 
             write_provider,
             read_provider,
-            pacer: Mutex::new(cc::pacing::Pacer::new(PackageStream::mss() * 4, PackageStream::mss())),
+            pacer: Mutex::new(cc::pacing::Pacer::new(PackageStream::mss() * 10, PackageStream::mss())),
             package_queue: Arc::new(Mutex::new(Default::default())),
         }));
 
@@ -180,7 +180,7 @@ impl PackageStream {
         }
         
         let mut sent_bytes = 0;
-        let mut sent_packages = 0;
+        let mut last_packet_number = 0;
         {
             let mut pacer = self.0.pacer.lock().unwrap();
             let now = Instant::now();
@@ -190,17 +190,16 @@ impl PackageStream {
                     let package_size = session_data.data_size();
                     if let Some(next_time) = pacer.send(package_size, now) {
                         sent_bytes += package_size;
-                        sent_packages += 1;
 
                         self.package_delay(package, next_time);
                         continue;
                     }
+                    last_packet_number = session_data.send_time;
                 }
 
                 match self.0.tunnel.send_package(package) {
                     Ok(sent_len) => {
                         sent_bytes += sent_len;
-                        sent_packages += 1;
                     },
                     Err(err) => {
                         error!("stream send_package err={}", err);
@@ -209,8 +208,8 @@ impl PackageStream {
             }
         }
 
-        if sent_packages > 0 {
-            self.write_provider().on_sent(sent_bytes as u64, sent_packages);
+        if sent_bytes > 0 {
+            self.write_provider().on_sent(sent_bytes as u64, last_packet_number);
         }
 
         Ok(())
