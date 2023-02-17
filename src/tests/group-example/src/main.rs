@@ -3,27 +3,28 @@ use std::{clone, sync::Arc, time::Duration};
 use cyfs_base::{
     AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom, TypelessCoreObject,
 };
-use cyfs_core::{GroupProposal, GroupProposalObject, GroupRPath};
+use cyfs_core::{DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_group::IsCreateRPath;
 use cyfs_lib::{
     DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo, NamedObjectCachePutObjectRequest,
     NamedObjectStorageCategory, RequestProtocol, RequestSourceInfo,
 };
 use cyfs_stack::CyfsStack;
-use Common::{
-    create_stack, dummy, EXAMPLE_ADMINS, EXAMPLE_APP_NAME, EXAMPLE_DEC_APP_ID, EXAMPLE_GROUP,
-    EXAMPLE_RPATH,
-};
+use Common::{create_stack, EXAMPLE_RPATH};
 use GroupDecService::DecService;
 
-mod Common {
-    use std::sync::Arc;
+use crate::Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME};
 
+mod Common {
+    use std::{fmt::format, io::ErrorKind, sync::Arc};
+
+    use async_std::{fs, stream::StreamExt};
     use cyfs_base::{
         AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, EndpointArea, Group,
         GroupMember, IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo,
-        RawEncode, RawFrom, RsaCPUObjectSigner, Signer, StandardObject, TypelessCoreObject,
-        UniqueId, SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
+        RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, StandardObject,
+        TypelessCoreObject, UniqueId, SIGNATURE_SOURCE_REFINDEX_OWNER,
+        SIGNATURE_SOURCE_REFINDEX_SELF,
     };
     use cyfs_bdt_ext::BdtStackParams;
     use cyfs_chunk_lib::ChunkMeta;
@@ -35,113 +36,109 @@ mod Common {
         CyfsStackKnownObjects, CyfsStackKnownObjectsInitMode, CyfsStackMetaParams,
         CyfsStackNOCParams, CyfsStackParams,
     };
-    use rand::Rng;
 
     lazy_static::lazy_static! {
-        pub static ref EXAMPLE_ADMINS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("admin", 4);
-        pub static ref EXAMPLE_MEMBERS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("member", 9);
+    //     pub static ref EXAMPLE_ADMINS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("admin", 4);
+    //     pub static ref EXAMPLE_MEMBERS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("member", 9);
 
-        pub static ref EXAMPLE_GROUP: Group = create_group(&EXAMPLE_ADMINS.get(0).unwrap().0.0, EXAMPLE_ADMINS.iter().map(|m| &m.0.0).collect(), EXAMPLE_MEMBERS.iter().map(|m| &m.0.0).collect(), EXAMPLE_ADMINS.iter().map(|m| &m.1.0).collect());
-        pub static ref EXAMPLE_GROUP_CHUNK: ChunkMeta = ChunkMeta::from(&*EXAMPLE_GROUP);
+    //     pub static ref EXAMPLE_GROUP: Group = create_group(&EXAMPLE_ADMINS.get(0).unwrap().0.0, EXAMPLE_ADMINS.iter().map(|m| &m.0.0).collect(), EXAMPLE_MEMBERS.iter().map(|m| &m.0.0).collect(), EXAMPLE_ADMINS.iter().map(|m| &m.1.0).collect());
+    //     pub static ref EXAMPLE_GROUP_CHUNK: ChunkMeta = ChunkMeta::from(&*EXAMPLE_GROUP);
         pub static ref EXAMPLE_APP_NAME: String = "group-example".to_string();
-        pub static ref EXAMPLE_DEC_APP: DecApp = DecApp::create(EXAMPLE_ADMINS.get(0).unwrap().0.0.desc().object_id(), EXAMPLE_APP_NAME.as_str());
-        pub static ref EXAMPLE_DEC_APP_ID: DecAppId = DecAppId::try_from(EXAMPLE_DEC_APP.desc().object_id()).unwrap();
+    //     pub static ref EXAMPLE_DEC_APP: DecApp = DecApp::create(EXAMPLE_ADMINS.get(0).unwrap().0.0.desc().object_id(), EXAMPLE_APP_NAME.as_str());
+    //     pub static ref EXAMPLE_DEC_APP_ID: DecAppId = DecAppId::try_from(EXAMPLE_DEC_APP.desc().object_id()).unwrap();
         pub static ref EXAMPLE_RPATH: String = "rpath-example".to_string();
     }
 
-    fn create_members(
+    fn create_member(
         name_prefix: &str,
-        count: usize,
-    ) -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
+        index: usize,
+        port: u16,
+    ) -> ((People, PrivateKey), (Device, PrivateKey)) {
         log::info!("create members");
 
-        let port_begin = rand::thread_rng().gen_range(30000u16..60000u16);
-        let mut members = vec![];
+        let name = format!("{}-{}", name_prefix, index);
+        let private_key = PrivateKey::generate_rsa(1024).unwrap();
+        let device_private_key = PrivateKey::generate_rsa(1024).unwrap();
+        let mut owner =
+            People::new(None, vec![], private_key.public(), None, Some(name), None).build();
 
-        for i in 0..count {
-            let name = format!("{}-{}", name_prefix, i);
-            let private_key = PrivateKey::generate_rsa(1024).unwrap();
-            let device_private_key = PrivateKey::generate_rsa(1024).unwrap();
-            let mut owner =
-                People::new(None, vec![], private_key.public(), None, Some(name), None).build();
+        let mut endpoint = Endpoint::default();
+        endpoint.set_protocol(Protocol::Udp);
+        endpoint
+            .mut_addr()
+            .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 100, 120)));
+        endpoint.mut_addr().set_port(port);
+        endpoint.set_area(EndpointArea::Wan);
 
-            let mut endpoint = Endpoint::default();
-            endpoint.set_protocol(Protocol::Udp);
-            endpoint
-                .mut_addr()
-                .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 100, 120)));
-            endpoint.mut_addr().set_port(port_begin + i as u16);
-            endpoint.set_area(EndpointArea::Wan);
+        let mut device = Device::new(
+            Some(owner.desc().object_id()),
+            UniqueId::create_with_random(),
+            vec![endpoint],
+            vec![], // TODO: 当前版本是否支持无SN？
+            vec![],
+            device_private_key.public(),
+            Area::default(),
+            DeviceCategory::PC,
+        )
+        .build();
 
-            let mut device = Device::new(
-                Some(owner.desc().object_id()),
-                UniqueId::create_with_random(),
-                vec![endpoint],
-                vec![], // TODO: 当前版本是否支持无SN？
-                vec![],
-                device_private_key.public(),
-                Area::default(),
-                DeviceCategory::PC,
-            )
-            .build();
+        owner
+            .ood_list_mut()
+            .push(DeviceId::try_from(device.desc().object_id()).unwrap());
 
-            owner
-                .ood_list_mut()
-                .push(DeviceId::try_from(device.desc().object_id()).unwrap());
+        let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
 
-            let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
+        let owner_desc_hash = owner.desc().raw_hash_value().unwrap();
+        let owner_body_hash = owner.body().as_ref().unwrap().raw_hash_value().unwrap();
+        let device_desc_hash = device.desc().raw_hash_value().unwrap();
+        let device_body_hash = device.body().as_ref().unwrap().raw_hash_value().unwrap();
 
-            let owner_desc_hash = owner.desc().raw_hash_value().unwrap();
-            let owner_body_hash = owner.body().as_ref().unwrap().raw_hash_value().unwrap();
-            let device_desc_hash = device.desc().raw_hash_value().unwrap();
-            let device_body_hash = device.body().as_ref().unwrap().raw_hash_value().unwrap();
-
-            let (owner_desc_signature, owner_body_signature, desc_signature, body_signature) =
-                async_std::task::block_on(async move {
-                    let owner_desc_signature = signer
-                        .sign(
-                            owner_desc_hash.as_slice(),
-                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
-                        )
-                        .await
-                        .unwrap();
-
-                    let owner_body_signature = signer
-                        .sign(
-                            owner_body_hash.as_slice(),
-                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
-                        )
-                        .await
-                        .unwrap();
-
-                    let desc_signature = signer
-                        .sign(
-                            device_desc_hash.as_slice(),
-                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
-                        )
-                        .await
-                        .unwrap();
-
-                    let body_signature = signer
-                        .sign(
-                            device_body_hash.as_slice(),
-                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
-                        )
-                        .await
-                        .unwrap();
-
-                    (
-                        owner_desc_signature,
-                        owner_body_signature,
-                        desc_signature,
-                        body_signature,
+        let (owner_desc_signature, owner_body_signature, desc_signature, body_signature) =
+            async_std::task::block_on(async move {
+                let owner_desc_signature = signer
+                    .sign(
+                        owner_desc_hash.as_slice(),
+                        &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
                     )
-                });
+                    .await
+                    .unwrap();
 
-            device.signs_mut().set_desc_sign(desc_signature.clone());
-            device.signs_mut().set_body_sign(body_signature);
+                let owner_body_signature = signer
+                    .sign(
+                        owner_body_hash.as_slice(),
+                        &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
+                    )
+                    .await
+                    .unwrap();
 
-            log::info!(
+                let desc_signature = signer
+                    .sign(
+                        device_desc_hash.as_slice(),
+                        &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+                    )
+                    .await
+                    .unwrap();
+
+                let body_signature = signer
+                    .sign(
+                        device_body_hash.as_slice(),
+                        &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+                    )
+                    .await
+                    .unwrap();
+
+                (
+                    owner_desc_signature,
+                    owner_body_signature,
+                    desc_signature,
+                    body_signature,
+                )
+            });
+
+        device.signs_mut().set_desc_sign(desc_signature.clone());
+        device.signs_mut().set_body_sign(body_signature);
+
+        log::info!(
                 "people: {:?}/{:?}, device: {:?}, public-key: {:?}, private-key: {:?}, sign: {:?}, object: {:?}",
                 owner.name().unwrap(),
                 owner.desc().object_id(),
@@ -152,12 +149,9 @@ mod Common {
                 owner.body().as_ref().unwrap().raw_hash_value().unwrap().to_hex()
             );
 
-            owner.signs_mut().set_desc_sign(owner_desc_signature);
-            owner.signs_mut().set_body_sign(owner_body_signature);
-            members.push(((owner, private_key), (device, device_private_key)));
-        }
-
-        members
+        owner.signs_mut().set_desc_sign(owner_desc_signature);
+        owner.signs_mut().set_body_sign(owner_body_signature);
+        ((owner, private_key), (device, device_private_key))
     }
 
     fn create_group(
@@ -194,16 +188,167 @@ mod Common {
         group
     }
 
+    // (succ, not-found)
+    fn check_read_buf(file_path: &str, result: &std::io::Result<Vec<u8>>) -> (bool, bool) {
+        match result.as_ref() {
+            Ok(b) => {
+                if b.len() == 0 {
+                    (false, true)
+                } else {
+                    (true, false)
+                }
+            }
+            Err(err) if ErrorKind::NotFound == err.kind() => (false, true),
+            Err(err) => {
+                log::warn!("read file {} failed: {:?}", file_path, err);
+                (false, false)
+            }
+        }
+    }
+
+    async fn init_member_from_dir(
+        save_path: &str,
+        name_prefix: &str,
+        count: usize,
+    ) -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
+        fs::create_dir_all(save_path)
+            .await
+            .expect(format!("create dir {} failed", save_path).as_str());
+
+        let min_port = 30217_u16;
+
+        let mut members = vec![];
+
+        for i in 0..count {
+            let index = i + 1;
+            let people_desc_file_path = format!("{}/people-{}.desc", save_path, index);
+            let people_sec_file_path = format!("{}/people-{}.sec", save_path, index);
+            let device_desc_file_path = format!("{}/device-{}.desc", save_path, index);
+            let device_sec_file_path = format!("{}/device-{}.sec", save_path, index);
+
+            let people_desc_r = fs::read(people_desc_file_path.clone()).await;
+            let people_sec_r = fs::read(people_sec_file_path.clone()).await;
+            let device_desc_r = fs::read(device_desc_file_path.clone()).await;
+            let device_sec_r = fs::read(device_sec_file_path.clone()).await;
+
+            let (is_people_desc_succ, is_people_desc_not_found) =
+                check_read_buf(people_desc_file_path.as_str(), &people_desc_r);
+            let (is_people_sec_succ, is_people_sec_not_found) =
+                check_read_buf(people_sec_file_path.as_str(), &people_sec_r);
+            let (is_device_desc_succ, is_device_desc_not_found) =
+                check_read_buf(device_desc_file_path.as_str(), &device_desc_r);
+            let (is_device_sec_succ, is_device_sec_not_found) =
+                check_read_buf(device_sec_file_path.as_str(), &device_sec_r);
+
+            if is_people_desc_succ
+                && is_people_sec_succ
+                && is_device_desc_succ
+                && is_device_sec_succ
+            {
+                // decode
+                let people_desc = People::raw_decode(people_desc_r.unwrap().as_slice())
+                    .expect(format!("decode file {} failed", people_desc_file_path).as_str())
+                    .0;
+                let people_sec = PrivateKey::raw_decode(people_sec_r.unwrap().as_slice())
+                    .expect(format!("decode file {} failed", people_sec_file_path).as_str())
+                    .0;
+                let device_desc = Device::raw_decode(device_desc_r.unwrap().as_slice())
+                    .expect(format!("decode file {} failed", device_desc_file_path).as_str())
+                    .0;
+                let device_sec = PrivateKey::raw_decode(device_sec_r.unwrap().as_slice())
+                    .expect(format!("decode file {} failed", device_sec_file_path).as_str())
+                    .0;
+                members.push(((people_desc, people_sec), (device_desc, device_sec)));
+            } else if is_people_desc_not_found
+                && is_people_sec_not_found
+                && is_device_desc_not_found
+                && is_device_sec_not_found
+            {
+                // create & save
+                let member = create_member(name_prefix, index, min_port + i as u16);
+                fs::write(
+                    people_desc_file_path.as_str(),
+                    member.0 .0.to_vec().unwrap(),
+                )
+                .await
+                .expect(format!("save file {} failed", people_desc_file_path).as_str());
+                fs::write(people_sec_file_path.as_str(), member.0 .1.to_vec().unwrap())
+                    .await
+                    .expect(format!("save file {} failed", people_sec_file_path).as_str());
+                fs::write(
+                    device_desc_file_path.as_str(),
+                    member.1 .0.to_vec().unwrap(),
+                )
+                .await
+                .expect(format!("save file {} failed", device_desc_file_path).as_str());
+                fs::write(device_sec_file_path.as_str(), member.1 .1.to_vec().unwrap())
+                    .await
+                    .expect(format!("save file {} failed", device_sec_file_path).as_str());
+
+                members.push(member);
+            } else {
+                println!("read members failed!");
+                std::process::exit(-1);
+            }
+        }
+
+        members
+    }
+
+    pub async fn init_admins() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
+        init_member_from_dir("./test-group/admins", "admin", 4).await
+    }
+
+    pub async fn init_members() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
+        init_member_from_dir("./test-group/members", "member", 9).await
+    }
+
+    pub async fn init_group(
+        admins: Vec<&People>,
+        members: Vec<&People>,
+        oods: Vec<&Device>,
+    ) -> Group {
+        fs::create_dir_all("./test-group")
+            .await
+            .expect("create dir ./test-group failed");
+
+        let read_group_r = fs::read("./test-group/group.desc").await;
+        match read_group_r {
+            Ok(buf) => {
+                if buf.len() > 0 {
+                    return Group::raw_decode(buf.as_slice())
+                        .expect("decode ./test-group/group.desc failed")
+                        .0;
+                }
+            }
+            Err(err) => {
+                if ErrorKind::NotFound != err.kind() {
+                    println!("read group failed: {:?}", err);
+                    std::process::exit(-1);
+                }
+            }
+        }
+
+        let group = create_group(admins.get(0).unwrap(), admins, members, oods);
+        fs::write("./test-group/group.desc", group.to_vec().unwrap())
+            .await
+            .expect("save file ./test-group/group.desc failed");
+        group
+    }
+
     fn init_stack_params(
         people: People,
         private_key: &PrivateKey,
         device: Device,
+        admins: Vec<(People, Device)>,
+        members: Vec<(People, Device)>,
+        group: Group,
+        dec_app: DecApp,
     ) -> Box<(BdtStackParams, CyfsStackParams, CyfsStackKnownObjects)> {
         log::info!("init_stack_params");
 
-        let mut admin_device: Vec<Device> = EXAMPLE_ADMINS.iter().map(|m| m.1 .0.clone()).collect();
-        let mut member_device: Vec<Device> =
-            EXAMPLE_MEMBERS.iter().map(|m| m.1 .0.clone()).collect();
+        let mut admin_device: Vec<Device> = admins.iter().map(|m| m.1.clone()).collect();
+        let mut member_device: Vec<Device> = members.iter().map(|m| m.1.clone()).collect();
         let known_device = vec![admin_device, member_device].concat();
 
         let bdt_param = BdtStackParams {
@@ -242,7 +387,7 @@ mod Common {
             mode: CyfsStackKnownObjectsInitMode::Sync,
         };
 
-        for ((member, _), (device, _)) in EXAMPLE_ADMINS.iter() {
+        for (member, device) in admins.iter() {
             known_objects.list.push(NONObjectInfo::new(
                 member.desc().object_id(),
                 member.to_vec().unwrap(),
@@ -260,7 +405,7 @@ mod Common {
             ));
         }
 
-        for ((member, _), (device, _)) in EXAMPLE_MEMBERS.iter() {
+        for (member, device) in members.iter() {
             known_objects.list.push(NONObjectInfo::new(
                 member.desc().object_id(),
                 member.to_vec().unwrap(),
@@ -279,17 +424,17 @@ mod Common {
         }
 
         known_objects.list.push(NONObjectInfo::new(
-            EXAMPLE_GROUP.desc().object_id(),
-            EXAMPLE_GROUP.to_vec().unwrap(),
+            group.desc().object_id(),
+            group.to_vec().unwrap(),
             Some(Arc::new(AnyNamedObject::Standard(StandardObject::Group(
-                EXAMPLE_GROUP.clone(),
+                group.clone(),
             )))),
         ));
 
-        let dec_app_vec = EXAMPLE_DEC_APP.to_vec().unwrap();
+        let dec_app_vec = dec_app.to_vec().unwrap();
         let typeless = TypelessCoreObject::clone_from_slice(dec_app_vec.as_slice()).unwrap();
         known_objects.list.push(NONObjectInfo::new(
-            EXAMPLE_DEC_APP.desc().object_id(),
+            dec_app.desc().object_id(),
             dec_app_vec,
             Some(Arc::new(AnyNamedObject::Core(typeless))),
         ));
@@ -301,8 +446,13 @@ mod Common {
         people: People,
         private_key: &PrivateKey,
         device: Device,
+        admins: Vec<(People, Device)>,
+        members: Vec<(People, Device)>,
+        group: Group,
+        dec_app: DecApp,
     ) -> CyfsStack {
-        let params = init_stack_params(people, private_key, device);
+        let params =
+            init_stack_params(people, private_key, device, admins, members, group, dec_app);
 
         log::info!("cyfs-stack.open");
 
@@ -315,10 +465,6 @@ mod Common {
             .unwrap();
 
         stack
-    }
-
-    pub fn dummy(people: People, device: Device) {
-        log::info!("common::dummy");
     }
 }
 
@@ -352,22 +498,21 @@ mod GroupDecService {
     use async_std::sync::Mutex;
     use cyfs_base::*;
     use cyfs_core::{
-        GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupProposalObject,
+        DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
+        GroupProposalObject,
     };
     use cyfs_group::{DelegateFactory, ExecuteResult, RPathDelegate};
     use cyfs_stack::CyfsStack;
 
-    use crate::Common::EXAMPLE_DEC_APP_ID;
-
     pub struct DecService {}
 
     impl DecService {
-        pub async fn run(cyfs_stack: &CyfsStack, local_name: String) {
+        pub async fn run(cyfs_stack: &CyfsStack, local_name: String, dec_app_id: DecAppId) {
             let group_mgr = cyfs_stack.group_mgr();
 
             group_mgr
                 .register(
-                    EXAMPLE_DEC_APP_ID.clone(),
+                    dec_app_id.clone(),
                     Box::new(GroupRPathDelegateFactory { local_name }),
                 )
                 .await
@@ -575,13 +720,14 @@ mod GroupDecService {
     }
 }
 
-fn create_proposal(delta: u64, owner: ObjectId) -> GroupProposal {
+fn create_proposal(
+    delta: u64,
+    owner: ObjectId,
+    group_id: ObjectId,
+    dec_id: ObjectId,
+) -> GroupProposal {
     GroupProposal::create(
-        GroupRPath::new(
-            EXAMPLE_GROUP.desc().object_id(),
-            EXAMPLE_DEC_APP_ID.object_id().clone(),
-            EXAMPLE_RPATH.clone(),
-        ),
+        GroupRPath::new(group_id, dec_id, EXAMPLE_RPATH.to_string()),
         "add".to_string(),
         Some(Vec::from(delta.to_be_bytes())),
         None,
@@ -614,23 +760,57 @@ async fn main_run() {
 
     log::info!("will open stacks");
 
+    let admins = init_admins().await;
+    let members = init_members().await;
+    let group = init_group(
+        admins.iter().map(|m| &m.0 .0).collect(),
+        members.iter().map(|m| &m.0 .0).collect(),
+        admins.iter().map(|m| &m.1 .0).collect(),
+    )
+    .await;
+    let group_id = group.desc().object_id();
+    let dec_app = DecApp::create(
+        admins.get(0).unwrap().0 .0.desc().object_id(),
+        EXAMPLE_APP_NAME.as_str(),
+    );
+    let dec_app_id = DecAppId::try_from(dec_app.desc().object_id()).unwrap();
+
     let mut admin_stacks: Vec<CyfsStack> = vec![];
-    for ((admin, _), (device, private_key)) in EXAMPLE_ADMINS.iter() {
-        // dummy(admin.clone(), device.clone());
-        let cyfs_stack = create_stack(admin.clone(), private_key, device.clone()).await;
+    for ((admin, _), (device, private_key)) in admins.iter() {
+        let cyfs_stack = create_stack(
+            admin.clone(),
+            private_key,
+            device.clone(),
+            admins
+                .iter()
+                .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
+                .collect(),
+            members
+                .iter()
+                .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
+                .collect(),
+            group.clone(),
+            dec_app.clone(),
+        )
+        .await;
         admin_stacks.push(cyfs_stack);
     }
 
     for i in 0..admin_stacks.len() {
         let stack = admin_stacks.get(i).unwrap();
-        let ((admin, _), _) = EXAMPLE_ADMINS.get(i).unwrap();
-        DecService::run(&stack, admin.name().unwrap().to_string()).await;
+        let ((admin, _), _) = admins.get(i).unwrap();
+        DecService::run(
+            &stack,
+            admin.name().unwrap().to_string(),
+            dec_app_id.clone(),
+        )
+        .await;
 
         let control = stack
             .group_mgr()
             .find_rpath_control(
-                &EXAMPLE_GROUP.desc().object_id(),
-                EXAMPLE_DEC_APP_ID.object_id(),
+                &group.desc().object_id(),
+                dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
                 IsCreateRPath::Yes(None),
             )
@@ -647,14 +827,19 @@ async fn main_run() {
     let PROPOSAL_COUNT = 1000usize;
     for i in 1..PROPOSAL_COUNT {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
-        let owner = &EXAMPLE_ADMINS.get(i % EXAMPLE_ADMINS.len()).unwrap().0 .0;
-        let proposal = create_proposal(i as u64, owner.desc().object_id());
+        let owner = &admins.get(i % admins.len()).unwrap().0 .0;
+        let proposal = create_proposal(
+            i as u64,
+            owner.desc().object_id(),
+            group_id,
+            dec_app_id.object_id().clone(),
+        );
 
         let control = stack
             .group_mgr()
             .find_rpath_control(
-                &EXAMPLE_GROUP.desc().object_id(),
-                EXAMPLE_DEC_APP_ID.object_id(),
+                &group_id,
+                dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
                 IsCreateRPath::Yes(None),
             )
@@ -676,7 +861,7 @@ async fn main_run() {
                     zone: None,
                     zone_category: DeviceZoneCategory::CurrentDevice,
                 },
-                dec: EXAMPLE_DEC_APP_ID.object_id().clone(),
+                dec: dec_app_id.object_id().clone(),
                 verified: None,
             },
             object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
@@ -700,8 +885,8 @@ async fn main_run() {
         let control = stack
             .group_mgr()
             .find_rpath_control(
-                &EXAMPLE_GROUP.desc().object_id(),
-                EXAMPLE_DEC_APP_ID.object_id(),
+                &group_id,
+                dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
                 IsCreateRPath::Yes(None),
             )
