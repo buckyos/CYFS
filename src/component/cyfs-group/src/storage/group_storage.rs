@@ -398,6 +398,7 @@ impl GroupStorage {
         writer
             .set_last_vote_round(round, self.cache.last_vote_round)
             .await?;
+        writer.commit().await?;
 
         self.cache.last_vote_round = round;
 
