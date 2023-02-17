@@ -1,7 +1,8 @@
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
+use serde::{Serialize, Deserialize};
 
 pub type ObjectPackArchiveFile = Box<dyn AsyncRead + Unpin + Sync + Send + 'static>;
 
@@ -21,7 +22,9 @@ pub trait ObjectPackReader: Send {
 
 #[async_trait::async_trait]
 pub trait ObjectPackWriter: Send {
-    async fn total_bytes_added(&mut self) -> u64;
+    fn total_bytes_added(&self) -> u64;
+
+    fn file_path(&self) -> &Path;
 
     async fn open(&mut self) -> BuckyResult<()>;
     async fn add_data(
@@ -35,6 +38,15 @@ pub trait ObjectPackWriter: Send {
     async fn finish(&mut self) -> BuckyResult<()>;
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectPackFileInfo {
+    pub name: String,
+    pub hash: HashValue,
+    pub file_len: u64,
+    pub data_len: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum ObjectPackFormat {
     Zip,
 }

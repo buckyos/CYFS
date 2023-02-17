@@ -154,8 +154,12 @@ impl ObjectPackWriter for ZipObjectPackWriter {
         Self::open(&mut self)
     }
     
-    async fn total_bytes_added(&mut self) -> u64 {
+    fn total_bytes_added(&self) -> u64 {
         Self::total_bytes_added(&self)
+    }
+
+    fn file_path(&self) -> &Path {
+        Self::file_path(&self)
     }
 
     async fn add_data(
