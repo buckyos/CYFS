@@ -39,51 +39,60 @@ pub struct GroupStatePath {
 impl GroupStatePath {
     pub fn new(rpath: String) -> Self {
         Self {
-            dec_state: Self::join(&[rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
-            link: Self::join(&[rpath.as_str(), GROUP_STATE_PATH_LINK]),
+            dec_state: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
+            link: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_LINK]),
             group_blob: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_GROUP_BLOB,
             ]),
             last_vote_round: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_LAST_VOTE_ROUNDS,
             ]),
             range: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_RANGE,
             ]),
             prepares: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_PREPARES,
             ]),
             pre_commits: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_PRE_COMMITS,
             ]),
             finish_proposals: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_FINISH_PROPOSALS,
             ]),
             flip_time: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_FINISH_PROPOSALS,
                 GROUP_STATE_PATH_FLIP_TIME,
             ]),
             recycle: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_FINISH_PROPOSALS,
                 GROUP_STATE_PATH_RECYCLE,
             ]),
             adding: Self::join(&[
+                "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_FINISH_PROPOSALS,
