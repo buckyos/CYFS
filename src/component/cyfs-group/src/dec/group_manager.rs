@@ -289,16 +289,17 @@ impl GroupManager {
                     .await;
             }
             HotstuffPackage::StateChangeNotify(header_block, qc_block) => {
-                let rpath = header_block.r_path();
-                let client = self
-                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
-                    .await?;
-                client
-                    .on_message(
-                        HotstuffMessage::StateChangeNotify(header_block, qc_block),
-                        remote,
-                    )
-                    .await;
+                // TODO: 暂时不实现
+                // let rpath = header_block.r_path();
+                // let client = self
+                //     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                //     .await?;
+                // client
+                //     .on_message(
+                //         HotstuffMessage::StateChangeNotify(header_block, qc_block),
+                //         remote,
+                //     )
+                //     .await;
             }
             HotstuffPackage::ProposalResult(proposal_id, result) => {
                 let rpath = result.as_ref().map_or_else(
