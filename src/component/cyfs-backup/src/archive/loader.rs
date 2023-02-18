@@ -1,5 +1,5 @@
 use super::meta::*;
-use crate::object_pack::{ObjectPackFormat, ObjectPackInnerFile, ObjectPackSerializeReader};
+use crate::object_pack::*;
 use cyfs_base::*;
 
 use std::path::PathBuf;
@@ -25,12 +25,12 @@ impl ObjectArchiveSerializeLoader {
         let meta = ObjectArchiveMeta::load(&meta_file).await?;
 
         let object_reader = ObjectPackSerializeReader::new(
-            ObjectPackFormat::Zip,
+            meta.format,
             root.clone(),
             meta.object_files.clone(),
         );
         let chunk_reader = ObjectPackSerializeReader::new(
-            ObjectPackFormat::Zip,
+            meta.format,
             root.clone(),
             meta.chunk_files.clone(),
         );

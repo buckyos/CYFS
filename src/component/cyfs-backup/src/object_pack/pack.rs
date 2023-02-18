@@ -43,7 +43,7 @@ pub struct ObjectPackFileInfo {
     pub data_len: u64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub enum ObjectPackFormat {
     Zip,
 }

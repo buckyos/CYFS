@@ -14,16 +14,16 @@ pub struct ObjectArchiveGenerator {
 }
 
 impl ObjectArchiveGenerator {
-    pub fn new(root: PathBuf, size_limit: u64) -> Self {
+    pub fn new(format: ObjectPackFormat, root: PathBuf, size_limit: u64) -> Self {
         let object_writer = ObjectPackRollWriter::new(
-            ObjectPackFormat::Zip,
+            format,
             root.clone(),
             ObjectArchiveDataType::Object.as_str(),
             size_limit,
         );
 
         let chunk_writer = ObjectPackRollWriter::new(
-            ObjectPackFormat::Zip,
+            format,
             root.clone(),
             ObjectArchiveDataType::Chunk.as_str(),
             size_limit,
@@ -31,7 +31,7 @@ impl ObjectArchiveGenerator {
 
         Self {
             root,
-            meta: ObjectArchiveMeta::new(),
+            meta: ObjectArchiveMeta::new(format),
 
             object_writer,
             chunk_writer,

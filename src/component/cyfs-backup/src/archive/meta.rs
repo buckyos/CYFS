@@ -1,5 +1,5 @@
+use crate::object_pack::*;
 use cyfs_base::*;
-use crate::object_pack::ObjectPackFileInfo;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -31,14 +31,16 @@ impl ObjectArchiveIsolateMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta {
+    pub format: ObjectPackFormat,
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
 }
 
 impl ObjectArchiveMeta {
-    pub fn new() -> Self {
+    pub fn new(format: ObjectPackFormat) -> Self {
         Self {
+            format,
             isolates: vec![],
             object_files: vec![],
             chunk_files: vec![],
