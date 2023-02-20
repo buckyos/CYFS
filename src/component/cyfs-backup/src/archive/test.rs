@@ -53,6 +53,10 @@ async fn test_archive() {
     info!("meta: {:?}", meta);
 
     let mut loader = ObjectArchiveSerializeLoader::load(path).await.unwrap();
+
+    let ret = loader.verify().await.unwrap();
+    assert!(ret.valid);
+
     loader.reset_object();
     loop {
         let ret = loader.next_object().await.unwrap();

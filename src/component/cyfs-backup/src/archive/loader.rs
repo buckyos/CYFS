@@ -1,4 +1,5 @@
 use super::meta::*;
+use super::verifier::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -24,16 +25,10 @@ impl ObjectArchiveSerializeLoader {
         let meta_file = root.join("index");
         let meta = ObjectArchiveMeta::load(&meta_file).await?;
 
-        let object_reader = ObjectPackSerializeReader::new(
-            meta.format,
-            root.clone(),
-            meta.object_files.clone(),
-        );
-        let chunk_reader = ObjectPackSerializeReader::new(
-            meta.format,
-            root.clone(),
-            meta.chunk_files.clone(),
-        );
+        let object_reader =
+            ObjectPackSerializeReader::new(meta.format, root.clone(), meta.object_files.clone());
+        let chunk_reader =
+            ObjectPackSerializeReader::new(meta.format, root.clone(), meta.chunk_files.clone());
         let ret = Self {
             root,
             meta,
@@ -46,6 +41,12 @@ impl ObjectArchiveSerializeLoader {
 
     pub fn meta(&self) -> &ObjectArchiveMeta {
         &self.meta
+    }
+
+    pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
+        ObjectArchiveVerifier::new(self.root.clone())
+            .verify(&self.meta)
+            .await
     }
 
     pub fn reset_object(&mut self) {
