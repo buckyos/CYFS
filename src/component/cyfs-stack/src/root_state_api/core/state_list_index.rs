@@ -44,6 +44,21 @@ impl GlobalStateListIndex {
         }
     }
 
+    pub async fn get_isolate_list(&self, category: GlobalStateCategory,) -> Vec<GlobalStateIsolateInfo> {
+        let list = self.list.read().await;
+        list.list.iter().filter_map(|(id, item)| {
+            if item.category.contains(&category) {
+                Some(GlobalStateIsolateInfo {
+                    isolate_id: id.to_owned(),
+                    owner: item.owner.clone(),
+                    create_time: item.create_time,
+                })
+            } else {
+                None
+            }            
+        }).collect()
+    }
+
     pub async fn load(&self) -> BuckyResult<()> {
         let value: Option<GlobalStateMetaInfoList> = self.storage.load().await.map_err(|e| {
             error!("load global state list from noc error! {}", e);

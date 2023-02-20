@@ -136,8 +136,18 @@ pub trait GlobalStateRawProcessor: Send + Sync {
 
 pub type GlobalStateRawProcessorRef = Arc<Box<dyn GlobalStateRawProcessor>>;
 
+#[derive(Clone, Debug)]
+pub struct GlobalStateIsolateInfo {
+    pub isolate_id: ObjectId,
+    pub owner: Option<ObjectId>,
+    pub create_time: u64,
+}
+
 #[async_trait::async_trait]
 pub trait GlobalStateManagerRawProcessor: Send + Sync {
+    // get all isolates of specified category
+    async fn get_isolate_list(&self, category: GlobalStateCategory) -> Vec<GlobalStateIsolateInfo>;
+
     // get relate methods
     async fn get_root_state(&self, isolate_id: &ObjectId) -> Option<GlobalStateRawProcessorRef> {
         self.get_global_state(GlobalStateCategory::RootState, isolate_id)
@@ -162,7 +172,13 @@ pub trait GlobalStateManagerRawProcessor: Send + Sync {
         owner: Option<ObjectId>,
         auto_create: bool,
     ) -> BuckyResult<Option<GlobalStateRawProcessorRef>> {
-        self.load_global_state(GlobalStateCategory::RootState, isolate_id, owner, auto_create).await
+        self.load_global_state(
+            GlobalStateCategory::RootState,
+            isolate_id,
+            owner,
+            auto_create,
+        )
+        .await
     }
 
     async fn load_local_cache(
@@ -171,7 +187,13 @@ pub trait GlobalStateManagerRawProcessor: Send + Sync {
         owner: Option<ObjectId>,
         auto_create: bool,
     ) -> BuckyResult<Option<GlobalStateRawProcessorRef>> {
-        self.load_global_state(GlobalStateCategory::LocalCache, isolate_id, owner, auto_create).await
+        self.load_global_state(
+            GlobalStateCategory::LocalCache,
+            isolate_id,
+            owner,
+            auto_create,
+        )
+        .await
     }
 
     async fn load_global_state(
