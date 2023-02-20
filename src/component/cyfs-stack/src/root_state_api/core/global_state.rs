@@ -147,6 +147,10 @@ impl GlobalState {
         self.root.revision().is_dec_exists(dec_id)
     }
 
+    pub async fn get_dec_root_info_list(&self) -> BuckyResult<GlobalStateRootInfo> {
+        self.root.get_dec_root_info_list().await
+    }
+
     // return (global_root, revision, dec_root)
     pub async fn get_dec_root(
         &self,
@@ -327,6 +331,10 @@ impl GlobalStateRawProcessor for GlobalState {
 
     fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
         Self::is_dec_exists(&self, dec_id)
+    }
+
+    async fn get_dec_root_info_list(&self) -> BuckyResult<GlobalStateRootInfo> {
+        Self::get_dec_root_info_list(&self).await
     }
 
     async fn get_dec_root(

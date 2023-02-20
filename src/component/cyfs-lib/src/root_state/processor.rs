@@ -104,6 +104,20 @@ pub trait GlobalStateAccessorOutputProcessor: Sync + Send + 'static {
 
 pub type GlobalStateAccessorOutputProcessorRef = Arc<Box<dyn GlobalStateAccessorOutputProcessor>>;
 
+#[derive(Clone, Debug)]
+pub struct GlobalStateDecRootInfo {
+    pub dec_id: ObjectId,
+    pub dec_root: ObjectId,
+}
+
+#[derive(Clone, Debug)]
+pub struct GlobalStateRootInfo {
+    pub global_root: ObjectId,
+    pub revision: u64,
+
+    pub dec_list: Vec<GlobalStateDecRootInfo>,
+}
+
 #[async_trait::async_trait]
 pub trait GlobalStateRawProcessor: Send + Sync {
     fn isolate_id(&self) -> &ObjectId;
@@ -120,6 +134,8 @@ pub trait GlobalStateRawProcessor: Send + Sync {
     fn root_cache(&self) -> &ObjectMapRootCacheRef;
 
     fn is_dec_exists(&self, dec_id: &ObjectId) -> bool;
+
+    async fn get_dec_root_info_list(&self) -> BuckyResult<GlobalStateRootInfo>;
 
     // return (global_root, revision, dec_root)
     async fn get_dec_root(

@@ -5,7 +5,7 @@ use cyfs_lib::*;
 use crate::config::StackGlobalConfig;
 
 use std::sync::Arc;
-
+use std::str::FromStr;
 
 // dec_root和关联的global_root信息
 #[derive(Debug, Clone)]
@@ -162,6 +162,47 @@ impl GlobalStateRoot {
         } else {
             Ok(())
         }
+    }
+
+    pub async fn get_dec_root_info_list(&self) -> BuckyResult<GlobalStateRootInfo> {
+        let env = self.root.create_op_env(None)?;
+        let list = env.list("/").await.map_err(|e| {
+            error!("list all dec root from global state error! category={}, root={}, {}", self.category, env.root(), e);
+            e
+        })?;
+
+        let mut dec_list = vec![];
+        for item in list.list {
+            match item {
+                ObjectMapContentItem::Map((key, dec_root)) => {
+                    match ObjectId::from_str(&key) {
+                        Ok(dec_id) => {
+                            let item = GlobalStateDecRootInfo {
+                                dec_id,
+                                dec_root,
+                            };
+                            dec_list.push(item);
+                        }
+                        Err(e) => {
+                            error!("invalid global state key value: {}, {}", key, e);
+                        }
+                    }
+                }
+                v @ _ => {
+                    error!("invalid global state value type: {:?}", v.content_type());
+                    continue;
+                }
+            }
+        }
+
+        let global_root  = env.root();
+        let revision = self.revision.get_root_revision(&global_root).unwrap();
+
+        Ok(GlobalStateRootInfo {
+            global_root,
+            revision,
+            dec_list,
+        })
     }
 
     pub(super) async fn get_dec_root(
