@@ -847,7 +847,7 @@ impl Tunnel {
             // tunnel显式销毁时，需要shutdown tcp stream; 这里receive_package就会出错了
             match interface.receive_package(&mut recv_buf).await {
                 Ok(recv_box) => {
-                    // tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
+                    tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
 
                     match recv_box {
                         RecvBox::Package(package_box) => {
