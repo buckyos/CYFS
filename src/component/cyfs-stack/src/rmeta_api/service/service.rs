@@ -1,5 +1,4 @@
 use super::super::local::*;
-use super::super::path::GlobalStateAccessRequest;
 use super::super::router::GlobalStateMetaServiceRouter;
 use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;

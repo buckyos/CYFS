@@ -56,6 +56,10 @@ impl GlobalStatePathMetaSyncCollection {
         }
     }
 
+    pub fn into_processor(self) -> GlobalStateMetaRawProcessorRef {
+        Arc::new(Box::new(self))
+    }
+    
     fn dump(&self) {
         let data = {
             let meta = self.meta.coll().read().unwrap();
@@ -279,8 +283,13 @@ impl GlobalStatePathMetaSyncCollection {
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
         let meta = self.meta.coll().read().unwrap();
-        meta.object
-            .check(target_dec_id, object_data, source, permissions, &self.device_id)
+        meta.object.check(
+            target_dec_id,
+            object_data,
+            source,
+            permissions,
+            &self.device_id,
+        )
     }
 
     // path config
@@ -344,16 +353,105 @@ impl GlobalStatePathMetaSyncCollection {
         let ret = {
             let meta = self.meta.coll().write().unwrap();
             match meta.config.query(path) {
-                Some(item) => {
-                    Some(GlobalStatePathConfigItemValue {
-                        storage_state: item.storage_state,
-                        depth: item.depth,
-                    })
-                }
+                Some(item) => Some(GlobalStatePathConfigItemValue {
+                    storage_state: item.storage_state,
+                    depth: item.depth,
+                }),
                 None => None,
             }
         };
 
         ret
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
+    async fn add_access(&self, item: GlobalStatePathAccessItem) -> BuckyResult<bool> {
+        Self::add_access(&self, item).await
+    }
+
+    async fn remove_access(
+        &self,
+        item: GlobalStatePathAccessItem,
+    ) -> BuckyResult<Option<GlobalStatePathAccessItem>> {
+        Self::remove_access(self, item).await
+    }
+
+    async fn clear_access(&self) -> BuckyResult<usize> {
+        Self::clear_access(self).await
+    }
+
+    fn check_access<'d, 'a, 'b>(
+        &self,
+        req: GlobalStateAccessRequest<'d, 'a, 'b>,
+    ) -> BuckyResult<()> {
+        Self::check_access(self, req)
+    }
+
+    // link relate methods
+    async fn add_link(
+        &self,
+        source: &str,
+        target: &str,
+    ) -> BuckyResult<bool> {
+        Self::add_link(self, source, target).await
+    }
+
+    async fn remove_link(&self, source: &str) -> BuckyResult<Option<GlobalStatePathLinkItem>> {
+        Self::remove_link(self, source).await
+    }
+
+    async fn clear_link(&self) -> BuckyResult<usize> {
+        Self::clear_link(self).await
+    }
+
+    fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
+        Self::resolve_link(self, source)
+    }
+
+    // object meta
+    async fn add_object_meta(&self, item: GlobalStateObjectMetaItem) -> BuckyResult<bool> {
+        Self::add_object_meta(self, item).await
+    }
+
+    async fn remove_object_meta(
+        &self,
+        item: GlobalStateObjectMetaItem,
+    ) -> BuckyResult<Option<GlobalStateObjectMetaItem>> {
+        Self::remove_object_meta(self, item).await
+    }
+
+    async fn clear_object_meta(&self) -> BuckyResult<usize> {
+        Self::clear_object_meta(self).await
+    }
+
+    fn check_object_access(
+        &self,
+        target_dec_id: &ObjectId,
+        object_data: &dyn ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
+    ) -> BuckyResult<Option<()>> {
+        Self::check_object_access(self, target_dec_id, object_data, source, permissions)
+    }
+
+    // path config
+    async fn add_path_config(&self, item: GlobalStatePathConfigItem) -> BuckyResult<bool> {
+        Self::add_path_config(self, item).await
+    }
+
+    async fn remove_path_config(
+        &self,
+        item: GlobalStatePathConfigItem,
+    ) -> BuckyResult<Option<GlobalStatePathConfigItem>> {
+        Self::remove_path_config(self, item).await
+    }
+    async fn clear_path_config(&self) -> BuckyResult<usize> {
+        Self::clear_path_config(self).await
+    }
+
+    fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
+        Self::query_path_config(self, path)
     }
 }
