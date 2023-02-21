@@ -23,6 +23,7 @@
 |               |   |--${user-id}
 |               |       |--xxx
 |               |--last-vote-round-->u64 // 最后一次投票的轮次
+|               |--last-qc-->GroupQuorumCertificate // 最后一次被确认的共识证明
 |               |
 |               |--range-->(${first_height}, ${header_height}) // 保留的历史block序列号区间
 |               |--str(${height})->block

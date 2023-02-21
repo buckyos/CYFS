@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{BuckyResult, ObjectId};
-use cyfs_core::GroupConsensusBlock;
+use cyfs_core::{GroupConsensusBlock, GroupQuorumCertificate};
 
 pub struct FinishProposalMgr {
     pub flip_timestamp: u64,
@@ -12,6 +12,7 @@ pub struct FinishProposalMgr {
 pub struct StorageCacheInfo {
     pub dec_state_id: Option<ObjectId>, // commited/header state id
     pub last_vote_round: u64,           // 参与投票的最后一个轮次
+    pub last_qc: Option<GroupQuorumCertificate>,
     pub header_block: Option<GroupConsensusBlock>,
     pub first_block: Option<GroupConsensusBlock>,
     pub prepares: HashMap<ObjectId, GroupConsensusBlock>,
@@ -33,6 +34,7 @@ impl StorageCacheInfo {
                 over: HashSet::new(),
                 adding: HashSet::new(),
             },
+            last_qc: None,
         }
     }
 }
@@ -58,6 +60,7 @@ pub trait StorageWriter: Send + Sync {
     ) -> BuckyResult<()>;
 
     async fn set_last_vote_round(&mut self, round: u64, prev_value: u64) -> BuckyResult<()>;
+    async fn save_last_qc(&mut self, qc_id: &ObjectId) -> BuckyResult<()>;
 
     async fn commit(mut self) -> BuckyResult<()>;
 }

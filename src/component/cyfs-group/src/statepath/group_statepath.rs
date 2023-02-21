@@ -5,6 +5,7 @@ pub const GROUP_STATE_PATH_DEC_STATE: &str = ".dec-state";
 pub const GROUP_STATE_PATH_LINK: &str = ".link";
 pub const GROUP_STATE_PATH_GROUP_BLOB: &str = "group-blob";
 pub const GROUP_STATE_PATH_LAST_VOTE_ROUNDS: &str = "last-vote-round";
+pub const GROUP_STATE_PATH_LAST_QC: &str = "last-qc";
 pub const GROUP_STATE_PATH_RANGE: &str = "range";
 pub const GROUP_STATE_PATH_PREPARES: &str = "prepares";
 pub const GROUP_STATE_PATH_PRE_COMMITS: &str = "pre-commits";
@@ -23,10 +24,12 @@ lazy_static::lazy_static! {
 
 pub struct GroupStatePath {
     rpath: String,
+    root: String,
     dec_state: String,
     link: String,
     group_blob: String,
     last_vote_round: String,
+    last_qc: String,
     range: String,
     prepares: String,
     pre_commits: String,
@@ -39,6 +42,7 @@ pub struct GroupStatePath {
 impl GroupStatePath {
     pub fn new(rpath: String) -> Self {
         Self {
+            root: Self::join(&["", rpath.as_str()]),
             dec_state: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
             link: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_LINK]),
             group_blob: Self::join(&[
@@ -52,6 +56,12 @@ impl GroupStatePath {
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_LAST_VOTE_ROUNDS,
+            ]),
+            last_qc: Self::join(&[
+                "",
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_LAST_QC,
             ]),
             range: Self::join(&[
                 "",
@@ -107,7 +117,7 @@ impl GroupStatePath {
     }
 
     pub fn root(&self) -> &str {
-        self.rpath.as_str()
+        self.root.as_str()
     }
 
     pub fn dec_state(&self) -> &str {
@@ -124,6 +134,10 @@ impl GroupStatePath {
 
     pub fn last_vote_round(&self) -> &str {
         self.last_vote_round.as_str()
+    }
+
+    pub fn last_qc(&self) -> &str {
+        self.last_qc.as_str()
     }
 
     pub fn range(&self) -> &str {
