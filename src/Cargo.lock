@@ -1514,7 +1514,7 @@ dependencies = [
  "simple_logger 2.3.0",
  "sqlx",
  "url 2.3.0",
- "zip 0.6.3",
+ "zip",
 ]
 
 [[package]]
@@ -1769,6 +1769,7 @@ dependencies = [
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-util",
+ "generic-array 0.12.4",
  "hex",
  "int-enum",
  "log 0.4.17",
@@ -1781,6 +1782,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "sha2 0.8.2",
 ]
 
 [[package]]
@@ -1827,6 +1829,65 @@ dependencies = [
  "hkdf 0.8.0",
  "libsecp256k1",
  "rand 0.7.3",
+ "sha2 0.8.2",
+]
+
+[[package]]
+name = "cyfs-group"
+version = "0.1.1"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "chrono",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-group-lib",
+ "cyfs-lib",
+ "futures",
+ "itertools",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.8",
+ "prost-build 0.9.0",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.8.2",
+]
+
+[[package]]
+name = "cyfs-group-lib"
+version = "0.1.1"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "chrono",
+ "cyfs-base",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-util",
+ "futures",
+ "http-types",
+ "itertools",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.8",
+ "prost-build 0.9.0",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
  "sha2 0.8.2",
 ]
 
@@ -2180,6 +2241,8 @@ dependencies = [
  "cyfs-chunk-lib",
  "cyfs-core",
  "cyfs-debug",
+ "cyfs-group",
+ "cyfs-group-lib",
  "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-ndc",
@@ -2197,7 +2260,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "percent-encoding 2.2.0",
- "prost 0.11.3",
+ "prost 0.11.8",
  "prost-build 0.11.3",
  "protoc-bin-vendored",
  "rand 0.8.5",
@@ -2208,7 +2271,7 @@ dependencies = [
  "sqlx",
  "tide",
  "toml",
- "zip 0.6.3",
+ "zip",
 ]
 
 [[package]]
@@ -2352,7 +2415,7 @@ dependencies = [
  "url 2.3.0",
  "walkdir",
  "winapi",
- "zip 0.6.3",
+ "zip",
 ]
 
 [[package]]
@@ -3227,6 +3290,35 @@ dependencies = [
  "futures-core",
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "group-example"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-bdt-ext",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-group-lib",
+ "cyfs-lib",
+ "cyfs-meta-lib",
+ "cyfs-stack",
+ "cyfs-util",
+ "futures",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.8",
+ "protobuf",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.8.2",
 ]
 
 [[package]]
@@ -4480,7 +4572,7 @@ dependencies = [
  "serde_json",
  "tide",
  "toml",
- "zip 0.6.3",
+ "zip",
 ]
 
 [[package]]
@@ -4592,7 +4684,7 @@ dependencies = [
  "sha2 0.8.2",
  "simple_logger 2.3.0",
  "walkdir",
- "zip 0.6.3",
+ "zip",
 ]
 
 [[package]]
@@ -5040,12 +5132,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.11.3"
+version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0b18e655c21ff5ac2084a5ad0611e827b3f92badf79f4910b5a5c58f4d87ff0"
+checksum = "e48e50df39172a3e7eb17e14642445da64996989bc212b583015435d39a58537"
 dependencies = [
  "bytes 1.2.1",
- "prost-derive 0.11.2",
+ "prost-derive 0.11.8",
 ]
 
 [[package]]
@@ -5082,7 +5174,7 @@ dependencies = [
  "multimap",
  "petgraph",
  "prettyplease",
- "prost 0.11.3",
+ "prost 0.11.8",
  "prost-types 0.11.2",
  "regex",
  "syn",
@@ -5105,9 +5197,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.11.2"
+version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "164ae68b6587001ca506d3bf7f1000bfa248d0e1217b618108fba4ec1d0cc306"
+checksum = "4ea9b0f8cbe5e15a8a042d030bd96668db28ecb567ec37d691971ff5731d2b1b"
 dependencies = [
  "anyhow",
  "itertools",
@@ -5133,7 +5225,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "747761bc3dc48f9a34553bf65605cf6cb6288ba219f3450b4275dbd81539551a"
 dependencies = [
  "bytes 1.2.1",
- "prost 0.11.3",
+ "prost 0.11.8",
 ]
 
 [[package]]
@@ -7605,23 +7697,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "0.5.13"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ab48844d61251bb3835145c521d88aa4031d7139e8485990f60ca911fa0815"
-dependencies = [
- "byteorder",
- "bzip2",
- "crc32fast",
- "flate2",
- "thiserror",
- "time 0.1.44",
-]
-
-[[package]]
-name = "zip"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537ce7411d25e54e8ae21a7ce0b15840e7bfcff15b51d697ec3266cc76bdf080"
+checksum = "0445d0fbc924bb93539b4316c11afb121ea39296f99a3c4c9edad09e3658cdef"
 dependencies = [
  "aes 0.7.5",
  "byteorder",
@@ -7639,13 +7717,13 @@ dependencies = [
 
 [[package]]
 name = "zip-extract"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c5cc0309f6e81ab96c2b43d5e935025f8732c886690be8f78f68e06bad1d274"
+checksum = "bb654964c003959ed64cbd0d7b329bcdcbd9690facd50c8617748d3622543972"
 dependencies = [
  "log 0.4.17",
  "thiserror",
- "zip 0.5.13",
+ "zip",
 ]
 
 [[package]]
