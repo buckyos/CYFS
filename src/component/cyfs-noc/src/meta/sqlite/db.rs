@@ -58,9 +58,26 @@ impl SqliteMetaStorage {
             conn: SqliteConnectionHolder::new(data_file),
         };
 
-        if !file_exists {
+        let valid = if file_exists {
+            ret.check_db_valid().map_err(|e| {
+                error!(
+                    "check noc sqlite meta db valid but got error! file={}, {}",
+                    ret.data_file.display(),
+                    e
+                );
+                e
+            })?
+        } else {
+            false
+        };
+
+        if !valid {
             if let Err(e) = ret.init_db() {
-                error!("init noc sqlite meta db error! now will delete file, {}", e);
+                error!(
+                    "init noc sqlite meta db error! now will delete file, file={}, {}",
+                    ret.data_file.display(),
+                    e
+                );
                 Self::remove_db_file(&ret.data_file, &ret.data_dir);
 
                 return Err(e);
@@ -84,11 +101,52 @@ impl SqliteMetaStorage {
         }
     }
 
+    fn check_db_valid(&self) -> BuckyResult<bool> {
+        let sql =
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='data_namedobject_meta'";
+        let ret = {
+            let (conn, _lock) = self.conn.get_read_conn()?;
+
+            conn.query_row(&sql, [], |row| {
+                let name: String = row.get(0).unwrap();
+                Ok(name)
+            })
+            .optional()
+            .map_err(|e| {
+                let msg = format!("noc meta check tables error! sql={}, {}", sql, e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
+
+        match ret {
+            Some(name) => {
+                info!(
+                    "check noc meta db file success! file={}, table={}",
+                    self.data_file.display(),
+                    name
+                );
+                Ok(true)
+            }
+            None => {
+                error!(
+                    "check noc meta db file but main table not exists! file={}",
+                    self.data_file.display()
+                );
+                Ok(false)
+            }
+        }
+    }
+
     fn init_db(&self) -> BuckyResult<()> {
         let (mut conn, _lock) = self.conn.get_write_conn()?;
 
         let tx = conn.transaction().map_err(|e| {
-            let msg = format!("noc meta db transaction error: {}", e);
+            let msg = format!(
+                "noc meta db transaction error: file={}, {}",
+                self.data_file.display(),
+                e
+            );
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
@@ -98,7 +156,12 @@ impl SqliteMetaStorage {
             for sql in INIT_NAMEDOBJECT_META_SQL_LIST.iter() {
                 info!("will exec: {}", sql);
                 tx.execute(&sql, []).map_err(|e| {
-                    let msg = format!("init noc table error! sql={}, {}", sql, e);
+                    let msg = format!(
+                        "init noc table error! sql={}, file={}, {}",
+                        sql,
+                        self.data_file.display(),
+                        e
+                    );
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::SqliteError, msg)
                 })?;
@@ -109,15 +172,25 @@ impl SqliteMetaStorage {
 
         if ret.is_ok() {
             tx.commit().map_err(|e| {
-                let msg = format!("commit init transaction error: {}", e);
+                let msg = format!(
+                    "commit init transaction error: file={}, {}",
+                    self.data_file.display(),
+                    e
+                );
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
-            info!("init noc sqlite meta db success!");
-
+            info!(
+                "init noc sqlite meta db success! file={}",
+                self.data_file.display()
+            );
         } else {
             tx.rollback().map_err(|e| {
-                let msg = format!("rollback init transaction error: {}", e);
+                let msg = format!(
+                    "rollback init transaction error: file={}, {}",
+                    self.data_file.display(),
+                    e
+                );
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
@@ -133,7 +206,12 @@ impl SqliteMetaStorage {
 
         let old = Self::get_db_version(&conn)?;
         if old < CURRENT_VERSION {
-            info!("will update noc meta db: {} -> {}", old, CURRENT_VERSION);
+            info!(
+                "will update noc meta db: file={}, {} -> {}",
+                self.data_file.display(),
+                old,
+                CURRENT_VERSION
+            );
 
             self.backup_db_file(old)?;
 
