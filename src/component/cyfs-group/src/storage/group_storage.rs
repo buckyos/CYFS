@@ -8,7 +8,10 @@ use cyfs_base::{
     ObjectDesc, ObjectId,
 };
 use cyfs_chunk_lib::ChunkMeta;
-use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
+use cyfs_core::{
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
+    GroupQuorumCertificateObject, HotstuffTimeout,
+};
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
@@ -20,7 +23,7 @@ use super::{
     StorageEngine,
 };
 
-const PROPOSAL_MAX_TIMEOUT_AS_MS: u64 = PROPOSAL_MAX_TIMEOUT.as_millis() as u64;
+const PROPOSAL_MAX_TIMEOUT_AS_MICRO_SEC: u64 = PROPOSAL_MAX_TIMEOUT.as_micros() as u64;
 
 pub enum BlockLinkState {
     Expired,
@@ -96,16 +99,32 @@ impl GroupStorage {
         // 用hash加载chunk
         // 从chunk解析group
 
-        let group = non_driver.get_group(group_id, None, None).await?;
+        let group = non_driver
+            .get_group(group_id, None, None)
+            .await
+            .map_err(|err| {
+                log::warn!("get group {} from noc failed {:?}", group_id, err);
+                err
+            })?;
         let group_chunk = ChunkMeta::from(&group);
         let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
-            .await?
+            .await
+            .map_err(|err| {
+                log::warn!("load root state for group {} failed {:?}", group_id, err);
+                err
+            })?
             .expect("create group state failed.");
 
-        let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
+        let dec_group_state = group_state
+            .get_dec_root_manager(dec_id, true)
+            .await
+            .map_err(|err| {
+                log::warn!("get root state manager for dec {} failed {:?}", dec_id, err);
+                err
+            })?;
 
         let state_path = GroupStatePath::new(rpath.to_string());
         let cache =
@@ -120,7 +139,7 @@ impl GroupStorage {
             group_chunk_id: group_chunk_id.object_id(),
             storage_engine: StorageEngineGroupState::new(dec_group_state, state_path),
             local_device_id,
-            cache: cache,
+            cache,
         })
     }
 
@@ -286,24 +305,33 @@ impl GroupStorage {
 
             writer.remove_prepares(remove_prepares.as_slice()).await?;
 
-            let finish_proposals: Vec<ObjectId> = new_header
-                .proposals()
-                .iter()
-                .map(|p| p.proposal.clone())
-                .collect();
+            if new_header.proposals().len() > 0 {
+                let finish_proposals: Vec<ObjectId> = new_header
+                    .proposals()
+                    .iter()
+                    .map(|p| p.proposal.clone())
+                    .collect();
 
-            let timestamp = new_header.named_object().desc().create_time();
-            if timestamp - self.cache.finish_proposals.flip_timestamp > PROPOSAL_MAX_TIMEOUT_AS_MS {
-                writer
-                    .push_proposals(
-                        finish_proposals.as_slice(),
-                        Some((timestamp, self.cache.finish_proposals.flip_timestamp)),
-                    )
-                    .await?;
-            } else {
-                writer
-                    .push_proposals(finish_proposals.as_slice(), None)
-                    .await?;
+                let timestamp = new_header.named_object().desc().create_time();
+                // log::debug!(
+                //     "push proposals storage flip-time from {} to {}",
+                //     self.cache.finish_proposals.flip_timestamp,
+                //     timestamp
+                // );
+                if timestamp - self.cache.finish_proposals.flip_timestamp
+                    > PROPOSAL_MAX_TIMEOUT_AS_MICRO_SEC
+                {
+                    writer
+                        .push_proposals(
+                            finish_proposals.as_slice(),
+                            Some((timestamp, self.cache.finish_proposals.flip_timestamp)),
+                        )
+                        .await?;
+                } else {
+                    writer
+                        .push_proposals(finish_proposals.as_slice(), None)
+                        .await?;
+                }
             }
         }
 
@@ -340,19 +368,28 @@ impl GroupStorage {
                     self.cache.first_block = Some(new_header.clone());
                 }
 
-                let timestamp = new_header.named_object().desc().create_time();
-                if timestamp - self.cache.finish_proposals.flip_timestamp
-                    > PROPOSAL_MAX_TIMEOUT_AS_MS
-                {
-                    let mut new_over = HashSet::new();
-                    std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.adding);
-                    std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.over);
-                    self.cache.finish_proposals.flip_timestamp = timestamp;
-                }
+                if new_header.proposals().len() > 0 {
+                    let timestamp = new_header.named_object().desc().create_time();
 
-                for proposal in new_header.proposals() {
-                    let is_new = self.cache.finish_proposals.adding.insert(proposal.proposal);
-                    assert!(is_new);
+                    // log::debug!(
+                    //     "push proposals flip-time from {} to {}",
+                    //     self.cache.finish_proposals.flip_timestamp,
+                    //     timestamp
+                    // );
+
+                    if timestamp - self.cache.finish_proposals.flip_timestamp
+                        > PROPOSAL_MAX_TIMEOUT_AS_MICRO_SEC
+                    {
+                        let mut new_over = HashSet::new();
+                        std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.adding);
+                        std::mem::swap(&mut new_over, &mut self.cache.finish_proposals.over);
+                        self.cache.finish_proposals.flip_timestamp = timestamp;
+                    }
+
+                    for proposal in new_header.proposals() {
+                        let is_new = self.cache.finish_proposals.adding.insert(proposal.proposal);
+                        assert!(is_new);
+                    }
                 }
 
                 self.cache.header_block = Some(new_header);
@@ -402,6 +439,33 @@ impl GroupStorage {
 
         self.cache.last_vote_round = round;
 
+        Ok(())
+    }
+
+    pub fn last_qc(&self) -> &Option<GroupQuorumCertificate> {
+        &self.cache.last_qc
+    }
+
+    pub async fn save_qc(&mut self, qc: GroupQuorumCertificate) -> BuckyResult<()> {
+        let quorum_round = qc.quorum_round();
+        if quorum_round < self.cache.last_vote_round
+            || quorum_round
+                <= self
+                    .cache
+                    .last_qc
+                    .as_ref()
+                    .map_or(0, |qc| qc.quorum_round())
+        {
+            return Ok(());
+        }
+
+        self.non_driver.put_qc(&qc).await?;
+
+        let mut writer = self.storage_engine.create_writer().await?;
+        writer.save_last_qc(&qc.desc().object_id()).await?;
+        writer.commit().await?;
+
+        self.cache.last_qc = Some(qc);
         Ok(())
     }
 

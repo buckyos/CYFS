@@ -9,7 +9,7 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
-    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
+    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout, GroupQuorumCertificateObject, GroupQuorumCertificate,
 };
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
@@ -238,11 +238,36 @@ impl HotstuffRunner {
         rpath: GroupRPath,
     ) -> Self {
         let max_round_block = store.block_with_max_round();
+        let last_qc = store.last_qc();
+        let (tc, qc) = last_qc
+            .as_ref()
+            .map_or((None, None), |qc| {
+                match qc.desc().content() {
+                    cyfs_core::GroupQuorumCertificateDescContent::QC(qc) => (None, Some(qc.clone())),
+                    cyfs_core::GroupQuorumCertificateDescContent::TC(tc) => (Some(tc.clone()), None),
+                }
+            });
 
-        let round = store
-            .last_vote_round()
-            .max(max_round_block.as_ref().map_or(1, |block| block.round()));
-        let high_qc = max_round_block.map_or(None, |block| block.qc().clone());
+        let last_vote_round = store
+            .last_vote_round();
+        let quorum_round = last_qc.as_ref().map_or(0, |qc| qc.quorum_round());
+        let max_round_block_round = max_round_block.as_ref().map_or(0, |block| block.round());
+        let round = last_vote_round.max(quorum_round + 1).max(max_round_block_round);
+        
+        log::debug!("[hotstuff] local: {:?}-{:?}-{}, startup with last_vote_round = {}, quorum_round = {}, max_round_block_round = {}"
+            , rpath, local_device_id, round, last_vote_round, quorum_round, max_round_block_round);
+
+        let max_round_qc_round = max_round_block
+            .as_ref()
+            .map_or(0, |block|
+                block.qc().as_ref().map_or(0, |qc| qc.round)
+            );
+        let last_qc_round = qc.as_ref().map_or(0, |qc| qc.round);
+        let high_qc = if max_round_qc_round >= last_qc_round {
+            max_round_block.map_or(None, |b| b.qc().clone())
+        } else {
+            qc
+        };
 
         let vote_mgr = VoteMgr::new(committee.clone(), round);
         let init_timer_interval = store.group().consensus_interval();
@@ -277,7 +302,7 @@ impl HotstuffRunner {
             rpath,
             proposal_consumer,
             rx_proposal_waiter: None,
-            tc: None,
+            tc,
             state_pusher,
             tx_block_gen,
             rx_block_gen,
@@ -626,6 +651,16 @@ impl HotstuffRunner {
         /**
          * 验证过的块执行这个函数
          */
+
+        if let Err(err) = self.non_driver.put_block(block).await {
+            if err.code() != BuckyErrorCode::AlreadyExists && err.code() != BuckyErrorCode::NotChange {
+                log::warn!(
+                    "[hotstuff] local: {:?}, put new block {:?}/{}/{} to noc",
+                    self, block.block_id(), block.height(), block.round()
+                );
+                return Err(err);
+            }
+        }
 
         log::info!(
             "[hotstuff] local: {:?}, will push new block {:?}/{}/{} to storage",
@@ -1072,6 +1107,10 @@ impl HotstuffRunner {
         let qc_round = qc.round;
         let qc_prev_block_id = qc.prev_block_id;
 
+        log::debug!("[hotstuff] local: {:?},  save-qc round {}", self, qc_round);
+
+        self.store.save_qc(GroupQuorumCertificate::from(qc.clone())).await?;
+
         self.process_qc(&Some(qc)).await;
 
         let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
@@ -1211,9 +1250,13 @@ impl HotstuffRunner {
                 .collect::<Vec<String>>(),
             max_high_qc_block.as_ref().map(|qc| qc.prev_block_id())
         );
+        
+        self.store.save_qc(GroupQuorumCertificate::from(tc.clone())).await?;
 
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
+
+        log::debug!("[hotstuff] local: {:?},  save-qc round {}", self, tc.round);
 
         let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
             log::warn!(
@@ -1323,6 +1366,10 @@ impl HotstuffRunner {
             );
             err
         })?;
+
+        log::debug!("[hotstuff] local: {:?},  save-qc round {}", self, tc.round);
+
+        self.store.save_qc(GroupQuorumCertificate::from(tc.clone())).await?;
 
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
@@ -1814,6 +1861,7 @@ impl HotstuffRunner {
                 match max_round_block {
                     Some(max_round_block)
                         if max_round_block.owner() == &self.local_id
+                            && max_round_block.round() == self.round
                             && latest_group.is_ok()
                             && last_group.is_ok()
                             && last_group
