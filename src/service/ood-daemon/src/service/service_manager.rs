@@ -1,13 +1,3 @@
-use async_std::sync::Mutex as AsyncMutex;
-use cyfs_lib::ZoneRole;
-use futures::future::join_all;
-use lazy_static::lazy_static;
-use std::fmt;
-use std::fmt::Formatter;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{collections::HashMap, str::FromStr};
-
 use super::service::Service;
 use super::service_info::ServicePackageLocalState;
 use crate::config::*;
@@ -15,6 +5,15 @@ use crate::daemon::GATEWAY_MONITOR;
 use crate::status::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
+use cyfs_lib::ZoneRole;
+
+use async_std::sync::Mutex as AsyncMutex;
+use lazy_static::lazy_static;
+use std::fmt;
+use std::fmt::Formatter;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Clone)]
 pub struct ServiceItem {
@@ -465,26 +464,25 @@ impl ServiceManager {
 
         debug!("will sync all service packages");
 
-        let mut futures = Vec::new();
-
         let service_list = self.service_list.lock().unwrap().clone();
         for (name, service_info) in service_list {
             if service_info.service.is_none() {
-                error!("service not init! name={}", name);
+                error!("service not init yet! name={}", name);
                 continue;
             }
 
             if service_info.target_state() == ServiceState::Run {
-                futures.push(Self::sync_service_package(service_info));
+                if let Err(e) = Self::sync_service_package(&service_info).await {
+                    error!(
+                        "sync service package failed! service={}, {}",
+                        service_info.config.name, e
+                    );
+                }
             }
-        }
-
-        if !futures.is_empty() {
-            let _ret = join_all(futures).await;
         }
     }
 
-    async fn sync_service_package(service_info: ServiceItem) -> BuckyResult<()> {
+    async fn sync_service_package(service_info: &ServiceItem) -> BuckyResult<()> {
         let service = service_info.service.as_ref().unwrap();
         match service.sync_package().await {
             Ok(changed) => {

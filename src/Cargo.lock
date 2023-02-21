@@ -4556,7 +4556,6 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",
- "cyfs-stack-loader",
  "cyfs-util",
  "fs_extra",
  "futures",
