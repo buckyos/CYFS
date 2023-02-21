@@ -66,6 +66,7 @@ pub enum CoreObjectType {
     GroupConsensusBlock = 702,
     GroupRPathStatus = 703,
     GroupAction = 704,
+    GroupQuorumCertificate = 705,
 
     // IM通用对象
     AddFriend = 1001,

@@ -7,7 +7,9 @@ use cyfs_base::{
     TypelessCoreObject,
 };
 use cyfs_chunk_lib::ChunkMeta;
-use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
+use cyfs_core::{
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
+};
 use cyfs_lib::NONObjectInfo;
 
 use crate::{MEMORY_CACHE_DURATION, MEMORY_CACHE_SIZE};
@@ -103,6 +105,32 @@ impl NONDriverHelper {
             object: Some(block_any),
         };
         self.put_object(block).await?;
+        Ok(())
+    }
+
+    pub async fn get_qc(
+        &self,
+        object_id: &ObjectId,
+        from: Option<&ObjectId>,
+    ) -> BuckyResult<GroupQuorumCertificate> {
+        let obj = self.get_object(object_id, from).await?;
+        let (block, remain) = GroupQuorumCertificate::raw_decode(obj.object_raw.as_slice())?;
+        assert_eq!(remain.len(), 0);
+        Ok(block)
+    }
+
+    pub async fn put_qc(&self, qc: &GroupQuorumCertificate) -> BuckyResult<()> {
+        let buf = qc.to_vec()?;
+        let block_any = Arc::new(AnyNamedObject::Core(
+            TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
+        ));
+
+        let qc = NONObjectInfo {
+            object_id: qc.desc().object_id(),
+            object_raw: qc.to_vec()?,
+            object: Some(block_any),
+        };
+        self.put_object(qc).await?;
         Ok(())
     }
 
