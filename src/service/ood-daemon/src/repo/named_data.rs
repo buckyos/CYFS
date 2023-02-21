@@ -139,11 +139,7 @@ impl Repo for NamedDataRepo {
             let local_file = local_file.to_owned();
             let client = self.client.get().unwrap().clone();
 
-            match async_std::task::spawn(async move {
-                Self::fetch_inner(client, &info, &local_file).await
-            })
-            .await
-            {
+            match Self::fetch_inner(client, &info, &local_file).await {
                 Ok(()) => break Ok(()),
                 Err(e) => {
                     async_std::task::sleep(std::time::Duration::from_secs(retry_interval_secs))

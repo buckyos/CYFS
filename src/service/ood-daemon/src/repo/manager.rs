@@ -125,13 +125,7 @@ impl RepoManager {
             return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
         }
 
-        let cache_dir = self.cache_dir.clone();
-        let fid = fid.to_owned();
-
-        async_std::task::spawn(async move {
-            Self::fetch_service_with_repo_list(&cache_dir, &fid, &repo_list).await
-        })
-        .await
+        Self::fetch_service_with_repo_list(&self.cache_dir, fid, &repo_list).await
     }
 
     async fn fetch_service_with_repo_list(
@@ -197,7 +191,11 @@ impl RepoManager {
         local_file: &Path,
     ) -> BuckyResult<()> {
         if let Err(e) = repo
-            .fetch_with_timeout(info, local_file, std::time::Duration::from_secs(60 * 60 * 2))
+            .fetch_with_timeout(
+                info,
+                local_file,
+                std::time::Duration::from_secs(60 * 60 * 2),
+            )
             .await
         {
             error!(
