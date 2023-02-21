@@ -47,10 +47,10 @@ CREATE INDEX IF NOT EXISTS `data_namedobject_meta_last_access_time_index` on `da
 "#;
 
 pub(super) const INIT_NAMEDOBJECT_META_SQL_LIST: [&'static str; 4] = [
-    SET_DB_VERSION,
     DATA_NAMEDOBJECT_META_INIT,
     DATA_NAMEDOBJECT_META_INSERT_TIME_INDEX,
     DATA_NAMEDOBJECT_META_INSERT_LAST_ACCESS_INDEX,
+    SET_DB_VERSION,
 ];
 
 // version 1 alters

@@ -85,19 +85,45 @@ impl SqliteMetaStorage {
     }
 
     fn init_db(&self) -> BuckyResult<()> {
-        let (conn, _lock) = self.conn.get_write_conn()?;
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
 
-        for sql in INIT_NAMEDOBJECT_META_SQL_LIST.iter() {
-            info!("will exec: {}", sql);
-            conn.execute(&sql, []).map_err(|e| {
-                let msg = format!("init noc table error! sql={}, {}", sql, e);
+        let tx = conn.transaction().map_err(|e| {
+            let msg = format!("noc meta db transaction error: {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::SqliteError, msg)
+        })?;
+
+        let ret = (|| {
+            for sql in INIT_NAMEDOBJECT_META_SQL_LIST.iter() {
+                info!("will exec: {}", sql);
+                tx.execute(&sql, []).map_err(|e| {
+                    let msg = format!("init noc table error! sql={}, {}", sql, e);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::SqliteError, msg)
+                })?;
+            }
+
+            Ok(())
+        })();
+
+        if ret.is_ok() {
+            tx.commit().map_err(|e| {
+                let msg = format!("commit init transaction error: {}", e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
+            info!("init noc sqlite meta db success!");
+
+        } else {
+            tx.rollback().map_err(|e| {
+                let msg = format!("rollback init transaction error: {}", e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
         }
-        info!("init noc sqlite table success!");
 
-        Ok(())
+        ret
     }
 
     fn check_and_update(&self) -> BuckyResult<()> {
