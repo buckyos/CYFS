@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapContentItem,
     ObjectMapPathOpEnvRef, ObjectMapRootManagerRef, ObjectMapSimpleContentType,
-    ObjectMapSingleOpEnvRef, OpEnvPathAccess,
+    ObjectMapSingleOpEnvRef, OpEnvPathAccess, RawConvertTo,
 };
 
 use crate::{
@@ -27,26 +27,35 @@ impl StorageEngineGroupState {
         non_driver: &NONDriverHelper,
         state_path: &GroupStatePath,
     ) -> BuckyResult<StorageCacheInfo> {
-        let op_env = state_mgr.create_op_env(ACCESS)?;
+        let op_env = state_mgr.create_op_env(ACCESS).map_err(|err| {
+            log::warn!("create_op_env failed {:?}", err);
+            err
+        })?;
 
-        let dec_state_id = op_env.get_by_path(state_path.dec_state()).await?;
+        let dec_state_id = op_env.get_by_path(state_path.dec_state()).await;
+        let dec_state_id = map_not_found_option_to_option(dec_state_id)?;
 
-        let last_vote_round = op_env
-            .get_by_path(state_path.last_vote_round())
-            .await?
-            .map(|id| parse_u64_obj(&id));
+        let last_vote_round = op_env.get_by_path(state_path.last_vote_round()).await;
+        let last_vote_round =
+            map_not_found_option_to_option(last_vote_round)?.map(|id| parse_u64_obj(&id));
+        let last_qc = op_env.get_by_path(state_path.last_qc()).await;
+        let last_qc = map_not_found_option_to_option(last_qc)?;
+        let last_qc = match last_qc.as_ref() {
+            Some(qc_id) => Some(non_driver.get_qc(qc_id, None).await?),
+            None => None,
+        };
 
         let mut first_header_block_ids: Vec<ObjectId> = vec![];
-        let commit_range = op_env
-            .get_by_path(state_path.range())
-            .await?
-            .map(|id| parse_range_obj(&id));
+        let commit_range = op_env.get_by_path(state_path.range()).await;
+        let commit_range =
+            map_not_found_option_to_option(commit_range)?.map(|id| parse_range_obj(&id));
         let commit_block = match commit_range {
             Some((first_height, header_height)) => {
                 let first_block_id = op_env
                     .get_by_path(state_path.commit_height(first_height).as_str())
-                    .await?
-                    .expect("first block is lost");
+                    .await;
+                let first_block_id =
+                    map_not_found_option_to_option(first_block_id)?.expect("first block is lost");
                 first_header_block_ids.push(first_block_id);
 
                 if header_height == first_height {
@@ -54,7 +63,8 @@ impl StorageEngineGroupState {
                 } else {
                     let header_block_id = op_env
                         .get_by_path(state_path.commit_height(header_height).as_str())
-                        .await?
+                        .await;
+                    let header_block_id = map_not_found_option_to_option(header_block_id)?
                         .expect("first block is lost");
                     first_header_block_ids.push(header_block_id);
                     Some((first_block_id, header_block_id))
@@ -64,13 +74,27 @@ impl StorageEngineGroupState {
         };
 
         let prepare_block_ids = load_object_ids_with_path(&op_env, state_path.prepares()).await?;
+        if prepare_block_ids.len() == 0 && commit_range.is_none() {
+            return Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                "not found in storage",
+            ));
+        }
+
         let pre_commit_block_ids =
             load_object_ids_with_path(&op_env, state_path.pre_commits()).await?;
 
-        let flip_timestamp = op_env
-            .get_by_path(state_path.flip_time())
-            .await?
-            .map_or(0, |id| parse_u64_obj(&id));
+        let flip_timestamp = op_env.get_by_path(state_path.flip_time()).await;
+        let flip_timestamp = map_not_found_option_to_option(flip_timestamp)?.map_or(0, |id| {
+            let n = parse_u64_obj(&id);
+            // log::debug!(
+            //     "load flip timestamp {}/{} -> {}",
+            //     id,
+            //     id.to_hex().unwrap(),
+            //     n
+            // );
+            n
+        });
 
         let adding_proposal_ids = load_object_ids_with_path(&op_env, state_path.adding()).await?;
         let over_proposal_ids = load_object_ids_with_path(&op_env, state_path.recycle()).await?;
@@ -82,15 +106,18 @@ impl StorageEngineGroupState {
         ]
         .concat();
 
-        let load_blocks = futures::future::join_all(
-            load_block_ids
-                .iter()
-                .map(|id| non_driver.get_block(id, None)),
-        )
+        let load_blocks = futures::future::join_all(load_block_ids.iter().map(|id| async {
+            let id = id.clone();
+            non_driver.get_block(&id, None).await.map_err(|err| {
+                log::warn!("get block {} failed {:?}", id, err);
+                err
+            })
+        }))
         .await;
 
         let mut cache = StorageCacheInfo::new(dec_state_id);
         cache.last_vote_round = last_vote_round.map_or(0, |round| round);
+        cache.last_qc = last_qc;
         cache.finish_proposals.adding = HashSet::from_iter(adding_proposal_ids.into_iter());
         cache.finish_proposals.over = HashSet::from_iter(over_proposal_ids.into_iter());
         cache.finish_proposals.flip_timestamp = flip_timestamp;
@@ -212,7 +239,8 @@ impl StorageEngineGroupStateWriter {
                 .await?;
         }
 
-        let is_changed = self.op_env
+        let is_changed = self
+            .op_env
             .insert(self.state_path.pre_commits(), block_id)
             .await?;
         assert!(is_changed);
@@ -326,6 +354,15 @@ impl StorageEngineGroupStateWriter {
             let timestamp_obj = make_u64_obj(timestamp);
             if prev_timestamp != 0 {
                 let prev_timestamp_obj = make_u64_obj(prev_timestamp);
+                // log::debug!(
+                //     "will update flip-time from {} -> {}/{} to {} -> {}/{}",
+                //     prev_timestamp,
+                //     prev_timestamp_obj,
+                //     prev_timestamp_obj.to_hex().unwrap(),
+                //     timestamp,
+                //     timestamp_obj,
+                //     timestamp_obj.to_hex().unwrap(),
+                // );
                 let prev_value = self
                     .op_env
                     .set_with_path(
@@ -337,6 +374,7 @@ impl StorageEngineGroupStateWriter {
                     .await?;
                 assert_eq!(prev_value.unwrap(), prev_timestamp_obj);
             } else {
+                // log::debug!("will update flip-time from None to {}", timestamp);
                 self.op_env
                     .insert_with_key(
                         self.state_path.finish_proposals(),
@@ -394,6 +432,13 @@ impl StorageEngineGroupStateWriter {
             assert_eq!(prev_value.unwrap(), prev_obj);
             Ok(())
         }
+    }
+
+    async fn save_last_qc_inner(&mut self, qc_id: &ObjectId) -> BuckyResult<()> {
+        self.op_env
+            .set_with_path(self.state_path.last_qc(), qc_id, &None, true)
+            .await
+            .map(|_| ())
     }
 }
 
@@ -455,6 +500,12 @@ impl StorageWriter for StorageEngineGroupStateWriter {
     async fn set_last_vote_round(&mut self, round: u64, prev_value: u64) -> BuckyResult<()> {
         self.write_result.as_ref().map_err(|e| e.clone())?;
         self.write_result = self.set_last_vote_round_inner(round, prev_value).await;
+        self.write_result.clone()
+    }
+
+    async fn save_last_qc(&mut self, qc_id: &ObjectId) -> BuckyResult<()> {
+        self.write_result.as_ref().map_err(|e| e.clone())?;
+        self.write_result = self.save_last_qc_inner(qc_id).await;
         self.write_result.clone()
     }
 
@@ -522,6 +573,7 @@ async fn load_object_ids_with_path(
     let content = match op_env.list(full_path).await {
         Ok(content) => content,
         Err(err) => {
+            log::warn!("list by path {} failed {:?}", full_path, err);
             if err.code() == BuckyErrorCode::NotFound {
                 return Ok(vec![]);
             } else {
@@ -545,4 +597,30 @@ async fn load_object_ids_with_path(
     }
 
     Ok(object_ids)
+}
+
+fn map_not_found_to_option<T>(r: BuckyResult<T>) -> BuckyResult<Option<T>> {
+    match r {
+        Ok(t) => Ok(Some(t)),
+        Err(err) => {
+            if err.code() == BuckyErrorCode::NotFound {
+                Ok(None)
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+fn map_not_found_option_to_option<T>(r: BuckyResult<Option<T>>) -> BuckyResult<Option<T>> {
+    match r {
+        Ok(t) => Ok(t),
+        Err(err) => {
+            if err.code() == BuckyErrorCode::NotFound {
+                Ok(None)
+            } else {
+                Err(err)
+            }
+        }
+    }
 }
