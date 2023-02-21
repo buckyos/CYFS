@@ -99,6 +99,21 @@ impl ChannelManager {
         manager
     }
 
+
+    pub(crate) fn on_statistic(&self) -> String {
+        let mut channels = self.0.channels.write().unwrap();
+        let mut download_session_count = 0;
+        let mut upload_session_count = 0;
+        let mut channel_count = 0;
+        for (_, guard) in &mut channels.entries {
+            channel_count += 1;
+            download_session_count += guard.channel.download_session_count();
+            upload_session_count += guard.channel.upload_session_count();
+        }
+
+        format!("ChannelCount: {}, UploadSessionCount:{}, DownloadSessionCount:{}", channel_count, upload_session_count, download_session_count)
+    }
+
     pub fn channel_of(&self, remote: &DeviceId) -> Option<Channel> {
         self.0.channels.read().unwrap().entries.get(remote).map(|guard| guard.get())
     }
