@@ -116,15 +116,14 @@ impl ChunkManager {
         Self { 
             stack: weak_stack, 
             store: Box::new(EmptyChunkWrapper::new(store)), 
-            raw_caches: RawCacheManager::new(stack.config().ndn.chunk.raw_caches.clone()), 
+            raw_caches: RawCacheManager::new(stack.local_device_id().clone(), stack.config().ndn.chunk.raw_caches.clone()), 
             caches: Mutex::new(Default::default()), 
             downloaders: Mutex::new(Downloaders::new())
         }
     }
 
     pub(crate) fn on_statistic(&self) -> String {
-        let caches = self.caches.lock().unwrap();
-        format!("ChunkCacheCount:{}",  caches.len())
+        format!("ChunkCacheCount:{}, UsedMem: {}",  self.caches.lock().unwrap().len(), self.raw_caches().used_mem())
     }
 
     pub fn store(&self) -> &dyn ChunkReader {
@@ -164,6 +163,20 @@ impl ChunkManager {
         };
         for downloader in downloaders {
             downloader.on_drain(0);
+        }
+
+        {
+            let mut remove = LinkedList::new();
+            let mut caches = self.caches.lock().unwrap();
+            for (chunk, cache) in caches.iter() {
+                if cache.to_strong().is_none() {
+                    remove.push_back(chunk.clone());
+                }
+            }
+
+            for chunk in remove {
+                caches.remove(&chunk);
+            }
         }
     } 
 }

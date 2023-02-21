@@ -101,11 +101,11 @@ impl ChannelManager {
 
 
     pub(crate) fn on_statistic(&self) -> String {
-        let mut channels = self.0.channels.write().unwrap();
+        let channels = self.0.channels.read().unwrap();
         let mut download_session_count = 0;
         let mut upload_session_count = 0;
         let mut channel_count = 0;
-        for (_, guard) in &mut channels.entries {
+        for (_, guard) in &channels.entries {
             channel_count += 1;
             download_session_count += guard.channel.download_session_count();
             upload_session_count += guard.channel.upload_session_count();
