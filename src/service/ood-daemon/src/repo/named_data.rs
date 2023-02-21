@@ -28,11 +28,10 @@ impl NamedDataRepo {
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
-
         // service desc确保它有固定外网地址，连接不走sn。这里sn_list就可以传None
         let mut config = NamedCacheClientConfig::default();
-        config.retry_times = 3;
-        config.timeout = Duration::from_secs(10*60);
+        config.retry_times = 1;
+        config.timeout = Duration::from_secs(15 * 60);
         config.tcp_file_manager_port = 5312;
         config.tcp_chunk_manager_port = 5310;
         config.conn_strategy = cyfs_client::ConnStrategy::TcpFirst;
@@ -130,7 +129,10 @@ impl Repo for NamedDataRepo {
     }
 
     async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
-        let mut retry_interval_secs = 60;
+        use rand::Rng;
+
+        // Use a random retry interval
+        let mut retry_interval_secs: u64 = rand::thread_rng().gen_range(60, 60 * 10);
         let mut retry_count = 0;
         loop {
             let info = info.to_owned();
