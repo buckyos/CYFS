@@ -88,7 +88,7 @@ pub async fn get_by_id(client:& NamedCacheClient, id_str:&str, dest_path:&Path, 
         },
         ObjectTypeCode::Dir => {
             match client.get_dir(id_str, None, inner_path, dest_path).await {
-                Ok(desc) => {
+                Ok((desc, _)) => {
                     info!("get success");
                     Ok(AnyNamedObject::Standard(StandardObject::Dir(desc)))
                 },

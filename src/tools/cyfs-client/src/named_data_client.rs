@@ -553,7 +553,7 @@ impl NamedCacheClient {
         return Err(BuckyError::from(BuckyErrorCode::NotFound));
     }
 
-    pub async fn get_dir(&self, id_str: &str, owner_str: Option<&str>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
+    pub async fn get_dir(&self, id_str: &str, owner_str: Option<&str>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<(Dir, usize)> {
         let id = self.get_id_from_str(id_str).await?;
         let mut owner = None;
         if let Some(str) = owner_str {
@@ -563,7 +563,7 @@ impl NamedCacheClient {
         self.get_dir_by_obj(&id, owner, inner_path, dest_path).await
     }
 
-    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
+    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<(Dir, usize)> {
         info!("get dir by id {}, inner path {}", id, inner_path.unwrap_or("none"));
 
         let desc = self.get_desc(&id, owner).await?;
@@ -635,7 +635,7 @@ impl NamedCacheClient {
                             }
                         }
                     }
-                    Ok(dir.clone())
+                    Ok((dir.clone(), filtred_list.len()))
                 },
                 NDNObjectInfo::Chunk(_) => {
                     // 先不支持chunk格式
