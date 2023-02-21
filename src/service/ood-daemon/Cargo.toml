@@ -36,3 +36,4 @@ toml = "0.5"
 http-types = "2.12"
 hex = "0.4"
 tide = "0.16"
+rand = '0.7'

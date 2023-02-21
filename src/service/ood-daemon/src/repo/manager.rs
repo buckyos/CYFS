@@ -197,7 +197,7 @@ impl RepoManager {
         local_file: &Path,
     ) -> BuckyResult<()> {
         if let Err(e) = repo
-            .fetch_with_timeout(info, local_file, std::time::Duration::from_secs(60 * 20))
+            .fetch_with_timeout(info, local_file, std::time::Duration::from_secs(60 * 60 * 2))
             .await
         {
             error!(
