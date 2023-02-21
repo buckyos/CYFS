@@ -2,7 +2,7 @@
 use crate::app_controller::AppController;
 use crate::app_manager_ex::AppManager as AppManagerEx;
 use app_manager_lib::{AppManagerConfig};
-use clap::App;
+use clap::{App};
 use cyfs_base::*;
 use cyfs_core::DecAppId;
 use cyfs_lib::SharedCyfsStack;

@@ -140,21 +140,18 @@ impl AppController {
             );
             SubErrorCode::DownloadFailed
         })?;
-        let owner_id_str = self.get_owner_id_str(&app_id).await;
-        let pkg = AppPackage::new(
-            &app_id.to_string(),
-            &source_id.to_string(),
-            &owner_id_str,
-            version,
-        );
-        // 返回了安装的service路径和web路径
-        let (service_dir, web_dir) = pkg
-            .install(self.named_cache_client.get().unwrap())
+        let owner_id = self.get_owner_id(&app_id).await.map_err(|e| {
+            error!("get app {} owner id failed", &app_id);
+            SubErrorCode::LoadFailed
+        })?;
+        AppPackage::install(&app_id, &source_id, &owner_id, self.named_cache_client.get().unwrap(), self.config.config.repo_mode.clone())
             .await
             .map_err(|e| {
                 error!("install app:{} failed, {}", app_id, e);
                 SubErrorCode::DownloadFailed
             })?;
+        let service_dir = get_app_dir(&app_id.to_string());
+        let web_dir = get_app_web_dir(&app_id.to_string());
 
         let web_dir_id = if web_dir.exists() {
             let pub_resp = self
@@ -381,40 +378,12 @@ impl AppController {
         }
     }
 
-    pub async fn query_app_permission(
+    pub async fn get_app_permission(
         &self,
         app_id: &DecAppId,
-        version: &str,
-        dec_app: &DecApp,
     ) -> BuckyResult<Option<HashMap<String, String>>> {
-        debug!("query app permission, {}-{}", app_id, version);
-        let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app:{} cannot find source for ver {}", app_id, version);
-            e
-        })?;
-        let owner_id_str = self.get_owner_id_str(&app_id).await;
-        let pkg = AppPackage::new(
-            &app_id.to_string(),
-            &source_id.to_string(),
-            &owner_id_str,
-            version,
-        );
+        let acl_file = get_app_acl_dir(&app_id.to_string()).join("acl.cfg");
 
-        let acl_dir;
-
-        match pkg
-            .download_permission_config(self.named_cache_client.get().unwrap())
-            .await
-        {
-            Ok(dir) => acl_dir = dir,
-            Err(e) => {
-                //下载acl失败，默认没有任何权限
-                warn!("download acl config failed. app:{}， err: {}", app_id, e);
-                return Ok(None);
-            }
-        }
-
-        let acl_file = acl_dir.join("acl.cfg");
         if !acl_file.exists() {
             info!("acl config not found. app:{}", app_id);
             return Ok(None);
@@ -448,41 +417,18 @@ impl AppController {
     }
 
     // 查询app对stack的版本依赖，返回（minVer，maxVer）
-    pub async fn query_app_version_dep(
+    pub async fn get_app_version_dep(
         &self,
         app_id: &DecAppId,
-        version: &str,
-        dec_app: &DecApp,
     ) -> BuckyResult<(String, String)> {
-        debug!("query app stack dep, {}-{}", app_id, version);
-        let dep_dir = get_app_dep_dir(&app_id.to_string(), version);
+        let dep_dir = get_app_dep_dir(&app_id.to_string());
         let dep_file = dep_dir.join("dependent.cfg");
         if dep_file.exists() {
-            info!("dep config already exists. app:{}, ver:{}", app_id, version);
+            info!("dep config already exists. app:{}", app_id);
             return self.parse_dep_config(app_id, dep_file);
         }
 
-        let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app:{} cannot find source for ver {}", app_id, version);
-            e
-        })?;
-        let owner_id_str = self.get_owner_id_str(&app_id).await;
-        let pkg = AppPackage::new(
-            &app_id.to_string(),
-            &source_id.to_string(),
-            &owner_id_str,
-            version,
-        );
-
-        let _ = pkg
-            .download_dep_config(dep_dir, self.named_cache_client.get().unwrap())
-            .await
-            .map_err(|e| {
-                error!("download app dep {} failed, {}", app_id, e);
-                e
-            })?;
-
-        self.parse_dep_config(app_id, dep_file)
+        return Ok(("*".to_string(), "*.".to_string()))
     }
 
     fn parse_dep_config(
@@ -501,7 +447,7 @@ impl AppController {
         let dep_file = File::open(dep_file)?;
         let dep_info: Value = serde_json::from_reader(dep_file)?;
         let dep_map = dep_info.as_object().ok_or_else(|| {
-            let msg = format!("invalid acl file format: {}", dep_info);
+            let msg = format!("invalid dep file format: {}", dep_info);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
@@ -522,15 +468,16 @@ impl AppController {
     }
 
     async fn get_owner_id_str(&self, app_id: &DecAppId) -> String {
-        let mut owner_id_str: std::string::String = "".to_owned();
+        let mut owner_id_str = "".to_owned();
         let owner = self.get_owner_id(&app_id).await;
-        if owner.is_some() {
-            owner_id_str = owner.unwrap().to_string();
+        if let Ok(owner) = owner {
+            owner_id_str = owner.to_string();
         }
         owner_id_str
     }
 
-    async fn get_owner_id(&self, app_id: &DecAppId) -> Option<ObjectId> {
+    // valid dec app must have a owner
+    async fn get_owner_id(&self, app_id: &DecAppId) -> BuckyResult<ObjectId> {
         // DecApp会更新，这里要主动从远端获取
         let resp = self
             .shared_stack
@@ -549,42 +496,12 @@ impl AppController {
                 object_id: app_id.clone().into(),
                 inner_path: None,
             })
-            .await
-            .unwrap();
-        let dec_app = DecApp::clone_from_slice(&resp.object.object_raw).unwrap();
+            .await?;
+        let dec_app = DecApp::clone_from_slice(&resp.object.object_raw)?;
 
         let owner = dec_app.desc().owner().unwrap();
         info!("dec app owner {}", owner);
-        match owner.obj_type_code() {
-            ObjectTypeCode::Device => Some(owner),
-            ObjectTypeCode::People => {
-                match self
-                    .shared_stack
-                    .get()
-                    .unwrap()
-                    .util_service()
-                    .resolve_ood(UtilResolveOODOutputRequest::new(
-                        app_id.object_id().to_owned(),
-                        Some(owner),
-                    ))
-                    .await
-                {
-                    Ok(resp) => {
-                        let ood_list = resp.device_list;
-                        if !ood_list.is_empty() {
-                            Some(ood_list[0].object_id().to_owned())
-                        } else {
-                            None
-                        }
-                    }
-                    Err(e) => {
-                        error!("get ood id fail {}", e);
-                        None
-                    }
-                }
-            }
-            _ => None,
-        }
+        Ok(owner)
     }
 }
 
