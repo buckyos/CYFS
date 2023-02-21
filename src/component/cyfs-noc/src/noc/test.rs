@@ -244,7 +244,7 @@ async fn test_error_blob() {
 
     let resp = noc.get_object(&get_req).await.unwrap();
     let data = resp.unwrap();
-    let data = Storage::raw_decode(&data.object.object_raw).unwrap();
+    let _data = Storage::raw_decode(&data.object.object_raw).unwrap();
     info!("test complete!");
     
 }
