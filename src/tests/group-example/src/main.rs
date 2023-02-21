@@ -1,7 +1,8 @@
 use std::{clone, sync::Arc, time::Duration};
 
 use cyfs_base::{
-    AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom, TypelessCoreObject,
+    AccessString, AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom,
+    TypelessCoreObject,
 };
 use cyfs_core::{DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_group::IsCreateRPath;
@@ -23,8 +24,8 @@ mod Common {
         AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, EndpointArea, Group,
         GroupMember, IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo,
         RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, StandardObject,
-        TypelessCoreObject, UniqueId, SIGNATURE_SOURCE_REFINDEX_OWNER,
-        SIGNATURE_SOURCE_REFINDEX_SELF,
+        TypelessCoreObject, UniqueId, NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT,
+        SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
     use cyfs_bdt_ext::BdtStackParams;
     use cyfs_chunk_lib::ChunkMeta;
@@ -210,12 +211,11 @@ mod Common {
         save_path: &str,
         name_prefix: &str,
         count: usize,
+        min_port: u16,
     ) -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
         fs::create_dir_all(save_path)
             .await
             .expect(format!("create dir {} failed", save_path).as_str());
-
-        let min_port = 30217_u16;
 
         let mut members = vec![];
 
@@ -296,11 +296,13 @@ mod Common {
     }
 
     pub async fn init_admins() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
-        init_member_from_dir("./test-group/admins", "admin", 4).await
+        let min_port = 30217_u16;
+        init_member_from_dir("./test-group/admins", "admin", 4, min_port).await
     }
 
     pub async fn init_members() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
-        init_member_from_dir("./test-group/members", "member", 9).await
+        let min_port = 31217_u16;
+        init_member_from_dir("./test-group/members", "member", 9, min_port).await
     }
 
     pub async fn init_group(
@@ -369,7 +371,7 @@ mod Common {
             },
             noc: CyfsStackNOCParams {},
             interface: CyfsStackInterfaceParams {
-                bdt_listeners: vec![],
+                bdt_listeners: vec![NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT],
                 tcp_listeners: vec![],
                 ws_listener: None,
             },
@@ -868,7 +870,7 @@ async fn main_run() {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: Some(AccessString::full().value()),
         };
         noc.put_object(&req).await;
         proposals.push(proposal);
@@ -878,8 +880,8 @@ async fn main_run() {
 
     log::info!("proposals prepared.");
 
-    for i in 0..(PROPOSAL_COUNT - 1) {
-        let proposal = proposals.get(i).unwrap().clone();
+    for i in 1..PROPOSAL_COUNT {
+        let proposal = proposals.get(i - 1).unwrap().clone();
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
 
         let control = stack

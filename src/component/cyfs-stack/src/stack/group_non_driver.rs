@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cyfs_base::{BuckyResult, ObjectId};
+use cyfs_base::{AccessString, BuckyResult, ObjectId};
 use cyfs_lib::{
     DeviceZoneCategory, DeviceZoneInfo, NONAPILevel, NONGetObjectInputRequest,
     NONInputRequestCommon, NONObjectInfo, NONPostObjectInputRequest, NONPutObjectInputRequest,
@@ -55,6 +55,8 @@ impl cyfs_group::NONDriver for GroupNONDriver {
     }
 
     async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {
+        let access = AccessString::full();
+        log::debug!("put object {} with access {}", obj.object_id, access);
         self.non_service
             .put_object(NONPutObjectInputRequest {
                 common: NONInputRequestCommon {
@@ -76,7 +78,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                     flags: 0,
                 },
                 object: obj,
-                access: None, // TODO access
+                access: Some(AccessString::full()), // TODO access
             })
             .await
             .map(|_| ())
