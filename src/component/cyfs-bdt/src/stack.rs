@@ -389,10 +389,13 @@ impl Stack {
         let arc_stack = stack.clone();
         task::spawn(async move {
             loop {
-                info!("{} statistic: {}, {}", 
+                info!("{} statistic: {}, {}, {}, {}", 
                     arc_stack, 
                     arc_stack.tunnel_manager().on_statistic(), 
-                    arc_stack.stream_manager().on_statistic());
+                    arc_stack.stream_manager().on_statistic(),
+                    arc_stack.ndn().channel_manager().on_statistic(), 
+                    arc_stack.ndn().chunk_manager().on_statistic()
+                );
                 let _ = future::timeout(arc_stack.config().statistic_interval, future::pending::<()>()).await;
             }
         });

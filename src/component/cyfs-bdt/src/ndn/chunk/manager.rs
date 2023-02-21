@@ -122,6 +122,11 @@ impl ChunkManager {
         }
     }
 
+    pub(crate) fn on_statistic(&self) -> String {
+        let caches = self.caches.lock().unwrap();
+        format!("ChunkCacheCount:{}",  caches.len())
+    }
+
     pub fn store(&self) -> &dyn ChunkReader {
         self.store.as_ref()
     }
@@ -139,6 +144,7 @@ impl ChunkManager {
             caches.remove(chunk);
         } 
         let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
+        info!("{} create new cache {}", self, cache);
         caches.insert(chunk.clone(), cache.to_weak());
         cache
     }
@@ -146,7 +152,9 @@ impl ChunkManager {
     pub fn create_downloader(&self, chunk: &ChunkId, task: Box<dyn LeafDownloadTask>) -> ChunkDownloader {
         let cache = self.create_cache(chunk);
         let mut downloaders = self.downloaders.lock().unwrap();
-        downloaders.create_downloader(&self.stack, cache, task)
+        let downloader = downloaders.create_downloader(&self.stack, cache, task);
+        info!("{} create new downloader {}", self, downloader);
+        downloader
     }
 
     pub(in super::super) fn on_schedule(&self, _now: Timestamp) {

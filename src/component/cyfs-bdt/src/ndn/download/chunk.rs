@@ -109,6 +109,7 @@ impl LeafDownloadTask for ChunkTask {
 
         match &state.task_state {
             TaskStateImpl::Downloading(_) => {
+                info!("{} mark finished", self);
                 state.task_state = TaskStateImpl::Finished;
             }, 
             _ => {}
@@ -191,6 +192,7 @@ impl NdnTask for ChunkTask {
 
             match &state.task_state {
                 TaskStateImpl::Downloading(_) => {
+                    info!("{} cancel by err {}", self, err);
                     state.task_state = TaskStateImpl::Error(err);
                 }, 
                 _ => {}
@@ -276,8 +278,10 @@ impl ChunkTaskReader {
 impl Drop for ChunkTaskReader {
     fn drop(&mut self) {
         if self.0.offset() == self.0.cache().chunk().len() {
+            info!("{} drop after finished", self.0);
             self.0.task().finish();
         } else {
+            info!("{} drop before finished", self.0);
             let _ = self.0.task().cancel();
         }
     }
