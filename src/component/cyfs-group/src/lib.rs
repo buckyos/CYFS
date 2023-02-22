@@ -1,6 +1,5 @@
 mod consensus;
 mod constant;
-mod crypto;
 mod dec;
 mod dec_state;
 mod helper;
@@ -12,7 +11,6 @@ mod utils;
 
 pub use consensus::*;
 pub use constant::*;
-pub(crate) use crypto::*;
 pub use dec::*;
 pub(crate) use dec_state::*;
 pub(crate) use helper::*;
