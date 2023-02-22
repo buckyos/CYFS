@@ -315,10 +315,7 @@ impl DecStateSynchronizerRunner {
         remote: ObjectId,
     ) -> BuckyResult<()> {
         if qc_block.qc().is_none() {
-            log::warn!(
-                "the qc is none for qc-block({})",
-                qc_block.block_id()
-            );
+            log::warn!("the qc is none for qc-block({})", qc_block.block_id());
             return Err(BuckyError::new(BuckyErrorCode::Unknown, "qc lost"));
         }
 
@@ -365,7 +362,14 @@ impl DecStateSynchronizerRunner {
             }
         };
 
-        if verify_block(&header_block, qc_block.qc().as_ref().unwrap(), &group.1).await? {
+        if header_block.check()
+            && verify_block(
+                header_block.named_object().desc(),
+                qc_block.qc().as_ref().unwrap(),
+                &group.1,
+            )
+            .await?
+        {
             self.update_notifies = Some(UpdateNotifyInfo {
                 header_block: header_block,
                 qc_block: qc_block,
