@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use async_std::sync::RwLock;
 use cyfs_base::{BuckyResult, ObjectId};
-use cyfs_core::{GroupConsensusBlock, GroupRPathStatus};
+use cyfs_core::GroupConsensusBlock;
+
+use crate::GroupRPathStatus;
 
 #[derive(Clone)]
 pub struct DecStorageCache {
@@ -10,8 +12,6 @@ pub struct DecStorageCache {
     pub header_block: GroupConsensusBlock,
     pub qc_block: GroupConsensusBlock,
 }
-
-// TODO: storage
 
 #[derive(Clone)]
 pub struct DecStorage {

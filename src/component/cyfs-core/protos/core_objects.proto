@@ -431,20 +431,6 @@ message GroupConsensusBlockBodyContent {
     optional HotstuffTimeout tc = 3;
 }
 
-message GroupRPathSubStatus {
-    string sub_path = 1;
-    repeated bytes state_id = 2; // for set
-}
-
-message GroupRPathStatusDescContent {
-    bytes block_id = 1;
-    optional bytes sub_status_hash = 2;
-}
-
-message GroupRPathStatusBodyContent {
-    repeated GroupRPathSubStatus sub_status = 1;
-}
-
 message GroupActionDescContent {
     // target
     GroupRPath r_path = 1;

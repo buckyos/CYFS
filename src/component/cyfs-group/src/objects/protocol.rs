@@ -2,15 +2,14 @@ pub mod protos {
     include!(concat!(env!("OUT_DIR"), "/mod.rs"));
 }
 
-use std::result;
-
 use cyfs_base::*;
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, GroupRPathStatus, HotstuffBlockQC,
-    HotstuffTimeout,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_lib::NONObjectInfo;
 use sha2::Digest;
+
+use crate::GroupRPathStatus;
 
 #[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone, Debug)]
 pub enum SyncBound {
@@ -163,20 +162,16 @@ impl std::fmt::Debug for HotstuffMessage {
                     f,
                     "HotstuffMessage::ProposalResult({}, {:?})",
                     proposal_id,
-                    result.as_ref().map_or_else(
-                        |err| { Err(err) },
-                        |(obj, block, qc)| {
-                            let ok = format!(
-                                "({:?}, {}/{}, {}/{})",
-                                obj.as_ref().map(|o| o.object_id),
-                                block.block_id(),
-                                block.round(),
-                                qc.block_id(),
-                                qc.round()
-                            );
-                            Ok(ok)
-                        }
-                    )
+                    result.as_ref().map(|(obj, block, qc)| {
+                        format!(
+                            "({:?}, {}/{}, {}/{})",
+                            obj.as_ref().map(|o| o.object_id),
+                            block.block_id(),
+                            block.round(),
+                            qc.block_id(),
+                            qc.round()
+                        )
+                    })
                 )
             }
             Self::QueryState(sub_path) => {
@@ -187,7 +182,17 @@ impl std::fmt::Debug for HotstuffMessage {
                     f,
                     "HotstuffMessage::VerifiableState({}, {:?})",
                     sub_path,
-                    result.as_ref().map(|status| unimplemented!())
+                    result.as_ref().map(|status| {
+                        let desc = status.block_desc.content();
+                        format!(
+                            "({:?}/{:?}, {}/{}/{})",
+                            desc.result_state_id(),
+                            status.block_desc.object_id(),
+                            desc.height(),
+                            desc.round(),
+                            status.certificate.round
+                        )
+                    })
                 )
             }
         }
@@ -196,6 +201,7 @@ impl std::fmt::Debug for HotstuffMessage {
 
 const PACKAGE_FLAG_BITS: usize = 1;
 const PACKAGE_FLAG_PROPOSAL_RESULT_OK: u8 = 0x80u8;
+const PACKAGE_FLAG_QUERY_STATE_RESULT_OK: u8 = 0x80u8;
 
 #[derive(Clone)]
 pub(crate) enum HotstuffPackage {
@@ -220,7 +226,10 @@ pub(crate) enum HotstuffPackage {
         >,
     ), // (proposal-id, ExecuteResult)
     QueryState(ProtocolAddress, String),
-    VerifiableState(ProtocolAddress, String, BuckyResult<GroupRPathStatus>),
+    VerifiableState(
+        String,
+        Result<GroupRPathStatus, (BuckyError, ProtocolAddress)>,
+    ),
 }
 
 impl std::fmt::Debug for HotstuffPackage {
@@ -296,12 +305,26 @@ impl std::fmt::Debug for HotstuffPackage {
             Self::QueryState(_, sub_path) => {
                 write!(f, "HotstuffPackage::QueryState({})", sub_path)
             }
-            Self::VerifiableState(_, sub_path, result) => {
+            Self::VerifiableState(sub_path, result) => {
                 write!(
                     f,
                     "HotstuffPackage::VerifiableState({}, {:?})",
                     sub_path,
-                    result.as_ref().map(|status| unimplemented!())
+                    result.as_ref().map_or_else(
+                        |(err, _)| { Err(err) },
+                        |status| {
+                            let desc = status.block_desc.content();
+                            let ok = format!(
+                                "({:?}/{:?}, {}/{}/{})",
+                                desc.result_state_id(),
+                                status.block_desc.object_id(),
+                                desc.height(),
+                                desc.round(),
+                                status.certificate.round
+                            );
+                            Ok(ok)
+                        }
+                    )
                 )
             }
         }
@@ -323,7 +346,10 @@ impl HotstuffPackage {
                 |(_, block, _)| block.r_path(),
             ),
             HotstuffPackage::QueryState(addr, _) => addr.check_rpath(),
-            HotstuffPackage::VerifiableState(addr, _, _) => addr.check_rpath(),
+            HotstuffPackage::VerifiableState(_, result) => result.as_ref().map_or_else(
+                |(_, addr)| addr.check_rpath(),
+                |status| status.block_desc.content().rpath(),
+            ),
         }
     }
 }
@@ -399,10 +425,14 @@ impl RawEncode for HotstuffPackage {
             HotstuffPackage::QueryState(addr, sub_path) => {
                 addr.raw_measure(purpose)? + sub_path.raw_measure(purpose)?
             }
-            HotstuffPackage::VerifiableState(addr, sub_path, result) => {
-                2 + addr.raw_measure(purpose)?
-                    + sub_path.raw_measure(purpose)?
-                    + result.raw_measure(purpose)?
+            HotstuffPackage::VerifiableState(sub_path, result) => {
+                sub_path.raw_measure(purpose)?
+                    + match result {
+                        Ok(status) => status.raw_measure(purpose)?,
+                        Err((err, addr)) => {
+                            err.raw_measure(purpose)? + addr.raw_measure(purpose)?
+                        }
+                    }
             }
         };
 
@@ -459,7 +489,7 @@ impl RawEncode for HotstuffPackage {
             HotstuffPackage::ProposalResult(id, result) => {
                 buf[0] = 7;
                 if result.is_ok() {
-                    buf[0] &= PACKAGE_FLAG_PROPOSAL_RESULT_OK;
+                    buf[0] |= PACKAGE_FLAG_PROPOSAL_RESULT_OK;
                 }
 
                 let buf = &mut buf[1..];
@@ -482,12 +512,20 @@ impl RawEncode for HotstuffPackage {
                 let buf = sub_path.raw_encode(buf, purpose)?;
                 addr.raw_encode(buf, purpose)
             }
-            HotstuffPackage::VerifiableState(addr, sub_path, result) => {
+            HotstuffPackage::VerifiableState(sub_path, result) => {
                 buf[0] = 9;
+                if result.is_ok() {
+                    buf[0] |= PACKAGE_FLAG_QUERY_STATE_RESULT_OK;
+                }
                 let buf = &mut buf[1..];
-                let buf = encode_with_length(buf, addr, purpose, 2)?;
                 let buf = sub_path.raw_encode(buf, purpose)?;
-                result.raw_encode(buf, purpose)
+                match result {
+                    Ok(status) => status.raw_encode(buf, purpose),
+                    Err((err, addr)) => {
+                        let buf = err.raw_encode(buf, purpose)?;
+                        addr.raw_encode(buf, purpose)
+                    }
+                }
             }
         }
     }
@@ -502,24 +540,28 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
             0 => {
                 let buf = &buf[1..];
                 let (b, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::Block(b), buf))
             }
             1 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
                 let (vote, buf) = HotstuffBlockQCVote::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::BlockVote(addr, vote), buf))
             }
             2 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
                 let (vote, buf) = HotstuffTimeoutVote::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::TimeoutVote(addr, vote), buf))
             }
             3 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
                 let (vote, buf) = HotstuffTimeout::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::Timeout(addr, vote), buf))
             }
             4 => {
@@ -527,17 +569,20 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                 let (min, buf) = SyncBound::raw_decode(buf)?;
                 let (max, buf) = SyncBound::raw_decode(buf)?;
                 let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::SyncRequest(addr, min, max), buf))
             }
             5 => {
                 let buf = &buf[1..];
                 let (block, buf) = decode_with_length(buf, 3)?;
                 let (qc, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::StateChangeNotify(block, qc), buf))
             }
             6 => {
                 let buf = &buf[1..];
                 let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::LastStateRequest(addr), buf))
             }
             7 => {
@@ -549,6 +594,7 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                         let (non, buf) = Option::<NONObjectInfo>::raw_decode(buf)?;
                         let (block, buf) = decode_with_length(buf, 3)?;
                         let (qc, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                        assert_eq!(buf.len(), 0);
                         Ok((
                             HotstuffPackage::ProposalResult(id, Ok((non, block, qc))),
                             buf,
@@ -557,6 +603,7 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                     false => {
                         let (err, buf) = BuckyError::raw_decode(buf)?;
                         let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                        assert_eq!(buf.len(), 0);
                         Ok((HotstuffPackage::ProposalResult(id, Err((err, addr))), buf))
                     }
                 }
@@ -565,17 +612,29 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                 let buf = &buf[1..];
                 let (sub_path, buf) = String::raw_decode(buf)?;
                 let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::QueryState(addr, sub_path), buf))
             }
             9 => {
+                let is_ok = (buf[0] & PACKAGE_FLAG_QUERY_STATE_RESULT_OK) != 0;
                 let buf = &buf[1..];
-                let (addr, buf) = decode_with_length(buf, 3)?;
                 let (sub_path, buf) = String::raw_decode(buf)?;
-                let (result, buf) = BuckyResult::<GroupRPathStatus>::raw_decode(buf)?;
-                Ok((
-                    HotstuffPackage::VerifiableState(addr, sub_path, result),
-                    buf,
-                ))
+                match is_ok {
+                    true => {
+                        let (status, buf) = GroupRPathStatus::raw_decode(buf)?;
+                        assert_eq!(buf.len(), 0);
+                        Ok((HotstuffPackage::VerifiableState(sub_path, Ok(status)), buf))
+                    }
+                    false => {
+                        let (err, buf) = BuckyError::raw_decode(buf)?;
+                        let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                        assert_eq!(buf.len(), 0);
+                        Ok((
+                            HotstuffPackage::VerifiableState(sub_path, Err((err, addr))),
+                            buf,
+                        ))
+                    }
+                }
             }
             _ => unreachable!("unknown protocol"),
         }
@@ -613,9 +672,10 @@ impl HotstuffPackage {
             HotstuffMessage::QueryState(sub_path) => {
                 HotstuffPackage::QueryState(ProtocolAddress::Full(rpath), sub_path)
             }
-            HotstuffMessage::VerifiableState(sub_path, result) => {
-                HotstuffPackage::VerifiableState(ProtocolAddress::Full(rpath), sub_path, result)
-            }
+            HotstuffMessage::VerifiableState(sub_path, result) => HotstuffPackage::VerifiableState(
+                sub_path,
+                result.map_err(|err| (err, ProtocolAddress::Full(rpath))),
+            ),
         }
     }
 }
