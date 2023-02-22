@@ -1780,6 +1780,7 @@ dependencies = [
  "protoc-bin-vendored",
  "protoc-rust",
  "rand 0.8.5",
+ "semver 1.0.14",
  "serde",
  "serde_json",
  "sha2 0.8.2",
