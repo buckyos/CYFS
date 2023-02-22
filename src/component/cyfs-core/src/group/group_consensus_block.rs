@@ -38,6 +38,28 @@ impl DescContent for GroupConsensusBlockDescContent {
     type PublicKeyType = SubDescNone;
 }
 
+impl GroupConsensusBlockDescContent {
+    pub fn rpath(&self) -> &GroupRPath {
+        &self.r_path
+    }
+
+    pub fn result_state_id(&self) -> &Option<ObjectId> {
+        &self.result_state_id
+    }
+
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    pub fn round(&self) -> u64 {
+        self.round
+    }
+
+    pub fn group_chunk_id(&self) -> &ObjectId {
+        &self.group_chunk_id
+    }
+}
+
 #[derive(Clone, ProtobufTransformType)]
 #[cyfs_protobuf_type(crate::codec::protos::hotstuff_block_qc::VoteSignature)]
 pub struct HotstuffBlockQCSign {
@@ -175,6 +197,7 @@ impl BodyContent for GroupConsensusBlockBodyContent {
     }
 }
 
+pub type GroupConsensusBlockDesc = NamedObjectDesc<GroupConsensusBlockDescContent>;
 type GroupConsensusBlockType =
     NamedObjType<GroupConsensusBlockDescContent, GroupConsensusBlockBodyContent>;
 type GroupConsensusBlockBuilder =

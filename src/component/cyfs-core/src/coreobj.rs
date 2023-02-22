@@ -64,7 +64,6 @@ pub enum CoreObjectType {
     GroupProposal = 700,
     GroupUpdateGroup = 701,
     GroupConsensusBlock = 702,
-    GroupRPathStatus = 703,
     GroupAction = 704,
     GroupQuorumCertificate = 705,
 

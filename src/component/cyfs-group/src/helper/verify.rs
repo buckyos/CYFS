@@ -1,7 +1,7 @@
 use cyfs_base::{BuckyResult, Group, NamedObject, ObjectDesc};
-use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupRPathStatus, HotstuffBlockQC,
-};
+use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, HotstuffBlockQC};
+
+use crate::GroupRPathStatus;
 
 pub async fn verify_block(
     block: &GroupConsensusBlock,
