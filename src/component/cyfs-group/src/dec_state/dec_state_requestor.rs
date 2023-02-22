@@ -180,7 +180,7 @@ impl DecStateRequestorRunner {
             )
             .await?;
 
-        if !verify_rpath_value(&result, sub_path, &header_block, qc, &group).await? {
+        if !verify_rpath_value(&result, sub_path, &result.block_desc, qc, &group).await? {
             Err(BuckyError::new(
                 BuckyErrorCode::InvalidSignature,
                 "verify failed",
