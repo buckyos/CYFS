@@ -186,7 +186,7 @@ impl PackageStream {
             let now = Instant::now();
             for package in packages {
                 let session_data: & SessionData = package.as_ref();
-                if !session_data.is_ctrl_package() {
+                if !session_data.is_ctrl_package() || !session_data.is_flags_contain(SESSIONDATA_FLAG_ACK) {
                     let package_size = session_data.data_size();
                     if let Some(next_time) = pacer.send(package_size, now) {
                         sent_bytes += package_size;
