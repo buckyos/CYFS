@@ -54,7 +54,9 @@ impl HttpRequestor for SurfHttpRequestor {
         );
 
         let begin = std::time::Instant::now();
-        match self.client.send(req.take().unwrap()).await {
+        let req = req.take().unwrap();
+        let req = self.add_default_headers(req);
+        match self.client.send(req).await {
             Ok(resp) => {
                 info!(
                     "http request to {} success! during={}ms",
