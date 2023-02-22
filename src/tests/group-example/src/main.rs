@@ -798,6 +798,8 @@ async fn main_run() {
         admin_stacks.push(cyfs_stack);
     }
 
+    async_std::task::sleep(Duration::from_millis(10000)).await;
+
     for i in 0..admin_stacks.len() {
         let stack = admin_stacks.get(i).unwrap();
         let ((admin, _), _) = admins.get(i).unwrap();

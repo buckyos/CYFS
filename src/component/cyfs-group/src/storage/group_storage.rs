@@ -10,7 +10,7 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
-    GroupQuorumCertificateObject, HotstuffTimeout,
+    GroupQuorumCertificateObject, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
@@ -442,30 +442,49 @@ impl GroupStorage {
         Ok(())
     }
 
-    pub fn last_qc(&self) -> &Option<GroupQuorumCertificate> {
+    pub fn last_qc(&self) -> &Option<HotstuffBlockQC> {
         &self.cache.last_qc
     }
 
-    pub async fn save_qc(&mut self, qc: GroupQuorumCertificate) -> BuckyResult<()> {
-        let quorum_round = qc.quorum_round();
+    pub async fn save_qc(&mut self, qc: &HotstuffBlockQC) -> BuckyResult<()> {
+        let quorum_round = qc.round;
         if quorum_round < self.cache.last_vote_round
-            || quorum_round
-                <= self
-                    .cache
-                    .last_qc
-                    .as_ref()
-                    .map_or(0, |qc| qc.quorum_round())
+            || quorum_round <= self.cache.last_qc.as_ref().map_or(0, |qc| qc.round)
         {
             return Ok(());
         }
 
+        let qc = GroupQuorumCertificate::from(qc.clone());
         self.non_driver.put_qc(&qc).await?;
 
         let mut writer = self.storage_engine.create_writer().await?;
         writer.save_last_qc(&qc.desc().object_id()).await?;
         writer.commit().await?;
 
-        self.cache.last_qc = Some(qc);
+        self.cache.last_qc = Some(qc.try_into().unwrap());
+        Ok(())
+    }
+
+    pub fn last_tc(&self) -> &Option<HotstuffTimeout> {
+        &self.cache.last_tc
+    }
+
+    pub async fn save_tc(&mut self, tc: &HotstuffTimeout) -> BuckyResult<()> {
+        let quorum_round = tc.round;
+        if quorum_round < self.cache.last_vote_round
+            || quorum_round <= self.cache.last_tc.as_ref().map_or(0, |tc| tc.round)
+        {
+            return Ok(());
+        }
+
+        let tc = GroupQuorumCertificate::from(tc.clone());
+        self.non_driver.put_qc(&tc).await?;
+
+        let mut writer = self.storage_engine.create_writer().await?;
+        writer.save_last_tc(&tc.desc().object_id()).await?;
+        writer.commit().await?;
+
+        self.cache.last_tc = Some(tc.try_into().unwrap());
         Ok(())
     }
 
