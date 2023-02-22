@@ -308,7 +308,7 @@ mod test {
     #[test]
     fn test() {
         let id  = ObjectId::from_str("5r4MYfFdfQ5dvAvD2WZ8wd7iKPFpWLSiAnMuTui912xL").unwrap();
-        let mut context = TransContext::new(id, "/a/b/c");
+        let mut context = TransContext::new(Some(id), "/a/b/c");
 
         let device = TransContextDevice {
             target: DeviceId::from_str("5bnZHzXvMmqiiua3iodiaYqWR24QbZE5o8r35bH8y9Yh").unwrap(),
