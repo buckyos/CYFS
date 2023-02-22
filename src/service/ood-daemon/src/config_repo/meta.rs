@@ -78,59 +78,37 @@ impl DeviceConfigGenerator {
         });
     }
 
-    pub fn update_service(&mut self, service: &DecApp, fid: &str) {
+    pub fn update_service(&mut self, service: &DecApp, fid: &str, version: &str) {
         let id = service.desc().calculate_id().to_string();
         let name = service.name();
-        info!("will update service: id={}, name={}, fid={}", id, name, fid);
+        info!(
+            "will update service: id={}, name={}, fid={}, version={}",
+            id, name, fid, version
+        );
 
         for item in self.service.iter_mut() {
             if item.name == name {
                 item.id = id.clone();
                 item.fid = fid.to_owned();
+                item.version = version.to_owned();
             } else if item.id == id {
                 item.name = name.to_owned();
                 item.fid = fid.to_owned();
+                item.version = version.to_owned();
             }
         }
     }
 
-    pub fn update_service_status(&mut self, status: &AppStatus) -> bool {
+    fn add_service(&mut self, status: &AppStatus) {
         let id = status.app_id().to_string();
         let version = status.version();
+
         let target_state = match status.status() {
             true => ServiceState::Run,
             false => ServiceState::Stop,
         };
 
-        for item in self.service.iter_mut() {
-            if item.id == id {
-                let mut version_changed = false;
-
-                // 检查状态是不是发生改变
-                if item.target_state != target_state {
-                    item.target_state = target_state;
-                    info!(
-                        "service target state changed! id={}, name={} target state: {} -> {}",
-                        item.id, item.name, item.target_state, target_state
-                    );
-                }
-
-                // 检查版本是不是发生改变
-                if item.version != version {
-                    info!(
-                        "service version changed! id={}, name={} version: {} -> {}",
-                        item.id, item.name, item.version, version
-                    );
-                    item.version = version.to_owned();
-
-                    // 版本更新后，需要拉取最新的fid
-                    version_changed = true;
-                }
-                return version_changed;
-            }
-        }
-
-        info!("new service item: id={}, version={}", id, version);
+        debug!("new service item: id={}, version={}", id, version);
         let mut service = ServiceConfig::new();
         service.id = id;
         service.version = version.to_owned();
@@ -139,8 +117,6 @@ impl DeviceConfigGenerator {
         self.service.push(service);
 
         // fid+name需要从DecApp对象获取
-
-        true
     }
 }
 
@@ -175,11 +151,7 @@ impl DeviceConfigMetaRepo {
         }
     }
 
-    pub fn init(
-        &mut self,
-        config_desc: &str,
-        version: &ServiceListVersion,
-    ) -> Result<(), BuckyError> {
+    pub fn init(&mut self, config_desc: &str, version: &ServiceListVersion) -> Result<(), BuckyError> {
         assert!(self.desc.len() == 0);
         self.desc = config_desc.to_owned();
 
@@ -195,7 +167,7 @@ impl DeviceConfigMetaRepo {
         );
 
         info!(
-            "device config repo: device_id={}, app_list_id={}, version={}",
+            "device config repo: device_id={}, service_list_id={}, version={}",
             device_id, service_list_id, version
         );
 
@@ -328,7 +300,7 @@ impl DeviceConfigMetaRepo {
 
                 let fid = format!("{}/{}", dir_id, target);
 
-                info!("get fid from dir, dir={}, fid={}", dir_id, fid);
+                debug!("get fid from dir, dir={}, fid={}", dir_id, fid);
 
                 Ok(fid)
             }
@@ -345,15 +317,38 @@ impl DeviceConfigMetaRepo {
         &self,
         device_config: &mut DeviceConfigGenerator,
         service_id: &ObjectId,
-        version: &str,
+        version_in_service_list: &str,
     ) -> BuckyResult<()> {
         let service = self.load_service(service_id).await?;
 
-        let ret = service.find_source(version);
+        // first find the correct version
+        let config_version = match &get_system_config().service_version {
+            ServiceVersion::Default => version_in_service_list.to_owned(),
+            ServiceVersion::Specific(v) => v.clone(),
+        };
+
+        let preview = match get_system_config().preview {
+            true => Some("preview"),
+            false => None,
+        };
+
+        let version = service.find_version(&config_version, preview).map_err(|e| {
+            let msg = format!(
+                "find version from service object failed! id={}, configed version={}, preview={:?}, {}",
+                service_id, config_version, preview, e,
+            );
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
+
+        let ret = service.find_source(&version);
         if ret.is_err() {
             let msg = format!(
-                "get version from service object failed! id={}, version={}",
-                service_id, version
+                "get version from service object failed! id={}, version={}, {}",
+                service_id,
+                version,
+                ret.unwrap_err(),
             );
             error!("{}", msg);
 
@@ -369,7 +364,7 @@ impl DeviceConfigMetaRepo {
         let fid = self.load_fid(&dir_id, dir)?;
 
         // 更新
-        device_config.update_service(&service, &fid);
+        device_config.update_service(&service, &fid, version);
 
         Ok(())
     }
@@ -380,22 +375,19 @@ impl DeviceConfigMetaRepo {
     ) -> BuckyResult<DeviceConfigGenerator> {
         let mut device_config = DeviceConfigGenerator::new();
         for (id, status) in service_list.app_list() {
-            debug!("got service item from service list: {}", id);
+            device_config.add_service(status);
 
-            let version_changed = device_config.update_service_status(status);
-            if version_changed {
-                let version = status.version();
+            let version = status.version();
 
-                self.load_service_fid(&mut device_config, id.object_id(), version)
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            "load service fid failed! id={}, version={}, {}",
-                            id, version, e
-                        );
-                        e
-                    })?;
-            }
+            self.load_service_fid(&mut device_config, id.object_id(), version)
+                .await
+                .map_err(|e| {
+                    error!(
+                        "load service fid failed! id={}, version={}, {}",
+                        id, version, e
+                    );
+                    e
+                })?;
         }
 
         // info!("list {:?}", self.device_config.lock().uwnrap().service);
@@ -438,7 +430,8 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
         // 从mete-chain拉取对应的service_list
         let service_list = self.load_service_list().await?;
 
-        {
+        // Only in the default version case, it will use the cache of servicelist
+        if get_system_config().service_version.is_default() {
             let cache = self.cache.lock().unwrap();
             if let Some(cache) = &*cache {
                 if Self::compare_service_list(&cache.service_list, &service_list) {
