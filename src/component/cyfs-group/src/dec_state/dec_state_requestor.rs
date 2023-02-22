@@ -3,10 +3,13 @@
 use std::sync::Arc;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_core::{GroupConsensusBlockObject, GroupRPath, GroupRPathStatus};
+use cyfs_core::{GroupConsensusBlockObject, GroupRPath};
 use futures::FutureExt;
 
-use crate::{helper::verify_rpath_value, storage::DecStorage, HotstuffMessage, CHANNEL_CAPACITY};
+use crate::{
+    helper::verify_rpath_value, storage::DecStorage, GroupRPathStatus, HotstuffMessage,
+    CHANNEL_CAPACITY,
+};
 
 use super::{CallReplyNotifier, CallReplyWaiter};
 
@@ -143,7 +146,7 @@ impl DecStateRequestorRunner {
                 let result = self
                     .verify_verifiable_state(sub_path.as_str(), &result, &remote)
                     .await
-                    .map(|_| result.value_object_id);
+                    .map(|_| unimplemented!()); // TODO: 搜索目标值
 
                 self.query_state_notifier.reply(&sub_path, result).await
             }
@@ -157,25 +160,22 @@ impl DecStateRequestorRunner {
         result: &GroupRPathStatus,
         remote: &ObjectId,
     ) -> BuckyResult<()> {
-        let header_block = self
-            .non_driver
-            .get_block(&result.block_id, Some(remote))
-            .await?;
-        let qc_block = self
-            .non_driver
-            .get_block(&result.qc_block_id, Some(remote))
-            .await?;
+        // let header_block = self
+        //     .non_driver
+        //     .get_block(&result.block_id, Some(remote))
+        //     .await?;
+        // let qc_block = self
+        //     .non_driver
+        //     .get_block(&result.qc_block_id, Some(remote))
+        //     .await?;
 
-        let qc = match qc_block.qc() {
-            Some(qc) => qc,
-            None => return Err(BuckyError::new(BuckyErrorCode::InvalidSignature, "no qc")),
-        };
+        let qc = &result.certificate;
 
         let group = self
             .non_driver
             .get_group(
                 self.rpath.group_id(),
-                Some(header_block.group_chunk_id()),
+                Some(result.block_desc.content().group_chunk_id()),
                 Some(&remote),
             )
             .await?;

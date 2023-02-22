@@ -15,3 +15,9 @@ message HotstuffTimeoutVote {
     bytes voter = 3;
     bytes signature = 4;
 }
+
+message GroupRPathStatus {
+    bytes block_desc = 1; // GroupConsensusBlockDescContent
+    bytes certificate = 2; // HotstuffBlockQC for block
+    repeated bytes status_list = 4; // Array<NONObjectInfo<MAP|Other>>
+}
