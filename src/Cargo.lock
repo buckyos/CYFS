@@ -4567,6 +4567,7 @@ dependencies = [
  "once_cell",
  "ood-control",
  "rand 0.7.3",
+ "semver 1.0.14",
  "serde",
  "serde_json",
  "tide",
