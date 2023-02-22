@@ -105,7 +105,7 @@ impl SqliteMetaStorage {
         let sql =
             "SELECT name FROM sqlite_master WHERE type='table' AND name='data_namedobject_meta'";
         let ret = {
-            let (conn, _lock) = self.conn.get_read_conn()?;
+            let (conn, _lock) = self.conn.get_write_conn()?;
 
             conn.query_row(&sql, [], |row| {
                 let name: String = row.get(0).unwrap();
