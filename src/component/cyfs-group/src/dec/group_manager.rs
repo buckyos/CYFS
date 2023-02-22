@@ -328,13 +328,19 @@ impl GroupManager {
                     .on_message(HotstuffMessage::QueryState(sub_path), remote)
                     .await;
             }
-            HotstuffPackage::VerifiableState(target, sub_path, result) => {
-                let rpath = target.check_rpath();
+            HotstuffPackage::VerifiableState(sub_path, result) => {
+                let rpath = result.as_ref().map_or_else(
+                    |(_, target)| target.check_rpath(),
+                    |status| status.block_desc.content().rpath(),
+                );
                 let client = self
                     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
                     .await?;
                 client
-                    .on_message(HotstuffMessage::VerifiableState(sub_path, result), remote)
+                    .on_message(
+                        HotstuffMessage::VerifiableState(sub_path, result.map_err(|(err, _)| err)),
+                        remote,
+                    )
                     .await;
             }
         }
