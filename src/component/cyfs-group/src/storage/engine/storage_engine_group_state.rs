@@ -3,8 +3,9 @@ use std::{collections::HashSet, sync::Arc};
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapContentItem,
     ObjectMapPathOpEnvRef, ObjectMapRootManagerRef, ObjectMapSimpleContentType,
-    ObjectMapSingleOpEnvRef, OpEnvPathAccess, RawConvertTo,
+    ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
+use cyfs_core::{HotstuffBlockQC, HotstuffTimeout};
 
 use crate::{
     GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
@@ -38,10 +39,26 @@ impl StorageEngineGroupState {
         let last_vote_round = op_env.get_by_path(state_path.last_vote_round()).await;
         let last_vote_round =
             map_not_found_option_to_option(last_vote_round)?.map(|id| parse_u64_obj(&id));
+
         let last_qc = op_env.get_by_path(state_path.last_qc()).await;
         let last_qc = map_not_found_option_to_option(last_qc)?;
         let last_qc = match last_qc.as_ref() {
-            Some(qc_id) => Some(non_driver.get_qc(qc_id, None).await?),
+            Some(qc_id) => non_driver
+                .get_qc(qc_id, None)
+                .await?
+                .try_into()
+                .map_or(None, |qc| Some(qc)),
+            None => None,
+        };
+
+        let last_tc = op_env.get_by_path(state_path.last_tc()).await;
+        let last_tc = map_not_found_option_to_option(last_tc)?;
+        let last_tc = match last_tc.as_ref() {
+            Some(tc_id) => non_driver
+                .get_qc(tc_id, None)
+                .await?
+                .try_into()
+                .map_or(None, |tc| Some(tc)),
             None => None,
         };
 
@@ -118,6 +135,7 @@ impl StorageEngineGroupState {
         let mut cache = StorageCacheInfo::new(dec_state_id);
         cache.last_vote_round = last_vote_round.map_or(0, |round| round);
         cache.last_qc = last_qc;
+        cache.last_tc = last_tc;
         cache.finish_proposals.adding = HashSet::from_iter(adding_proposal_ids.into_iter());
         cache.finish_proposals.over = HashSet::from_iter(over_proposal_ids.into_iter());
         cache.finish_proposals.flip_timestamp = flip_timestamp;
@@ -440,6 +458,13 @@ impl StorageEngineGroupStateWriter {
             .await
             .map(|_| ())
     }
+
+    async fn save_last_tc_inner(&mut self, tc_id: &ObjectId) -> BuckyResult<()> {
+        self.op_env
+            .set_with_path(self.state_path.last_tc(), tc_id, &None, true)
+            .await
+            .map(|_| ())
+    }
 }
 
 #[async_trait::async_trait]
@@ -506,6 +531,12 @@ impl StorageWriter for StorageEngineGroupStateWriter {
     async fn save_last_qc(&mut self, qc_id: &ObjectId) -> BuckyResult<()> {
         self.write_result.as_ref().map_err(|e| e.clone())?;
         self.write_result = self.save_last_qc_inner(qc_id).await;
+        self.write_result.clone()
+    }
+
+    async fn save_last_tc(&mut self, tc_id: &ObjectId) -> BuckyResult<()> {
+        self.write_result.as_ref().map_err(|e| e.clone())?;
+        self.write_result = self.save_last_tc_inner(tc_id).await;
         self.write_result.clone()
     }
 
