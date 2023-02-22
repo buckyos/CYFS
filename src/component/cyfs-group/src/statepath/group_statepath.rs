@@ -6,6 +6,7 @@ pub const GROUP_STATE_PATH_LINK: &str = ".link";
 pub const GROUP_STATE_PATH_GROUP_BLOB: &str = "group-blob";
 pub const GROUP_STATE_PATH_LAST_VOTE_ROUNDS: &str = "last-vote-round";
 pub const GROUP_STATE_PATH_LAST_QC: &str = "last-qc";
+pub const GROUP_STATE_PATH_LAST_TC: &str = "last-tc";
 pub const GROUP_STATE_PATH_RANGE: &str = "range";
 pub const GROUP_STATE_PATH_PREPARES: &str = "prepares";
 pub const GROUP_STATE_PATH_PRE_COMMITS: &str = "pre-commits";
@@ -30,6 +31,7 @@ pub struct GroupStatePath {
     group_blob: String,
     last_vote_round: String,
     last_qc: String,
+    last_tc: String,
     range: String,
     prepares: String,
     pre_commits: String,
@@ -62,6 +64,12 @@ impl GroupStatePath {
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
                 GROUP_STATE_PATH_LAST_QC,
+            ]),
+            last_tc: Self::join(&[
+                "",
+                rpath.as_str(),
+                GROUP_STATE_PATH_LINK,
+                GROUP_STATE_PATH_LAST_TC,
             ]),
             range: Self::join(&[
                 "",
@@ -138,6 +146,10 @@ impl GroupStatePath {
 
     pub fn last_qc(&self) -> &str {
         self.last_qc.as_str()
+    }
+
+    pub fn last_tc(&self) -> &str {
+        self.last_tc.as_str()
     }
 
     pub fn range(&self) -> &str {

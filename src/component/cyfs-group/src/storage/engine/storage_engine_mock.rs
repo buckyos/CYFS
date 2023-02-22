@@ -196,6 +196,10 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
         Ok(())
     }
 
+    async fn save_last_tc(&mut self, tc_id: &ObjectId) -> BuckyResult<()> {
+        Ok(())
+    }
+
     async fn commit(mut self) -> BuckyResult<()> {
         Ok(())
     }
