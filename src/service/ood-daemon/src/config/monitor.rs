@@ -37,6 +37,8 @@ impl SystemConfigMonitor {
         }
 
         let _ = DEVICE_CONFIG_MANAGER.init_repo();
+        
+        DEVICE_CONFIG_MANAGER.get_repo().clear_cache().await;
 
         daemon.wakeup_check_update();
 
