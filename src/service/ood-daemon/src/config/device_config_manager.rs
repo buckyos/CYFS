@@ -148,7 +148,7 @@ impl DeviceConfigManager {
         let repo = self.get_repo();
 
         // 从mete-chain拉取对应desc
-        let ret = async_std::future::timeout(Duration::from_secs(60), repo.fetch()).await;
+        let ret = async_std::future::timeout(Duration::from_secs(60 * 5), repo.fetch()).await;
 
         if ret.is_err() {
             let msg = format!("fetch device config timeout! repo={}", repo.get_type());
@@ -160,10 +160,10 @@ impl DeviceConfigManager {
         let device_config_str = match ret.unwrap() {
             Ok(v) => v,
             Err(e) => {
-                let msg = format!("load desc from repo failed! err={}", e);
+                let msg = format!("load device config from repo failed! err={}", e);
                 error!("{}", msg);
 
-                return Err(BuckyError::from(msg));
+                return Err(BuckyError::new(e.code(), msg));
             }
         };
 

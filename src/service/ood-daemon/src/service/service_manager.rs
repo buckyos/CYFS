@@ -484,6 +484,7 @@ impl ServiceManager {
                 }
             }
         }
+        debug!("sync all service packages complete!");
     }
 
     async fn sync_service_package(service_info: &ServiceItem) -> BuckyResult<()> {
