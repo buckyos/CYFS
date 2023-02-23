@@ -3,7 +3,9 @@ use crate::config::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_debug::Mutex;
-use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaClientHelperWithObjectCache, MetaMinerTarget};
+use cyfs_meta_lib::{
+    MetaClient, MetaClientHelper, MetaClientHelperWithObjectCache, MetaMinerTarget,
+};
 use cyfs_util::LOCAL_DEVICE_MANAGER;
 
 use async_trait::async_trait;
@@ -108,7 +110,7 @@ impl DeviceConfigGenerator {
             false => ServiceState::Stop,
         };
 
-        debug!("new service item: id={}, version={}", id, version);
+        debug!("new service item: id={}, origin version in service list={}", id, version);
         let mut service = ServiceConfig::new();
         service.id = id;
         service.version = version.to_owned();
@@ -142,8 +144,14 @@ impl DeviceConfigMetaRepo {
         Self {
             meta_client,
             cache: Mutex::new(None),
-            service_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 4), 16),
-            service_dir_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 24 * 7), 16),
+            service_objects: MetaClientHelperWithObjectCache::new(
+                std::time::Duration::from_secs(3600 * 4),
+                16,
+            ),
+            service_dir_objects: MetaClientHelperWithObjectCache::new(
+                std::time::Duration::from_secs(3600 * 24 * 7),
+                16,
+            ),
         }
     }
 
@@ -166,7 +174,10 @@ impl DeviceConfigMetaRepo {
 
         info!(
             "device config repo: config_desc={}, device_id={}, service_list_id={}, version={}",
-            get_system_config().config_desc, device_id, service_list_id, service_list_version
+            get_system_config().config_desc,
+            device_id,
+            service_list_id,
+            service_list_version
         );
 
         Ok(service_list_id)
@@ -186,7 +197,6 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service_list(&self) -> BuckyResult<AppList> {
-  
         let service_list_id = Self::gen_service_list_id()?;
         let ret = MetaClientHelper::get_object(&self.meta_client, &service_list_id).await?;
         if ret.is_none() {
@@ -203,7 +213,10 @@ impl DeviceConfigMetaRepo {
 
         // 解码
         let list = AppList::clone_from_slice(&object_raw).map_err(|e| {
-            let msg = format!("decode service list object failed! id={}, {}", service_list_id, e);
+            let msg = format!(
+                "decode service list object failed! id={}, {}",
+                service_list_id, e
+            );
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
@@ -219,7 +232,10 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service(&self, service_id: &ObjectId) -> BuckyResult<DecApp> {
-        let ret = self.service_objects.get_object_raw(&self.meta_client, service_id).await?;
+        let ret = self
+            .service_objects
+            .get_object_raw(&self.meta_client, service_id)
+            .await?;
         if ret.is_none() {
             let msg = format!(
                 "load service object from meta chain but not found! id={}",
@@ -244,7 +260,10 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service_dir(&self, dir_id: &ObjectId) -> BuckyResult<Dir> {
-        let ret = self.service_dir_objects.get_object_raw(&self.meta_client, dir_id).await?;
+        let ret = self
+            .service_dir_objects
+            .get_object_raw(&self.meta_client, dir_id)
+            .await?;
         if ret.is_none() {
             let msg = format!(
                 "load service dir from meta chain but not found! id={}",
@@ -413,15 +432,8 @@ impl DeviceConfigMetaRepo {
 
         true
     }
-}
 
-#[async_trait]
-impl DeviceConfigRepo for DeviceConfigMetaRepo {
-    fn get_type(&self) -> &'static str {
-        "meta"
-    }
-
-    async fn fetch(&self) -> BuckyResult<String> {
+    async fn fetch_inner(&self) -> BuckyResult<String> {
         // 从mete-chain拉取对应的service_list
         let service_list = self.load_service_list().await?;
 
@@ -450,12 +462,45 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
             });
         }
 
-        debug!(
-            "load device_config from meta: config={}",
-            device_config_str
-        );
+        debug!("load device_config from meta: config={}", device_config_str);
 
         Ok(device_config_str)
+    }
+}
+
+#[async_trait]
+impl DeviceConfigRepo for DeviceConfigMetaRepo {
+    fn get_type(&self) -> &'static str {
+        "meta"
+    }
+
+    async fn fetch(&self) -> BuckyResult<String> {
+        use rand::Rng;
+
+        // Use a random retry interval
+        let mut retry_interval_secs: u64 = rand::thread_rng().gen_range(10, 60);
+        let mut retry_count = 0;
+        loop {
+            match self.fetch_inner().await {
+                Ok(ret) => break Ok(ret),
+                Err(e) => match e.code() {
+                    BuckyErrorCode::HttpError => {
+                        async_std::task::sleep(std::time::Duration::from_secs(retry_interval_secs))
+                            .await;
+                        retry_interval_secs *= 2;
+                        retry_count += 1;
+
+                        if retry_count > 3 {
+                            break Err(e);
+                        }
+                    }
+
+                    _ => {
+                        break Err(e);
+                    }
+                },
+            }
+        }
     }
 
     async fn clear_cache(&self) {
