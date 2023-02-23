@@ -37,3 +37,4 @@ hex = "0.4"
 tide = "0.16"
 rand = '0.7'
 semver = "1.0"
+notify = "5.1"

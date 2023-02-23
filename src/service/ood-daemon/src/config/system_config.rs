@@ -1,14 +1,16 @@
 use super::path::PATHS;
-use super::version::{ServiceVersion, ServiceListVersion};
+use super::version::{ServiceListVersion, ServiceVersion};
+use super::DEVICE_CONFIG_MANAGER;
 use crate::repo::REPO_MANAGER;
 use cyfs_base::*;
 use cyfs_util::TomlHelper;
+use super::monitor::SystemConfigMonitor;
 
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct SystemConfig {
     // device_config动态更新依赖的desc文件，默认从cyfs_repo，可以指定device标识当前设备
     // ServiceList对象会使用该id+version，来计算当前依赖的ServiceList对象，并从链上拉取
@@ -28,7 +30,7 @@ pub struct SystemConfig {
 }
 
 impl SystemConfig {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             config_desc: String::from("cyfs_repo"),
 
@@ -53,13 +55,11 @@ impl SystemConfig {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        info!("will load system-config file: {}", config_file.display());
+        debug!("will load system-config file: {}", config_file.display());
 
         let node = self.load_as_json(&config_file).await?;
 
         self.parse_config(node).await?;
-
-        info!("system-config: {:?}", self);
 
         Ok(())
     }
@@ -165,28 +165,47 @@ impl SystemConfig {
             return Err(BuckyError::from(msg));
         }
 
-        info!(
-            "system-config: config_desc={}, target={}",
-            self.config_desc, self.target
-        );
-
         Ok(())
     }
 }
 
-use once_cell::sync::OnceCell;
-static SYSTEM_CONFIG: OnceCell<Arc<SystemConfig>> = OnceCell::new();
+use std::sync::Mutex;
+static SYSTEM_CONFIG: Mutex<Option<Arc<SystemConfig>>> = Mutex::new(None);
 
 // 只在进程初始化时候调用一次
 pub async fn init_system_config() -> BuckyResult<()> {
     let mut system_config = SystemConfig::new();
     system_config.load_config().await?;
 
-    SYSTEM_CONFIG.set(Arc::new(system_config)).unwrap();
+    info!("init system config: {:?}", system_config);
+    *SYSTEM_CONFIG.lock().unwrap() = Some(Arc::new(system_config));
+
+    SystemConfigMonitor::start();
+
+    Ok(())
+}
+
+pub async fn reload_system_config() -> BuckyResult<()> {
+    let mut system_config = SystemConfig::new();
+    system_config.load_config().await?;
+
+    debug!("reload system config success! {:?}", system_config);
+    {
+        let mut current = SYSTEM_CONFIG.lock().unwrap();
+        if current.as_deref() != Some(&system_config) {
+            info!(
+                "reload system config and changed! {:?} -> {:?}",
+                current.as_deref(), system_config
+            );
+            *current = Some(Arc::new(system_config));
+        }
+    }
+
+    let _ = DEVICE_CONFIG_MANAGER.init_repo();
 
     Ok(())
 }
 
 pub fn get_system_config() -> Arc<SystemConfig> {
-    SYSTEM_CONFIG.get().unwrap().clone()
+    SYSTEM_CONFIG.lock().unwrap().clone().unwrap()
 }

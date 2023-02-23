@@ -2,7 +2,7 @@ use cyfs_base::*;
 
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ServiceListVersion {
     Nightly,          // default version
     Specific(String), // user confined
@@ -38,7 +38,7 @@ impl FromStr for ServiceListVersion {
 }
 
 // 版本列表定义
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ServiceVersion {
     Default,          // use the version config in service list
     Specific(String), // semver, * as the newest version

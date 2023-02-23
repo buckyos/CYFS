@@ -1,5 +1,5 @@
 use super::gateway_monitor::GATEWAY_MONITOR;
-use crate::config::{init_system_config, DeviceConfigManager};
+use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
 use cyfs_base::{bucky_time_now, BuckyResult};
@@ -46,7 +46,6 @@ impl Default for ActionActive {
 #[derive(Clone)]
 pub struct Daemon {
     mode: ServiceMode,
-    device_config_manager: Arc<DeviceConfigManager>,
     no_monitor: bool,
     last_active: Arc<ActionActive>,
 }
@@ -54,11 +53,8 @@ pub struct Daemon {
 impl Daemon {
     // add code here
     pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
-        let device_config_manager = DeviceConfigManager::new();
-
         Self {
             mode,
-            device_config_manager: Arc::new(device_config_manager),
             no_monitor,
             last_active: Arc::new(ActionActive::default()),
         }
@@ -67,7 +63,7 @@ impl Daemon {
     pub async fn run(&self) -> BuckyResult<()> {
         init_system_config().await?;
 
-        self.device_config_manager.init()?;
+        DEVICE_CONFIG_MANAGER.init()?;
 
         OOD_STATUS_MANAGER.start().await?;
 
@@ -101,7 +97,7 @@ impl Daemon {
                 .map(|v| v.config.fid.clone());
 
             // 首先尝试下载同步配置
-            match self.device_config_manager.fetch_config().await {
+            match DEVICE_CONFIG_MANAGER.fetch_config().await {
                 Ok(changed) => {
                     if changed {
                         need_load_config = true;
@@ -115,7 +111,7 @@ impl Daemon {
             }
 
             if need_load_config {
-                if let Err(e) = self.device_config_manager.load_and_apply_config().await {
+                if let Err(e) = DEVICE_CONFIG_MANAGER.load_and_apply_config().await {
                     // 加载配置失败，那么需要等下一个周期继续尝试load
                     error!("load config failed! now will retry on next loop! {}", e);
                 } else {
