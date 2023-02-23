@@ -84,6 +84,10 @@ impl MetaClientHelperWithObjectCache {
         }
     }
 
+    pub async fn clear_cache(&self) {
+        self.objects.lock().await.clear();
+    }
+
     pub async fn get_object(
         &self,
         meta_client: &MetaClient,
