@@ -5,7 +5,7 @@ use std::{
 
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId,
+    ObjectDesc, ObjectId, ObjectMap, ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawDecode,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -15,7 +15,8 @@ use cyfs_core::{
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
-    storage::StorageWriter, GroupStatePath, NONDriverHelper, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION,
+    storage::StorageWriter, GroupRPathStatus, GroupStatePath, NONDriverHelper,
+    PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR, TIME_PRECISION,
 };
 
 use super::{
@@ -56,7 +57,6 @@ impl GroupStorage {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        init_state_id: Option<ObjectId>,
         non_driver: NONDriverHelper,
         local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
@@ -84,7 +84,7 @@ impl GroupStorage {
                 GroupStatePath::new(rpath.to_string()),
             ),
             local_device_id,
-            cache: StorageCacheInfo::new(init_state_id),
+            cache: StorageCacheInfo::new(None),
         })
     }
 
@@ -808,5 +808,101 @@ impl GroupStorage {
                 blocks,
             )
         }
+    }
+
+    pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
+        let (header_block, qc) = match self.cache.header_block.as_ref() {
+            Some(block) => {
+                let (_, qc_block) = self
+                    .cache
+                    .pre_commits
+                    .iter()
+                    .next()
+                    .expect("pre-commit should not be empty");
+
+                assert_eq!(
+                    qc_block.prev_block_id().unwrap(),
+                    block.block_id().object_id(),
+                    "the prev-block for all pre-commits should be the header"
+                );
+
+                (block, qc_block.qc().as_ref().unwrap())
+            }
+            None => {
+                return Err(BuckyError::new(
+                    BuckyErrorCode::NotFound,
+                    "the header block is none",
+                ));
+            }
+        };
+
+        let mut parent_state_id = match header_block.result_state_id() {
+            Some(state_id) => state_id.clone(),
+            None => {
+                return Ok(GroupRPathStatus {
+                    block_desc: header_block.named_object().desc().clone(),
+                    certificate: qc.clone(),
+                    status_map: HashMap::new(),
+                })
+            }
+        };
+
+        let mut status_map = HashMap::new();
+
+        let root_cache = self.storage_engine.root_cache();
+        let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
+
+        for folder in sub_path.split(STATE_PATH_SEPARATOR) {
+            let parent_state = self.non_driver.get_object(&parent_state_id, None).await?;
+
+            if ObjectTypeCode::ObjectMap != parent_state.object().obj_type_code() {
+                let msg = format!(
+                    "unmatch object type at path {} in folder {}, expect: ObjectMap, got: {:?}",
+                    sub_path,
+                    folder,
+                    parent_state.object().obj_type_code()
+                );
+                log::warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+            }
+
+            let (parent, remain) = ObjectMap::raw_decode(parent_state.object_raw.as_slice())
+                .map_err(|err| {
+                    let msg = format!(
+                        "decode failed at path {} in folder {}, {:?}",
+                        sub_path, folder, err
+                    );
+                    log::warn!("{}", msg);
+                    BuckyError::new(err.code(), msg)
+                })?;
+
+            assert_eq!(remain.len(), 0);
+
+            status_map.insert(parent_state_id, parent_state);
+
+            let sub_map_id = parent.get_by_key(&cache, folder).await?;
+            match sub_map_id {
+                Some(sub_map_id) => {
+                    // for next folder
+                    parent_state_id = sub_map_id;
+                }
+                None => {
+                    return Ok(GroupRPathStatus {
+                        block_desc: header_block.named_object().desc().clone(),
+                        certificate: qc.clone(),
+                        status_map,
+                    });
+                }
+            }
+        }
+
+        let leaf_state = self.non_driver.get_object(&parent_state_id, None).await?;
+        status_map.insert(parent_state_id, leaf_state);
+
+        return Ok(GroupRPathStatus {
+            block_desc: header_block.named_object().desc().clone(),
+            certificate: qc.clone(),
+            status_map,
+        });
     }
 }

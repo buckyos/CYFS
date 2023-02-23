@@ -13,7 +13,7 @@ pub struct GroupRPathStatus {
 }
 
 impl RawEncode for GroupRPathStatus {
-    fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
+    fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         let block_desc = self.block_desc.to_vec()?;
         let certificate = self.certificate.to_vec()?;
         let mut status_list = vec![];
@@ -33,7 +33,7 @@ impl RawEncode for GroupRPathStatus {
     fn raw_encode<'a>(
         &self,
         mut buf: &'a mut [u8],
-        purpose: &Option<RawEncodePurpose>,
+        _purpose: &Option<RawEncodePurpose>,
     ) -> BuckyResult<&'a mut [u8]> {
         let block_desc = self.block_desc.to_vec()?;
         let certificate = self.certificate.to_vec()?;
