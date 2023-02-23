@@ -130,7 +130,7 @@ impl ObjectMapIsolatePathOpEnv {
                 if value.is_none() {
                     let msg = format!(
                         "load ioslate_path_op_env with inner_path but not found! root={}, inner_path={}",
-                        obj_map_id, obj_map_id,
+                        obj_map_id, inner_path,
                     );
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
