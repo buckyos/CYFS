@@ -166,13 +166,14 @@ async function run() {
 
             child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path} --tcp`, { cwd: 'dist', stdio: 'inherit' })
     
+            let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
+
             // 运行app-tool，添加版本和fid
             let app_version = version + "-preview";
             let cmd = `app-tool app set -v ${app_version} -s ${fid} ${service.id} -o ${repo_path}`;
             console.log("will run app tool cmd:", cmd)
             child_process.execSync(cmd, { cwd: 'dist', stdio: 'inherit' })
 
-            let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
             device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
         }
     
