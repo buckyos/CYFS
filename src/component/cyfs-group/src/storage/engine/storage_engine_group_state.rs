@@ -2,10 +2,10 @@ use std::{collections::HashSet, sync::Arc};
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapContentItem,
-    ObjectMapPathOpEnvRef, ObjectMapRootManagerRef, ObjectMapSimpleContentType,
-    ObjectMapSingleOpEnvRef, OpEnvPathAccess,
+    ObjectMapPathOpEnvRef, ObjectMapRootCacheRef, ObjectMapRootManagerRef,
+    ObjectMapSimpleContentType, ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
-use cyfs_core::{HotstuffBlockQC, HotstuffTimeout};
+use cyfs_core::{GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
 
 use crate::{
     GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
@@ -154,6 +154,19 @@ impl StorageEngineGroupState {
             None => 0,
         };
 
+        let dec_state_id_in_header = cache
+            .header_block
+            .as_ref()
+            .map_or(None, |b| b.result_state_id().clone());
+
+        assert_eq!(dec_state_id, dec_state_id_in_header);
+        if dec_state_id != dec_state_id_in_header {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Unmatch,
+                "the state should same as it in header-block",
+            ));
+        }
+
         let (prepare_blocks, pre_commit_blocks) =
             load_blocks.as_slice()[prepare_block_pos..].split_at(prepare_block_ids.len());
         for (block, block_id) in prepare_blocks.iter().zip(prepare_block_ids) {
@@ -178,6 +191,10 @@ impl StorageEngineGroupState {
             StorageEngineGroupStateWriter::new(self.state_mgr.clone(), self.state_path.clone())
                 .await?,
         )
+    }
+
+    pub fn root_cache(&self) -> &ObjectMapRootCacheRef {
+        self.state_mgr.root_cache()
     }
 }
 

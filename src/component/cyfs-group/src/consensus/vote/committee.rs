@@ -10,9 +10,13 @@ use cyfs_base::{
     SingleKeyObjectDesc, Verifier,
 };
 use cyfs_chunk_lib::ChunkMeta;
-use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
+use cyfs_core::{
+    GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
+    GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout,
+};
+use cyfs_lib::NONObjectInfo;
 
-use crate::{network::NONDriverHelper, HotstuffBlockQCVote, HotstuffTimeoutVote};
+use crate::{network::NONDriverHelper, GroupRPathStatus, HotstuffBlockQCVote, HotstuffTimeoutVote};
 
 #[derive(Clone)]
 pub(crate) struct Committee {
@@ -136,6 +140,47 @@ impl Committee {
         Ok(())
     }
 
+    pub async fn verify_block_desc_with_qc(
+        &self,
+        block_desc: &GroupConsensusBlockDesc,
+        qc: &HotstuffBlockQC,
+        from: ObjectId,
+    ) -> BuckyResult<()> {
+        let block_id = block_desc.object_id();
+
+        log::debug!(
+            "[group committee] {} verify block desc {} step1",
+            self.local_device_id,
+            block_id
+        );
+
+        if block_id != qc.block_id {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Unmatch,
+                "the block id is unmatch with the qc",
+            ));
+        }
+
+        self.check_group(Some(block_desc.content().group_chunk_id()), Some(&from))
+            .await?;
+
+        log::debug!(
+            "[group committee] {} verify block desc {} step2",
+            self.local_device_id,
+            block_id
+        );
+
+        self.verify_qc_with_desc(qc, block_desc.content()).await?;
+
+        log::debug!(
+            "[group committee] {} verify block desc {} step3",
+            self.local_device_id,
+            block_id
+        );
+
+        Ok(())
+    }
+
     pub async fn verify_vote(&self, vote: &HotstuffBlockQCVote) -> BuckyResult<()> {
         let hash = vote.hash();
         let device = self.non_driver.get_device(&vote.voter).await?;
@@ -250,8 +295,17 @@ impl Committee {
         qc: &HotstuffBlockQC,
         prev_block: &GroupConsensusBlock,
     ) -> BuckyResult<()> {
-        if qc.round != prev_block.round() {
-            log::warn!("[group committee] round is not match with prev-block in qc, round: {}, prev_round: {}", qc.round, prev_block.round());
+        self.verify_qc_with_desc(qc, prev_block.named_object().desc().content())
+            .await
+    }
+
+    pub async fn verify_qc_with_desc(
+        &self,
+        qc: &HotstuffBlockQC,
+        prev_block_desc: &GroupConsensusBlockDescContent,
+    ) -> BuckyResult<()> {
+        if qc.round != prev_block_desc.round() {
+            log::warn!("[group committee] round is not match with prev-block in qc, round: {}, prev_round: {}", qc.round, prev_block_desc.round());
             return Err(BuckyError::new(
                 BuckyErrorCode::NotMatch,
                 "round not match in qc",
@@ -261,7 +315,7 @@ impl Committee {
         let is_enough = self
             .quorum_threshold(
                 &qc.votes.iter().map(|v| v.voter).collect(),
-                Some(prev_block.group_chunk_id()),
+                Some(prev_block_desc.group_chunk_id()),
             )
             .await?;
 
@@ -291,7 +345,7 @@ impl Committee {
             .map_or(Ok(()), |e| e)
     }
 
-    async fn check_group(
+    pub async fn check_group(
         &self,
         chunk_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
