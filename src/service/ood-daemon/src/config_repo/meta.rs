@@ -3,7 +3,7 @@ use crate::config::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_debug::Mutex;
-use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
+use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaClientHelperWithObjectCache, MetaMinerTarget};
 use cyfs_util::LOCAL_DEVICE_MANAGER;
 
 use async_trait::async_trait;
@@ -135,6 +135,9 @@ pub struct DeviceConfigMetaRepo {
     meta_client: MetaClient,
 
     cache: Mutex<Option<LocalCache>>,
+
+    service_objects: MetaClientHelperWithObjectCache,
+    service_dir_objects: MetaClientHelperWithObjectCache,
 }
 
 impl DeviceConfigMetaRepo {
@@ -148,6 +151,8 @@ impl DeviceConfigMetaRepo {
             service_list_id: None,
             meta_client,
             cache: Mutex::new(None),
+            service_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 4), 16),
+            service_dir_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 24), 16),
         }
     }
 
@@ -227,7 +232,7 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service(&self, service_id: &ObjectId) -> BuckyResult<DecApp> {
-        let ret = MetaClientHelper::get_object(&self.meta_client, service_id).await?;
+        let ret = self.service_objects.get_object_raw(&self.meta_client, service_id).await?;
         if ret.is_none() {
             let msg = format!(
                 "load service object from meta chain but not found! id={}",
@@ -238,7 +243,7 @@ impl DeviceConfigMetaRepo {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let (_, object_raw) = ret.unwrap();
+        let object_raw = ret.unwrap();
 
         // 解码
         let service = DecApp::clone_from_slice(&object_raw).map_err(|e| {
@@ -252,7 +257,7 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service_dir(&self, dir_id: &ObjectId) -> BuckyResult<Dir> {
-        let ret = MetaClientHelper::get_object(&self.meta_client, dir_id).await?;
+        let ret = self.service_dir_objects.get_object_raw(&self.meta_client, dir_id).await?;
         if ret.is_none() {
             let msg = format!(
                 "load service dir from meta chain but not found! id={}",
@@ -263,7 +268,7 @@ impl DeviceConfigMetaRepo {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let (_, object_raw) = ret.unwrap();
+        let object_raw = ret.unwrap();
 
         // 解码
         let dir = Dir::clone_from_slice(&object_raw).map_err(|e| {
@@ -332,7 +337,7 @@ impl DeviceConfigMetaRepo {
             false => None,
         };
 
-        let version = service.find_version(&config_version, preview).map_err(|e| {
+        let (version, semver) = service.find_version(&config_version, preview).map_err(|e| {
             let msg = format!(
                 "find version from service object failed! id={}, configed version={}, preview={:?}, {}",
                 service_id, config_version, preview, e,
