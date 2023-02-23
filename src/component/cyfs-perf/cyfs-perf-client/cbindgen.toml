@@ -1,7 +1,0 @@
-#language = "c++"或language = "c"
-language = "c"
-#是否不导入头文件
-no_includes = false
-
-[export]
-prefix = ""
