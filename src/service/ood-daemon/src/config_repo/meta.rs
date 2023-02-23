@@ -143,7 +143,7 @@ impl DeviceConfigMetaRepo {
             meta_client,
             cache: Mutex::new(None),
             service_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 4), 16),
-            service_dir_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 24), 16),
+            service_dir_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 24 * 7), 16),
         }
     }
 
@@ -456,5 +456,9 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
         );
 
         Ok(device_config_str)
+    }
+
+    async fn clear_cache(&self) {
+        self.service_objects.clear_cache().await;
     }
 }
