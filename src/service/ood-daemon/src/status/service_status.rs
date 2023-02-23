@@ -1,5 +1,5 @@
-use crate::SERVICE_MANAGER;
-use crate::config::{ServiceState, ServiceConfig, DeviceConfigManager};
+use crate::{SERVICE_MANAGER};
+use crate::config::{ServiceState, ServiceConfig, DEVICE_CONFIG_MANAGER};
 use crate::service::ServicePackageLocalState;
 
 use cyfs_base::bucky_time_now;
@@ -71,7 +71,7 @@ impl OODDaemonStatusGenerator {
     }
 
     fn gen() -> OODDaemonStatus {
-        let device_config = match DeviceConfigManager::new().load_config() {
+        let device_config = match DEVICE_CONFIG_MANAGER.load_config() {
             Ok(list) => list,
             Err(_) => vec![],
         };

@@ -73,6 +73,7 @@ pub trait Repo: Send + Sync {
 
 pub struct RepoManager {
     cache_dir: PathBuf,
+    repo_config: Mutex<Option<String>>,
     repo_list: Mutex<Vec<Arc<Box<dyn Repo>>>>,
 }
 
@@ -99,6 +100,7 @@ impl RepoManager {
     pub fn new() -> RepoManager {
         let cache_dir = Self::cache_dir();
         RepoManager {
+            repo_config: Mutex::new(None),
             repo_list: Mutex::new(Vec::new()),
             cache_dir,
         }
@@ -112,6 +114,7 @@ impl RepoManager {
         let repo = Arc::new(Box::new(repo) as Box<dyn Repo>);
 
         Ok(Self {
+            repo_config: Mutex::new(None),
             repo_list: Mutex::new(vec![repo]),
             cache_dir,
         })
@@ -221,19 +224,41 @@ impl RepoManager {
     // 从system_config的repo字段加载配置
     pub async fn load(&self, repo_node: &Vec<toml::Value>) -> BuckyResult<()> {
         assert!(repo_node.len() > 0);
-        assert!(self.repo_list.lock().unwrap().is_empty());
 
+        let config_string = serde_json::to_string(&repo_node).unwrap();
+        {
+            let current = self.repo_config.lock().unwrap();
+            if current.as_deref() == Some(&config_string) {
+                return Ok(());
+            }
+
+            info!("repo config changed! {:?} -> {}", &*current, config_string);
+        }
+
+        let mut list = vec![];
         for item in repo_node.iter() {
             info!("new repo item: {:?}", item);
             if let toml::Value::Table(m) = item {
                 let repo = Self::load_repo_item(&m).await?;
-                self.repo_list.lock().unwrap().push(Arc::new(repo));
+                list.push(Arc::new(repo));
             } else {
                 let msg = format!("unsupport repo item format!");
                 error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
             }
         }
+
+        // Support for repeated loading
+        {
+            let mut current = self.repo_list.lock().unwrap();
+            if !current.is_empty() {
+                warn!("will replace current repo list!");
+            }
+
+            *current = list;
+        }
+
+        *self.repo_config.lock().unwrap() = Some(config_string);
 
         Ok(())
     }
