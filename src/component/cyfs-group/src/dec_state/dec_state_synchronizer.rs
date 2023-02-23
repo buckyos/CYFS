@@ -10,10 +10,10 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    helper::{verify_block, Timer},
+    helper::Timer,
     network::NONDriverHelper,
     storage::{DecStorage, DecStorageCache},
-    CHANNEL_CAPACITY,
+    Committee, CHANNEL_CAPACITY,
 };
 
 use super::{CallReplyNotifier, CallReplyWaiter};
@@ -32,7 +32,7 @@ enum DecStateSynchronizerMessage {
 }
 
 struct DecStateSynchronizerRaw {
-    local_id: ObjectId,
+    local_device_id: ObjectId,
     tx_dec_state_sync_message: async_std::channel::Sender<(DecStateSynchronizerMessage, ObjectId)>,
     proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
 }
@@ -42,8 +42,9 @@ pub struct DecStateSynchronizer(Arc<DecStateSynchronizerRaw>);
 
 impl DecStateSynchronizer {
     pub(crate) fn new(
-        local_id: ObjectId,
+        local_device_id: ObjectId,
         rpath: GroupRPath,
+        committee: Committee,
         non_driver: crate::network::NONDriverHelper,
         store: DecStorage,
     ) -> Self {
@@ -51,8 +52,9 @@ impl DecStateSynchronizer {
         let notifier = CallReplyNotifier::new();
 
         let mut runner = DecStateSynchronizerRunner::new(
-            local_id,
+            local_device_id,
             rpath,
+            committee,
             tx.clone(),
             rx,
             store,
@@ -63,7 +65,7 @@ impl DecStateSynchronizer {
         async_std::task::spawn(async move { runner.run().await });
 
         Self(Arc::new(DecStateSynchronizerRaw {
-            local_id,
+            local_device_id,
             tx_dec_state_sync_message: tx,
             proposal_result_notifier: notifier,
         }))
@@ -126,8 +128,9 @@ struct UpdateNotifyInfo {
 }
 
 struct DecStateSynchronizerRunner {
-    local_id: ObjectId,
+    local_device_id: ObjectId,
     rpath: GroupRPath,
+    committee: Committee,
     tx_dec_state_sync_message: async_std::channel::Sender<(DecStateSynchronizerMessage, ObjectId)>,
     rx_dec_state_sync_message:
         async_std::channel::Receiver<(DecStateSynchronizerMessage, ObjectId)>,
@@ -142,8 +145,9 @@ struct DecStateSynchronizerRunner {
 
 impl DecStateSynchronizerRunner {
     fn new(
-        local_id: ObjectId,
+        local_device_id: ObjectId,
         rpath: GroupRPath,
+        committee: Committee,
         tx_dec_state_sync_message: async_std::channel::Sender<(
             DecStateSynchronizerMessage,
             ObjectId,
@@ -157,7 +161,7 @@ impl DecStateSynchronizerRunner {
         proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
     ) -> Self {
         Self {
-            local_id,
+            local_device_id,
             rpath,
             tx_dec_state_sync_message,
             rx_dec_state_sync_message,
@@ -167,6 +171,7 @@ impl DecStateSynchronizerRunner {
             update_notifies: None,
             non_driver,
             proposal_result_notifier,
+            committee,
         }
     }
 
@@ -330,52 +335,29 @@ impl DecStateSynchronizerRunner {
             }
         }
 
-        let group = match self.update_notifies.as_ref() {
-            Some(n) => Some((n.group_chunk_id, n.group.clone())),
-            None => self
-                .check_cache()
-                .await
-                .as_ref()
-                .map(|c| (c.group_chunk_id, c.group.clone())),
-        }
-        .map_or(None, |(chunk_id, group)| {
-            if &chunk_id == header_block.group_chunk_id() {
-                Some((chunk_id, group))
-            } else {
-                None
-            }
-        });
-
-        // group changed
-        let group = match group {
-            Some(group) => group,
-            None => {
-                let group = self
-                    .non_driver
-                    .get_group(
-                        self.rpath.group_id(),
-                        Some(header_block.group_chunk_id()),
-                        Some(&remote),
-                    )
-                    .await?;
-                (header_block.group_chunk_id().clone(), group)
-            }
-        };
-
         if header_block.check()
-            && verify_block(
-                header_block.named_object().desc(),
-                qc_block.qc().as_ref().unwrap(),
-                &group.1,
-            )
-            .await?
+            && self
+                .committee
+                .verify_block_desc_with_qc(
+                    header_block.named_object().desc(),
+                    qc_block.qc().as_ref().unwrap(),
+                    remote,
+                )
+                .await
+                .is_ok()
         {
+            let group = self
+                .committee
+                .check_group(Some(header_block.group_chunk_id()), None)
+                .await?;
+            let group_chunk_id = header_block.group_chunk_id().clone();
+
             self.update_notifies = Some(UpdateNotifyInfo {
                 header_block: header_block,
                 qc_block: qc_block,
                 remotes: HashSet::from([remote]),
-                group_chunk_id: group.0,
-                group: group.1,
+                group_chunk_id,
+                group,
             });
         };
 

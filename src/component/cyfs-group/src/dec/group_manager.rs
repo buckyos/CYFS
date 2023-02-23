@@ -123,6 +123,7 @@ impl GroupManager {
             let local_info = self.local_info();
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
             let local_device_id = local_info.bdt_stack.local_device_id();
+            let state_mgr = local_info.global_state_mgr.clone();
             let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
             let network_sender = crate::network::Sender::new(
                 local_info.datagram.clone(),
@@ -143,9 +144,13 @@ impl GroupManager {
             match found {
                 std::collections::hash_map::Entry::Occupied(found) => Ok(found.get().clone()),
                 std::collections::hash_map::Entry::Vacant(entry) => {
+                    let state_proccessor = state_mgr
+                        .load_root_state(local_device_id.object_id(), Some(local_id), true)
+                        .await?;
                     let client = RPathClient::load(
-                        local_id,
+                        local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
+                        state_proccessor.unwrap(),
                         non_driver,
                         network_sender,
                     )
@@ -199,7 +204,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         Some(&block),
                         Some(&remote),
                     )
@@ -215,7 +220,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         None,
                         Some(&remote),
                     )
@@ -231,7 +236,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         None,
                         Some(&remote),
                     )
@@ -247,7 +252,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         None,
                         Some(&remote),
                     )
@@ -263,7 +268,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         None,
                         Some(&remote),
                     )
@@ -279,7 +284,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes,
                         None,
                         Some(&remote),
                     )
@@ -321,12 +326,32 @@ impl GroupManager {
             }
             HotstuffPackage::QueryState(target, sub_path) => {
                 let rpath = target.check_rpath();
-                let client = self
-                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
-                    .await?;
-                client
-                    .on_message(HotstuffMessage::QueryState(sub_path), remote)
+                let control = self
+                    .find_rpath_control_inner(
+                        rpath.group_id(),
+                        rpath.dec_id(),
+                        rpath.r_path(),
+                        IsCreateRPath::No,
+                        None,
+                        Some(&remote),
+                    )
                     .await;
+
+                match control {
+                    Ok(control) => {
+                        control
+                            .on_message(HotstuffMessage::QueryState(sub_path), remote)
+                            .await;
+                    }
+                    _ => {
+                        let client = self
+                            .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                            .await?;
+                        client
+                            .on_message(HotstuffMessage::QueryState(sub_path), remote)
+                            .await;
+                    }
+                }
             }
             HotstuffPackage::VerifiableState(sub_path, result) => {
                 let rpath = result.as_ref().map_or_else(
@@ -436,15 +461,10 @@ impl GroupManager {
             let store = match store {
                 Some(store) => store,
                 None => {
-                    let init_state = match is_auto_create {
-                        IsCreateRPath::Yes(init_state) => init_state,
-                        _ => unreachable!(),
-                    };
                     GroupStorage::create(
                         group_id,
                         dec_id,
                         rpath,
-                        init_state,
                         non_driver.clone(),
                         local_device_id.object_id().clone(),
                         &root_state_mgr,

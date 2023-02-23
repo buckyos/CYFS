@@ -22,9 +22,9 @@ pub struct StorageCacheInfo {
 }
 
 impl StorageCacheInfo {
-    pub fn new(init_state_id: Option<ObjectId>) -> Self {
+    pub fn new(dec_state_id: Option<ObjectId>) -> Self {
         Self {
-            dec_state_id: init_state_id,
+            dec_state_id,
             last_vote_round: 0,
             last_qc: None,
             last_tc: None,
