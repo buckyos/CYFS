@@ -1,10 +1,8 @@
 use super::path::PATHS;
 use super::version::{ServiceListVersion, ServiceVersion};
-use super::DEVICE_CONFIG_MANAGER;
 use crate::repo::REPO_MANAGER;
 use cyfs_base::*;
 use cyfs_util::TomlHelper;
-use super::monitor::SystemConfigMonitor;
 
 use std::path::Path;
 use std::str::FromStr;
@@ -59,9 +57,7 @@ impl SystemConfig {
 
         let node = self.load_as_json(&config_file).await?;
 
-        self.parse_config(node).await?;
-
-        Ok(())
+        self.parse_config(node).await
     }
 
     async fn load_as_json(&self, file_path: &Path) -> BuckyResult<toml::Value> {
@@ -180,16 +176,15 @@ pub async fn init_system_config() -> BuckyResult<()> {
     info!("init system config: {:?}", system_config);
     *SYSTEM_CONFIG.lock().unwrap() = Some(Arc::new(system_config));
 
-    SystemConfigMonitor::start();
-
     Ok(())
 }
 
-pub async fn reload_system_config() -> BuckyResult<()> {
+pub async fn reload_system_config() -> BuckyResult<bool> {
     let mut system_config = SystemConfig::new();
     system_config.load_config().await?;
 
     debug!("reload system config success! {:?}", system_config);
+    let mut changed = false;
     {
         let mut current = SYSTEM_CONFIG.lock().unwrap();
         if current.as_deref() != Some(&system_config) {
@@ -198,12 +193,11 @@ pub async fn reload_system_config() -> BuckyResult<()> {
                 current.as_deref(), system_config
             );
             *current = Some(Arc::new(system_config));
+            changed = true;
         }
     }
 
-    let _ = DEVICE_CONFIG_MANAGER.init_repo();
-
-    Ok(())
+    Ok(changed)
 }
 
 pub fn get_system_config() -> Arc<SystemConfig> {
