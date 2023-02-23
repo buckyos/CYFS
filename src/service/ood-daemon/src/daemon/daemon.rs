@@ -187,7 +187,7 @@ impl Daemon {
             }
 
             // 检查绑定状态
-            let timer = task::sleep(Duration::from_secs(60 * 10));
+            let timer = task::sleep(Duration::from_secs(60 * 30));
 
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
 

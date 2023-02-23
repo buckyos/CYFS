@@ -1,4 +1,4 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 mod config;
 mod config_repo;
@@ -22,9 +22,9 @@ const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
 fn start_log() {
     cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
-        .level("debug")
+        .level("info")
         .console("info")
-        .enable_bdt(Some("debug"), Some("debug"))
+        .enable_bdt(Some("info"), Some("info"))
         .build()
         .unwrap()
         .start();
