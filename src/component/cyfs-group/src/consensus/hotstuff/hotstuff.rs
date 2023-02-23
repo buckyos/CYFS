@@ -187,6 +187,19 @@ impl Hotstuff {
 
         self.state_pusher.request_last_state(remote).await;
     }
+
+    pub async fn on_query_state(&self, sub_path: String, remote: ObjectId) {
+        log::debug!(
+            "[hotstuff] local: {:?}, on_query_state: sub_path: {}, remote: {:?},",
+            self,
+            sub_path,
+            remote
+        );
+
+        self.tx_message
+            .send((HotstuffMessage::QueryState(sub_path), remote))
+            .await;
+    }
 }
 
 struct HotstuffRunner {
@@ -1834,6 +1847,19 @@ impl HotstuffRunner {
         Ok(())
     }
 
+    async fn handle_query_state(&self, sub_path: String, remote: ObjectId) -> BuckyResult<()> {
+        let result = self.store.get_by_path(sub_path.as_str()).await;
+        self.network_sender
+            .post_message(
+                HotstuffMessage::VerifiableState(sub_path, result),
+                self.rpath.clone(),
+                &remote,
+            )
+            .await;
+
+        Ok(())
+    }
+
     async fn check_group_is_latest(&self, group_chunk_id: &ObjectId) -> BuckyResult<bool> {
         let latest_group = self.committee.get_group(None).await?;
         let group_chunk = ChunkMeta::from(&latest_group).to_chunk().await?;
@@ -1918,7 +1944,7 @@ impl HotstuffRunner {
                     Ok((HotstuffMessage::LastStateRequest, _)) => panic!("should process by StatePusher"),
                     Ok((HotstuffMessage::StateChangeNotify(_, _), _)) => panic!("should process by DecStateSynchronizer"),
                     Ok((HotstuffMessage::ProposalResult(_, _), _)) => panic!("should process by DecStateSynchronizer"),
-                    Ok((HotstuffMessage::QueryState(_), _)) => panic!("should process by DecStateRequestor"),
+                    Ok((HotstuffMessage::QueryState(sub_path), remote)) => self.handle_query_state(sub_path, remote).await,
                     Ok((HotstuffMessage::VerifiableState(_, _), _)) => panic!("should process by DecStateRequestor"),
                     Err(e) => {
                         log::warn!("[hotstuff] rx_message closed.");

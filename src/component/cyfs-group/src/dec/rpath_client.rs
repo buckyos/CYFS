@@ -5,18 +5,18 @@ use cyfs_base::{
     RawConvertTo,
 };
 use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath};
-use cyfs_lib::NONObjectInfo;
+use cyfs_lib::{GlobalStateRawProcessorRef, NONObjectInfo};
 use rand::Rng;
 
 use crate::{
     dec_state::{DecStateRequestor, DecStateSynchronizer},
     storage::DecStorage,
-    HotstuffMessage, CLIENT_POLL_TIMEOUT,
+    Committee, HotstuffMessage, CLIENT_POLL_TIMEOUT,
 };
 
 struct RPathClientRaw {
     rpath: GroupRPath,
-    local_id: ObjectId,
+    local_device_id: ObjectId,
     non_driver: crate::network::NONDriverHelper,
     network_sender: crate::network::Sender,
     state_sync: DecStateSynchronizer,
@@ -28,22 +28,31 @@ pub struct RPathClient(Arc<RPathClientRaw>);
 
 impl RPathClient {
     pub(crate) async fn load(
-        local_id: ObjectId,
+        local_device_id: ObjectId,
         rpath: GroupRPath,
+        state_processor: GlobalStateRawProcessorRef,
         non_driver: crate::network::NONDriverHelper,
         network_sender: crate::network::Sender,
     ) -> BuckyResult<Self> {
-        let dec_store = DecStorage::load().await?;
+        let dec_store = DecStorage::load(state_processor).await?;
+        let committee = Committee::new(
+            rpath.group_id().clone(),
+            non_driver.clone(),
+            local_device_id,
+        );
+
         let state_sync = DecStateSynchronizer::new(
-            local_id,
+            local_device_id,
             rpath.clone(),
+            committee.clone(),
             non_driver.clone(),
             dec_store.clone(),
         );
 
         let state_requestor = DecStateRequestor::new(
-            local_id,
+            local_device_id,
             rpath.clone(),
+            committee,
             network_sender.clone(),
             non_driver.clone(),
             dec_store.clone(),
@@ -53,7 +62,7 @@ impl RPathClient {
             rpath,
             non_driver,
             network_sender,
-            local_id,
+            local_device_id,
             state_sync,
             state_requestor,
         };
@@ -77,7 +86,7 @@ impl RPathClient {
             .non_driver
             .get_group(proposal.r_path().group_id(), None, None)
             .await?;
-        let oods = group.ood_list_with_distance(&self.0.local_id);
+        let oods = group.ood_list_with_distance(&self.0.local_device_id);
         let proposal_id = proposal.desc().object_id();
         let non_proposal = NONObjectInfo::new(proposal_id, proposal.to_vec()?, None);
 
@@ -143,7 +152,7 @@ impl RPathClient {
             .get_group(&self.0.rpath.group_id(), None, None)
             .await?;
 
-        let oods = group.ood_list_with_distance(&self.0.local_id);
+        let oods = group.ood_list_with_distance(&self.0.local_device_id);
         let random = rand::thread_rng().gen_range(0..oods.len());
         let ood = oods.get(random).unwrap().clone();
 
@@ -154,14 +163,15 @@ impl RPathClient {
         Ok(())
     }
 
-    pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<ObjectId> {
+    pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<Option<NONObjectInfo>> {
         let group = self
             .0
             .non_driver
             .get_group(self.0.rpath.group_id(), None, None)
             .await?;
 
-        let members = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::All);
+        let members =
+            group.select_members_with_distance(&self.0.local_device_id, GroupMemberScope::All);
         let req_msg = HotstuffMessage::QueryState(sub_path.to_string());
 
         let waiter = self
