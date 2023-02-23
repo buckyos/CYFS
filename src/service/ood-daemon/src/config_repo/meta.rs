@@ -347,6 +347,9 @@ impl DeviceConfigMetaRepo {
             BuckyError::new(BuckyErrorCode::NotFound, msg)
         })?;
 
+        // check if the target service version is valid
+        SemVerEpochCheck::check_version_with_semver_epoch(&semver)?;
+
         let ret = service.find_source(&version);
         if ret.is_err() {
             let msg = format!(
