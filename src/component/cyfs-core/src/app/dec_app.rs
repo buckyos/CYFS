@@ -134,7 +134,8 @@ pub trait DecAppObj {
     fn app_desc(&self) -> Option<&str>;
     fn icon(&self) -> Option<&str>;
 
-    fn find_version(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<&str>;
+    // return (origin version, semversion);
+    fn find_version(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<(&str, String)>;
 
     fn find_source_by_semver(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<ObjectId>;
     fn find_source(&self, version: &str) -> BuckyResult<ObjectId>;
@@ -212,7 +213,7 @@ impl DecAppObj for DecApp {
     // https://nodesource.com/blog/semver-tilde-and-caret/
     // When pre is specified, all matching prerelease versions will be included; 
     // otherwise, only all versions that do not contain any prerelease will be matched
-    fn find_version(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<&str> {
+    fn find_version(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<(&str, String)> {
         let name = self.name();
         let id = self.desc().calculate_id();
 
@@ -284,13 +285,13 @@ impl DecAppObj for DecApp {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let (version, _) = ret.unwrap();
-        Ok(version)
+        let (version, semver) = ret.unwrap();
+        Ok((version, semver.to_string()))
     }
 
     fn find_source_by_semver(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<ObjectId> {
-        let version = self.find_version(req_semver, pre)?;
-        self.find_source(&version)
+        let ret = self.find_version(req_semver, pre)?;
+        self.find_source(&ret.0)
     }
 
     fn find_source(&self, version: &str) -> BuckyResult<ObjectId> {
@@ -303,8 +304,8 @@ impl DecAppObj for DecApp {
     }
 
     fn find_source_desc_by_semver(&self, req_semver: &str, pre: Option<&str>) -> BuckyResult<Option<&str>> {
-        let version = self.find_version(req_semver, pre)?;
-        Ok(self.find_source_desc(&version))
+        let ret = self.find_version(req_semver, pre)?;
+        Ok(self.find_source_desc(&ret.0))
     }
 
     fn find_source_desc(&self, version: &str) -> Option<&str> {

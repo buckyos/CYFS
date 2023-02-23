@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub enum ServiceListVersion {
-    Nightly,  // default version
+    Nightly,          // default version
     Specific(String), // user confined
 }
 
@@ -30,15 +30,12 @@ impl FromStr for ServiceListVersion {
     fn from_str(s: &str) -> BuckyResult<Self> {
         let ret = match s.trim() {
             "nightly" => Self::Nightly,
-            v @ _ => {
-                Self::Specific(v.to_owned())
-            }
+            v @ _ => Self::Specific(v.to_owned()),
         };
 
         Ok(ret)
     }
 }
-
 
 // 版本列表定义
 #[derive(Debug)]
@@ -89,5 +86,37 @@ impl FromStr for ServiceVersion {
         };
 
         Ok(ret)
+    }
+}
+
+pub struct SemVerEpochCheck;
+
+impl SemVerEpochCheck {
+    pub fn get_semver_epoch_patch_version() -> u64 {
+        match cyfs_base::get_channel() {
+            CyfsChannel::Nightly => 719,
+            CyfsChannel::Beta => 75,
+            CyfsChannel::Stable => 0,
+        }
+    }
+
+    pub fn check_version_with_semver_epoch(semver: &str) -> BuckyResult<()> {
+        let version = semver::Version::parse(semver).map_err(|e| {
+            let msg = format!("invalid semver string! value={}, {}", semver, e,);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        if version.patch < Self::get_semver_epoch_patch_version() {
+            let msg = format!(
+                "version that does not support semver! version={}, epoch patch={}",
+                semver,
+                Self::get_semver_epoch_patch_version(),
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+        }
+
+        Ok(())
     }
 }
