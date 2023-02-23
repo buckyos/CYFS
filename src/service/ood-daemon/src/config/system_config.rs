@@ -3,6 +3,7 @@ use super::version::{ServiceListVersion, ServiceVersion};
 use crate::repo::REPO_MANAGER;
 use cyfs_base::*;
 use cyfs_util::TomlHelper;
+use super::monitor::SystemConfigMonitor;
 
 use std::path::Path;
 use std::str::FromStr;
@@ -63,8 +64,6 @@ impl SystemConfig {
         let node = Self::load_as_toml(&config_file)?;
 
         self.parse_config(node).await?;
-
-        info!("system-config: {:?}", self);
 
         Ok(())
     }
