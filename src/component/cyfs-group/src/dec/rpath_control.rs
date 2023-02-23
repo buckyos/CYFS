@@ -89,7 +89,9 @@ impl RPathControl {
             HotstuffMessage::LastStateRequest => self.0.hotstuff.request_last_state(remote).await,
             HotstuffMessage::StateChangeNotify(_, _) => unreachable!(),
             HotstuffMessage::ProposalResult(_, _) => unreachable!(),
-            HotstuffMessage::QueryState(_) => unreachable!(),
+            HotstuffMessage::QueryState(sub_path) => {
+                self.0.hotstuff.on_query_state(sub_path, remote).await
+            }
             HotstuffMessage::VerifiableState(_, _) => unreachable!(),
         }
     }
