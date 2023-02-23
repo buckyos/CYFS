@@ -12,3 +12,4 @@ pub use system_config::*;
 pub use path::*;
 pub use version::*;
 pub use device_config_manager::{DeviceConfigManager, DEVICE_CONFIG_MANAGER};
+pub use monitor::SystemConfigMonitor;
