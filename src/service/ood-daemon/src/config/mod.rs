@@ -4,6 +4,7 @@ mod path;
 mod device_config_manager;
 mod device_config;
 mod version;
+mod monitor;
 
 pub use device_config::DeviceConfig;
 pub use service_config::*;
