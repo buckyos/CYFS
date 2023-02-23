@@ -816,7 +816,7 @@ async fn main_run() {
                 &group.desc().object_id(),
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
-                IsCreateRPath::Yes(None),
+                IsCreateRPath::Yes,
             )
             .await
             .unwrap();
@@ -845,7 +845,7 @@ async fn main_run() {
                 &group_id,
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
-                IsCreateRPath::Yes(None),
+                IsCreateRPath::Yes,
             )
             .await
             .unwrap();
@@ -892,7 +892,7 @@ async fn main_run() {
                 &group_id,
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
-                IsCreateRPath::Yes(None),
+                IsCreateRPath::Yes,
             )
             .await
             .unwrap();
