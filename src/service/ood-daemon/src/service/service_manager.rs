@@ -462,9 +462,13 @@ impl ServiceManager {
     pub async fn sync_service_packages(&self) {
         let _lock = self.sync_lock.lock().await;
 
-        debug!("will sync all service packages");
-
         let service_list = self.service_list.lock().unwrap().clone();
+        if service_list.is_empty() {
+            warn!("sync all service packages but is empty!");
+            return;
+        }
+
+        debug!("will sync all service packages");
         for (name, service_info) in service_list {
             if service_info.service.is_none() {
                 error!("service not init yet! name={}", name);

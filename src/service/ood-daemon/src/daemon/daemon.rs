@@ -1,11 +1,11 @@
 use super::gateway_monitor::GATEWAY_MONITOR;
-use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER};
+use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER, SystemConfigMonitor};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
+use crate::status::OOD_STATUS_MANAGER;
 use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
-use crate::status::OOD_STATUS_MANAGER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
@@ -48,6 +48,7 @@ pub struct Daemon {
     mode: ServiceMode,
     no_monitor: bool,
     last_active: Arc<ActionActive>,
+    check_update_waker: Arc<Mutex<Option<AbortHandle>>>,
 }
 
 impl Daemon {
@@ -57,6 +58,7 @@ impl Daemon {
             mode,
             no_monitor,
             last_active: Arc::new(ActionActive::default()),
+            check_update_waker: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -75,6 +77,8 @@ impl Daemon {
 
         let _ = GATEWAY_MONITOR.init().await;
 
+        SystemConfigMonitor::start(self.clone());
+
         self.start_check_active();
 
         self.start_check_service_state();
@@ -82,6 +86,13 @@ impl Daemon {
         self.run_check_update(notify).await;
 
         Ok(())
+    }
+
+    pub fn wakeup_check_update(&self) {
+        if let Some(abort_handle) = self.check_update_waker.lock().unwrap().take() {
+            info!("will wakeup check update now!");
+            abort_handle.abort();
+        }
     }
 
     async fn run_check_update(&self, notify: BindNotify) {
@@ -177,19 +188,20 @@ impl Daemon {
 
             // 检查绑定状态
             let timer = task::sleep(Duration::from_secs(60 * 10));
-            if OOD_CONTROLLER.is_bind() {
-                timer.await;
-            } else {
-                let (abort_handle, abort_registration) = AbortHandle::new_pair();
-                *notify.abort_handle.lock().unwrap() = Some(abort_handle);
 
-                match Abortable::new(timer, abort_registration).await {
-                    Ok(_) => {
-                        debug!("check loop wait timeout, now will check once");
-                    }
-                    Err(futures::future::Aborted { .. }) => {
-                        info!("check loop waked up, now will check once");
-                    }
+            let (abort_handle, abort_registration) = AbortHandle::new_pair();
+
+            if !OOD_CONTROLLER.is_bind() {
+                *notify.abort_handle.lock().unwrap() = Some(abort_handle.clone());
+            }
+            *self.check_update_waker.lock().unwrap() = Some(abort_handle);
+
+            match Abortable::new(timer, abort_registration).await {
+                Ok(_) => {
+                    debug!("check update loop wait timeout, now will check once");
+                }
+                Err(futures::future::Aborted { .. }) => {
+                    info!("check update loop waked up, now will check once");
                 }
             }
         }
