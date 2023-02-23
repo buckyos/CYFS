@@ -126,12 +126,6 @@ struct LocalCache {
 }
 
 pub struct DeviceConfigMetaRepo {
-    desc: String,
-
-    device_id: Option<DeviceId>,
-
-    service_list_id: Option<ObjectId>,
-
     meta_client: MetaClient,
 
     cache: Mutex<Option<LocalCache>>,
@@ -146,9 +140,6 @@ impl DeviceConfigMetaRepo {
             .with_timeout(std::time::Duration::from_secs(60 * 2));
 
         Self {
-            desc: String::from(""),
-            device_id: None,
-            service_list_id: None,
             meta_client,
             cache: Mutex::new(None),
             service_objects: MetaClientHelperWithObjectCache::new(std::time::Duration::from_secs(3600 * 4), 16),
@@ -156,38 +147,35 @@ impl DeviceConfigMetaRepo {
         }
     }
 
-    pub fn init(&mut self, config_desc: &str, version: &ServiceListVersion) -> Result<(), BuckyError> {
-        assert!(self.desc.len() == 0);
-        self.desc = config_desc.to_owned();
-
-        // 首先加载device，用作ServiceList的owner
-        let device_id = self.load_device()?;
-        let version = version.to_string();
-
-        // 计算ServiceList对象id
-        let service_list_id = AppList::generate_id(
-            device_id.object_id().to_owned(),
-            &version,
-            APPLIST_SERVICE_CATEGORY,
-        );
-
-        info!(
-            "device config repo: device_id={}, service_list_id={}, version={}",
-            device_id, service_list_id, version
-        );
-
-        self.service_list_id = Some(service_list_id);
-        self.device_id = Some(device_id);
+    pub fn init(&self) -> BuckyResult<()> {
+        Self::gen_service_list_id()?;
 
         Ok(())
     }
 
-    fn load_device(&self) -> BuckyResult<DeviceId> {
-        assert!(self.device_id.is_none());
+    fn gen_service_list_id() -> BuckyResult<ObjectId> {
+        let device_id = Self::load_device(&get_system_config().config_desc)?;
+        let service_list_version = get_system_config().service_list_version.to_string();
 
-        let ret = LOCAL_DEVICE_MANAGER.load(&self.desc);
+        // 计算ServiceList对象id
+        let service_list_id = AppList::generate_id(
+            device_id.object_id().to_owned(),
+            &service_list_version,
+            APPLIST_SERVICE_CATEGORY,
+        );
+
+        info!(
+            "device config repo: config_desc={}, device_id={}, service_list_id={}, version={}",
+            get_system_config().config_desc, device_id, service_list_id, service_list_version
+        );
+
+        Ok(service_list_id)
+    }
+
+    fn load_device(desc: &str) -> BuckyResult<DeviceId> {
+        let ret = LOCAL_DEVICE_MANAGER.load(&desc);
         if let Err(e) = ret {
-            error!("load config desc failed! desc={}, err={}", self.desc, e);
+            error!("load config desc failed! desc={}, err={}", desc, e);
             return Err(e);
         }
 
@@ -198,14 +186,13 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn load_service_list(&self) -> BuckyResult<AppList> {
-        assert!(self.service_list_id.is_some());
-
-        let object_id = self.service_list_id.as_ref().unwrap();
-        let ret = MetaClientHelper::get_object(&self.meta_client, object_id).await?;
+  
+        let service_list_id = Self::gen_service_list_id()?;
+        let ret = MetaClientHelper::get_object(&self.meta_client, &service_list_id).await?;
         if ret.is_none() {
             let msg = format!(
                 "load service list object from meta chain but not found! id={}",
-                object_id
+                service_list_id
             );
             error!("{}", msg);
 
@@ -216,7 +203,7 @@ impl DeviceConfigMetaRepo {
 
         // 解码
         let list = AppList::clone_from_slice(&object_raw).map_err(|e| {
-            let msg = format!("decode service list object failed! id={}, {}", object_id, e);
+            let msg = format!("decode service list object failed! id={}, {}", service_list_id, e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
@@ -224,7 +211,7 @@ impl DeviceConfigMetaRepo {
 
         debug!(
             "load service list object success! id={:?}, list={:?}",
-            self.service_list_id,
+            service_list_id,
             list.app_list()
         );
 
@@ -464,8 +451,7 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
         }
 
         debug!(
-            "load device_config from meta: device_id={}, config={}",
-            self.device_id.as_ref().unwrap(),
+            "load device_config from meta: config={}",
             device_config_str
         );
 

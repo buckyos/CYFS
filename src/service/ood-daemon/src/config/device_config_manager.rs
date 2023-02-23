@@ -37,8 +37,8 @@ impl DeviceConfigManager {
             let repo = DeviceConfigLocalRepo::new();
             Box::new(repo) as Box<dyn DeviceConfigRepo>
         } else if desc == "cyfs_repo" || desc == "device" {
-            let mut repo = DeviceConfigMetaRepo::new();
-            if let Err(e) = repo.init(&desc, &get_system_config().service_list_version) {
+            let repo = DeviceConfigMetaRepo::new();
+            if let Err(e) = repo.init() {
                 return Err(e);
             }
 
