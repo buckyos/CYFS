@@ -59,7 +59,7 @@ fn main() {
 
     println!(
         "cargo:rustc-env=BUILDDATE={}",
-        chrono::Local::today().format("%y-%m-%d")
+        chrono::Local::now().format("%y-%m-%d")
     );
 
     println!("cargo:rerun-if-changed=protos");
