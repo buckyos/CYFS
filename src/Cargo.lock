@@ -206,7 +206,6 @@ dependencies = [
  "cyfs-base-meta",
  "cyfs-core",
  "cyfs-debug",
- "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-util",
  "lazy_static",
