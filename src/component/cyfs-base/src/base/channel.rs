@@ -61,7 +61,7 @@ pub fn get_target() -> &'static str {
 
 fn get_version_impl() -> String {
     let channel_ver = get_channel().get_ver();
-    format!("1.0.{}.{}-{} ({})", channel_ver, env!("VERSION"), get_channel(), env!("BUILDDATE"))
+    format!("1.1.{}.{}-{} ({})", channel_ver, env!("VERSION"), get_channel(), env!("BUILDDATE"))
 }
 
 fn get_channel_impl() -> CyfsChannel {
