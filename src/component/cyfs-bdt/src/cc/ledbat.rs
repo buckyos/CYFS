@@ -16,6 +16,19 @@ pub struct Config {
     pub history_roll_interval: Duration
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            target_delay: Duration::from_millis(100),
+            min_cwnd: 2,
+            max_cwnd_inc: 8,
+            cwnd_gain: 1,
+            history_count: 10,
+            history_roll_interval: Duration::from_secs(60),
+        }
+    }
+}
+
 struct EstimateDelay {
     last_roll: Timestamp, 
     base_delay: LinkedList<i64>, 
@@ -111,11 +124,14 @@ impl Ledbat {
 
 
 impl CcImpl for Ledbat {
+    fn on_sent(&mut self, _: Timestamp, _: u64, _: u64) {
+    }
+
     fn cwnd(&self) -> u64 {
         self.cwnd
     }
 
-    fn on_estimate(&mut self, _rtt: Duration, _rto: Duration, delay: Duration) {
+    fn on_estimate(&mut self, _rtt: Duration, _rto: Duration, delay: Duration, _app_limited: bool) {
         self.est_delay.update(delay.as_micros() as i64);
     }
 
@@ -124,7 +140,8 @@ impl CcImpl for Ledbat {
         _flight: u64, 
         ack: u64, 
         _largest_packet_num_acked: Option<u64>, 
-        _sent_time: Timestamp
+        _sent_time: Timestamp,
+        _app_limited: bool
     ) {
         let cwnd = self.cwnd();
         let cur_delay = self.est_delay.current_delay();
@@ -152,6 +169,10 @@ impl CcImpl for Ledbat {
 
     fn on_time_escape(&mut self, now: Timestamp) {
         self.est_delay.check_roll(&self.config, now);   
+    }
+
+    fn rate(&self) -> u64 {
+        0
     }
 }
 

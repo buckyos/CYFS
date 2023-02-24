@@ -970,6 +970,24 @@ impl SessionData {
             id_part: None,
         }
     }
+
+    pub fn is_ctrl_package(&self) -> bool {
+        if self.is_syn() ||
+            self.is_syn_ack() ||
+            self.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) ||
+            self.is_flags_contain(SESSIONDATA_FLAG_FIN) ||
+            self.is_flags_contain(SESSIONDATA_FLAG_FINACK) ||
+            self.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn data_size(&self) -> usize {
+        self.payload.as_ref().len()
+    }
+
     pub fn is_syn(&self) -> bool {
         self.syn_info.is_some() && (self.flags & SESSIONDATA_FLAG_ACK == 0)
     }

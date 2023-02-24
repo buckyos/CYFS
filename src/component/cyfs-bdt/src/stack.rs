@@ -122,10 +122,10 @@ impl StackConfig {
                 listener: stream::listener::Config { backlog: 100 },
                 stream: stream::container::Config {
                     nagle: Duration::from_millis(0),
-                    recv_buffer: 1024 * 256,
+                    recv_buffer: 1024 * 1024,
                     recv_timeout: Duration::from_millis(200),
                     drain: 0.5,
-                    send_buffer: 1024 * 256, // 这个值不能小于下边的max_record
+                    send_buffer: 1024 * 512, // 这个值不能小于下边的max_record
                     retry_sn_timeout: Duration::from_secs(2), 
                     connect_timeout: Duration::from_secs(5),
                     tcp: stream::tcp::Config {
@@ -134,7 +134,7 @@ impl StackConfig {
                     },
                     package: stream::package::Config {
                         connect_resend_interval: Duration::from_millis(100),
-                        atomic_interval: Duration::from_millis(1),
+                        atomic_interval: Duration::from_millis(10),
                         break_overtime: Duration::from_secs(60),
                         msl: Duration::from_secs(60), 
                         cc: cc::Config {
@@ -170,7 +170,7 @@ impl StackConfig {
                         cc: cc::Config {
                             init_rto: Duration::from_secs(1),
                             min_rto: Duration::from_millis(200),
-                            cc_impl: cc::ImplConfig::BBR(Default::default()),
+                            cc_impl: cc::ImplConfig::Ledbat(Default::default()),
                         }
                     }, 
                     history_speed: HistorySpeedConfig {
