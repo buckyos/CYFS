@@ -55,14 +55,13 @@ impl SystemConfig {
 
         debug!("will load system-config file: {}", config_file.display());
 
-        let node = self.load_as_json(&config_file).await?;
+        let node = Self::load_as_toml(&config_file)?;
 
         self.parse_config(node).await
     }
 
-    async fn load_as_json(&self, file_path: &Path) -> BuckyResult<toml::Value> {
-        let content = async_std::fs::read_to_string(&file_path)
-            .await
+    pub fn load_as_toml(file_path: &Path) -> BuckyResult<toml::Value> {
+        let content = std::fs::read_to_string(&file_path)
             .map_err(|e| {
                 let msg = format!(
                     "load system config to string error! file={}, {}",
