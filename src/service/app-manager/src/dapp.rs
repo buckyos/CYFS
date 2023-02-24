@@ -45,7 +45,7 @@ fn get_str(value: &Value, key: &str) -> BuckyResult<String> {
 
 impl Drop for DApp {
     fn drop(&mut self) {
-        if let Some(mut child) = self.process.lock().unwrap().as_ref() {
+        if let Some(child) = self.process.lock().unwrap().as_mut() {
             warn!("dapp {} dropped when child process start! pid {}", &self.dec_id, child.id());
             child.kill();
             child.wait();
@@ -244,9 +244,9 @@ impl DApp {
     pub fn start(&self) -> BuckyResult<bool> {
         if !self.status()? {
             let child = DApp::run(&self.info.start, &self.work_dir, true, None)?;
+            let id = child.id();
             *self.process.lock().unwrap() = Some(child);
             // mark pid
-            let id = child.id();
             let lock_file = self.get_pid_file_path()?;
             let buf = format!("{}", id).into_bytes();
             std::fs::write(lock_file, &buf).map_err(|e| {
