@@ -184,10 +184,11 @@ impl PerfReporterInner {
         }
 
         // 把obj再put出去
+        let target = if save_to_local { None } else { target };
         let mut req = NONPutObjectOutputRequest::new(
             if save_to_local { NONAPILevel::NOC } else { NONAPILevel::Router },
             object_id.clone(), raw);
-        req.common.target = if save_to_local { None } else { target };
+        req.common.target = target.clone();
         req.common.dec_id = obj.desc().dec_id().clone();
         let str_target = if save_to_local { "local".to_owned() } else {target.map_or("ood".to_owned(), |id| id.to_string())};
         match self.cyfs_stack.non_service().put_object(req).await {
@@ -203,12 +204,11 @@ impl PerfReporterInner {
 
         // 存到root_state
         let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Path);
-        req.access = access;
-        req.common.target = self.target.clone();
-        req.common.target_dec_id = self.target_dec_id.clone();
+        req.common.target = target.clone();
+        req.common.target_dec_id = self.dec_id.clone();
 
         let resp = self.cyfs_stack.root_state().create_op_env(req).await?;
-        let path_env = PathOpEnvStub::new(resp, self.target.clone(), self.target_dec_id.clone());
+        let path_env = PathOpEnvStub::new(resp, target.clone(), self.dec_id.clone());
         let key = obj.get_time_range().to_string();
         path_env.set_with_key("/stat", key, &object_id, None, true).await?;
         path_env.commit().await?;
