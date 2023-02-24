@@ -1,5 +1,5 @@
 use crate::{SERVICE_MANAGER};
-use crate::config::{ServiceState, ServiceConfig, DEVICE_CONFIG_MANAGER};
+use crate::config::{ServiceState, ServiceConfig, DEVICE_CONFIG_MANAGER, SystemConfig, PATHS};
 use crate::service::ServicePackageLocalState;
 
 use cyfs_base::bucky_time_now;
@@ -21,6 +21,7 @@ pub struct OODServiceStatusItem {
 #[derive(Serialize)]
 pub struct OODDaemonStatus {
     last_update_time: u64,
+    system_config: Option<toml::Value>,
     device_config: Vec<ServiceConfig>,
     services: Vec<OODServiceStatusItem>,
 }
@@ -29,6 +30,7 @@ impl Default for OODDaemonStatus {
     fn default() -> Self {
         Self {
             last_update_time: bucky_time_now(),
+            system_config: None,
             device_config: vec![],
             services: vec![],
         }
@@ -76,10 +78,13 @@ impl OODDaemonStatusGenerator {
             Err(_) => vec![],
         };
 
+        let system_config = SystemConfig::load_as_toml(&PATHS.system_config).ok();
+
         let services = SERVICE_MANAGER.collect_status();
 
         OODDaemonStatus {
             last_update_time: bucky_time_now(),
+            system_config,
             device_config,
             services,
         }
