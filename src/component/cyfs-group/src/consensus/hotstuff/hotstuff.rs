@@ -9,13 +9,13 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
-    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout, GroupQuorumCertificateObject, GroupQuorumCertificate,
+    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{synchronizer::Synchronizer, proposal}, dec_state::StatePusher, helper::Timer, Committee,
+    consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
     ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
     PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
     HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT,
@@ -499,7 +499,7 @@ impl HotstuffRunner {
 
             if self
                 .delegate
-                .on_verify(proposal, prev_state_id, &exe_result)
+                .on_verify(proposal, prev_state_id, self.store.get_object_map_processor(), &exe_result)
                 .await.map_err(|err| {
                     log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} verify by app failed {:?}."
                         , self, proposal_exe_info.proposal, block.block_id(), err);
@@ -851,6 +851,7 @@ impl HotstuffRunner {
                 .on_commited(
                     &proposal_obj,
                     pre_state_id,
+                    self.store.get_object_map_processor(), 
                     &ExecuteResult {
                         result_state_id: proposal.result_state.clone(),
                         receipt,
@@ -1528,7 +1529,7 @@ impl HotstuffRunner {
                 continue;
             }
 
-            match self.delegate.on_execute(&proposal, result_state_id).await {
+            match self.delegate.on_execute(&proposal, result_state_id, self.store.get_object_map_processor()).await {
                 Ok(exe_result) => {
                     result_state_id = exe_result.result_state_id;
                     executed_proposals.push((proposal, exe_result));
