@@ -170,7 +170,7 @@ impl StackConfig {
                         cc: cc::Config {
                             init_rto: Duration::from_secs(1),
                             min_rto: Duration::from_millis(200),
-                            cc_impl: cc::ImplConfig::BBR(Default::default()),
+                            cc_impl: cc::ImplConfig::Ledbat(Default::default()),
                         }
                     }, 
                     history_speed: HistorySpeedConfig {

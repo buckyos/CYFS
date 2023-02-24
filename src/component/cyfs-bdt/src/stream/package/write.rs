@@ -49,19 +49,23 @@ impl WriteProviderImpl {
         let nagle = self.queue.check_nagle(stream, now);
         let (lost, _break) = if self.queue.flight() > 0 {
             let lost = self.queue.check_timeout(now, self.cc.rto());
-            if lost >= self.queue.flight() {
-                let d = Duration::from_micros(now - self.last_recv);
-                if d > stream.config().package.break_overtime {
-                    (true, true)
+            if lost > 0 {
+                if lost >= self.queue.flight() {
+                    let d = Duration::from_micros(now - self.last_recv);
+                    if d > stream.config().package.break_overtime {
+                        (true, true)
+                    } else {
+                        debug!("{} cc no ack in rto, lost={}", stream, lost);
+                        self.cc.on_no_resp(lost as u64);
+                        (true, false)
+                    }
                 } else {
-                    debug!("{} cc no ack in rto, lost={}", stream, lost);
-                    self.cc.on_no_resp(lost as u64);
+                    debug!("{} cc lost some package's ack, lost={}", stream, lost);
+                    self.cc.on_loss(lost as u64);
                     (true, false)
                 }
             } else {
-                debug!("{} cc lost some package's ack", stream);
-                self.cc.on_loss(lost as u64);
-                (true, false)
+                (false, false)
             }
         } else {
             (false, false)

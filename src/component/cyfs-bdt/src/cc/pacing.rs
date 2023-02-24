@@ -10,10 +10,11 @@ pub struct Pacer {
     mss: usize,
     last_packet_size: Option<usize>,
     tick: Duration,
+    enable: bool,
 }
 
 impl Pacer {
-    pub fn new(capacity: usize, mss: usize) -> Self {
+    pub fn new(enable: bool, capacity: usize, mss: usize) -> Self {
         let capacity = capacity / mss * mss;
 
         Pacer {
@@ -25,6 +26,7 @@ impl Pacer {
             mss,
             last_packet_size: None,
             tick: Duration::ZERO,
+            enable,
         }
     }
 
@@ -43,6 +45,9 @@ impl Pacer {
     }
 
     pub fn send(&mut self, packet_size: usize, now: Instant) -> Option<Instant> {
+        if !self.enable {
+            return None;
+        }
         if self.rate == 0 {
             self.reset(now);
 

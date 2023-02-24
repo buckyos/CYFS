@@ -75,6 +75,7 @@ impl PackageStream {
     ) -> BuckyResult<Self> {
         let owner_disp = format!("{}", owner);
         let config = tunnel.stack().config().stream.stream.clone();
+	let pacer_enable = false;
 
         let write_provider = WriteProvider::new(&config);
         let read_provider = ReadProvider::new(&config);
@@ -86,7 +87,7 @@ impl PackageStream {
             remote_id, 
             write_provider,
             read_provider,
-            pacer: Mutex::new(cc::pacing::Pacer::new(PackageStream::mss() * 10, PackageStream::mss())),
+            pacer: Mutex::new(cc::pacing::Pacer::new(pacer_enable, PackageStream::mss() * 10, PackageStream::mss())),
             package_queue: Arc::new(Mutex::new(Default::default())),
         }));
 
@@ -111,48 +112,31 @@ impl PackageStream {
             send_time,
             package,
         });
+    }
 
-        if package_queue.len() == 1 {
-            let mut delay = Instant::now() - send_time;
-            let package_queue = self.0.package_queue.clone();
-            let stream = self.clone();
-            task::spawn(async move {
-                loop {
-                    task::sleep(delay).await;
+    fn drain_delay(&self) {
+        let now = Instant::now();
+        let mut package_queue = self.0.package_queue.lock().unwrap();
+        let mut n = 0;
+        for (_, package) in package_queue.iter().enumerate() {
+            if package.send_time > now {
+                break ;
+            }
+            n += 1;
+        }
 
-                    let now = Instant::now();
-                    {
-                        let mut packages = package_queue.lock().unwrap();
-                        let mut n = 0;
-
-                        for (_, package) in packages.iter().enumerate() {
-                            if package.send_time > now {
-                                delay = package.send_time.checked_duration_since(now).unwrap();
-                                break ;
-                            }
-                            n += 1;
-                        }
-
-                        while n > 0 {
-                            if let Some(package) = packages.pop_front() {
-                                match stream.0.tunnel.send_package(package.package) {
-                                    Ok(sent_len) => {
-                                        trace!("package_delay send_package {}", sent_len);
-                                    },
-                                    Err(err) => {
-                                        error!("stream send_package err={}", err);
-                                    }
-                                }
-                            }
-                            n -= 1;
-                        }
-
-                        if packages.len() == 0 {
-                            return ;
-                        }
+        while n > 0 {
+            if let Some(package) = package_queue.pop_front() {
+                match self.0.tunnel.send_package(package.package) {
+                    Ok(sent_len) => {
+                        trace!("package_delay send_package {}", sent_len);
+                    },
+                    Err(err) => {
+                        error!("stream send_package err={}", err);
                     }
                 }
-            });
+            }
+            n -= 1;
         }
     }
 
@@ -250,6 +234,7 @@ impl StreamProvider for PackageStream {
                     break;
                 }
                 let _ = stream.send_packages(packages);
+		stream.drain_delay();
                 let _ = future::timeout(stream.config().package.atomic_interval, future::pending::<()>()).await;
             } 
         });

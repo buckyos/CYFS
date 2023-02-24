@@ -7,7 +7,6 @@ use std::{
 };
 use async_std::{
     sync::Arc, 
-    task, 
 };
 use cyfs_base::*;
 use crate::{
@@ -84,7 +83,6 @@ struct TunnelImpl {
     cc: Mutex<CcImpl>, 
     resp_estimate: Mutex<RespEstimateStub>, 
     uploaders: Uploaders,
-    pacer: Mutex<cc::pacing::Pacer>, 
     package_queue: Arc<Mutex<LinkedList<PacePackage>>>, 
 }
 
@@ -114,65 +112,12 @@ impl UdpTunnel {
                 recved: 0
             }), 
             uploaders: Uploaders::new(),
-            pacer: Mutex::new(cc::pacing::Pacer::new(PieceData::max_payload() * 4, PieceData::max_payload())),
             package_queue: Arc::new(Mutex::new(Default::default())),
         }))
     }
 
     fn config(&self) -> &channel::Config {
         &self.0.config
-    }
-
-    fn package_delay(&self, data: &[u8], send_time: Instant) {
-        let mut package_queue = self.0.package_queue.lock().unwrap();
-
-        let mut package_data = vec![0u8; MTU];
-        package_data.copy_from_slice(data);
-
-        package_queue.push_back(PacePackage {
-            send_time,
-            data: package_data,
-        });
-
-        if package_queue.len() == 1 {
-            let mut delay = Instant::now() - send_time;
-            let package_queue = self.0.package_queue.clone();
-
-            let tunnel = self.clone();
-            task::spawn(async move {
-                loop {
-                    task::sleep(delay).await;
-
-                    let now = Instant::now();
-                    {
-                        let mut packages = package_queue.lock().unwrap();
-                        let mut n = 0;
-
-                        for (_, package) in packages.iter().enumerate() {
-                            if package.send_time > now {
-                                delay = package.send_time.checked_duration_since(now).unwrap();
-                                break ;
-                            }
-                            n += 1;
-                        }
-
-                        let raw_tunnel = &tunnel.0.raw_tunnel;
-                        while n > 0 {
-                            if let Some(package) = packages.pop_front() {
-                                let mut data = package.data;
-                                let res = raw_tunnel.send_raw_data(&mut data);
-                                info!("package_delay ndn {:?}", res);
-                            }
-                            n -= 1;
-                        }
-
-                        if packages.len() == 0 {
-                            return ;
-                        }
-                    }
-                }
-            });
-        }
     }
 
     fn send_pieces(&self, piece_count: usize) {
@@ -194,9 +139,7 @@ impl UdpTunnel {
                 let mut sent = 0;
                 let tunnel = &self.0.raw_tunnel;
                 let mut send_bytes = 0;
-                let mut packets = 0;
-                let mut pacer = self.0.pacer.lock().unwrap();
-                let now = Instant::now();
+                let mut last_est_seq = TempSeq::default();
                 for _ in 0..piece_count {
                     let mut buf_index = if let Some(bi) = &pre_buf_index {
                         if bi.index == 0 {
@@ -217,7 +160,6 @@ impl UdpTunnel {
                             std::mem::swap(pre_buf_index.as_mut().unwrap(), &mut buf_index);
                             if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
                                 send_bytes += size;
-                                packets += 1;
                             }
                         } else {
                             pre_buf_index = Some(buf_index);
@@ -241,22 +183,16 @@ impl UdpTunnel {
                     };
                     debug!("{} send estimate sequence:{:?} sent:{}", self, est_seq, sent);
                     PieceData::reset_estimate(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..], est_seq);
+                    last_est_seq = est_seq;
 
-                    let package_size = buf_index.len + tunnel.raw_data_header_len();
-                    if let Some(next_time) = pacer.send(package_size, now) {
-                        self.package_delay(&buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()], next_time);
-                        send_bytes += package_size;
-                        packets += 1;
-                        info!("pacer next_time={:?}", next_time);
-                    } else if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
+                    if let Ok(size) = tunnel.send_raw_data(&mut buffers[buf_index.index][..buf_index.len + tunnel.raw_data_header_len()]) {
                         send_bytes += size;
-                        packets += 1;
                     }
                 }
 
                 {
                     let mut cc = self.0.cc.lock().unwrap();
-                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, packets);
+                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, last_est_seq.value() as u64);
                 }
             })
         });      
@@ -315,9 +251,7 @@ impl ChannelTunnel for UdpTunnel {
                     self,
                     est_seq
                 );
-                if let Ok(send_bytes) = tunnel.send_raw_data(&mut buffer[..]) {
-                    let mut cc = self.0.cc.lock().unwrap();
-                    cc.cc.on_sent(bucky_time_now(), send_bytes as u64, 1);
+                if let Ok(_) = tunnel.send_raw_data(&mut buffer[..]) {
                 }
             }
         } else {
@@ -365,15 +299,11 @@ impl ChannelTunnel for UdpTunnel {
             debug!("{} cc on ack on_air:{}, ack:{}", self, on_air, resp_count);
             cc.no_resp_counter = 0;
             cc.break_counter = 0;
-            let packet_num = if cc.est_stubs.len() == 0 {
-                None
-            } else {
-                Some(cc.est_stubs.len() as u64)
-            };
+
             cc.cc.on_ack(
                 (on_air * PieceData::max_payload()) as u64, 
                 (resp_count * PieceData::max_payload()) as u64, 
-                packet_num,
+                Some(est_index as u64), 
             	send_time,
                 false);
         }

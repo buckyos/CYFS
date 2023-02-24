@@ -16,6 +16,19 @@ pub struct Config {
     pub history_roll_interval: Duration
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            target_delay: Duration::from_millis(100),
+            min_cwnd: 2,
+            max_cwnd_inc: 8,
+            cwnd_gain: 1,
+            history_count: 10,
+            history_roll_interval: Duration::from_secs(60),
+        }
+    }
+}
+
 struct EstimateDelay {
     last_roll: Timestamp, 
     base_delay: LinkedList<i64>, 
