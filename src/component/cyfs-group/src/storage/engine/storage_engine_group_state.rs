@@ -8,8 +8,8 @@ use cyfs_base::{
 use cyfs_core::{GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
 
 use crate::{
-    GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME,
-    GROUP_STATE_PATH_RANGE,
+    GroupObjectMapProcessor, GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE,
+    GROUP_STATE_PATH_FLIP_TIME, GROUP_STATE_PATH_RANGE,
 };
 
 use super::{StorageCacheInfo, StorageEngine, StorageWriter};
@@ -670,5 +670,24 @@ fn map_not_found_option_to_option<T>(r: BuckyResult<Option<T>>) -> BuckyResult<O
                 Err(err)
             }
         }
+    }
+}
+
+pub struct GroupObjectMapProcessorGroupState {
+    state_mgr: ObjectMapRootManagerRef,
+}
+
+impl GroupObjectMapProcessorGroupState {
+    pub fn new(state_mgr: &ObjectMapRootManagerRef) -> Self {
+        Self {
+            state_mgr: state_mgr.clone(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GroupObjectMapProcessor for GroupObjectMapProcessorGroupState {
+    async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+        self.state_mgr.create_single_op_env(ACCESS)
     }
 }

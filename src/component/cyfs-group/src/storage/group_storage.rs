@@ -15,12 +15,15 @@ use cyfs_core::{
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
-    storage::StorageWriter, GroupRPathStatus, GroupStatePath, NONDriverHelper,
-    PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR, TIME_PRECISION,
+    storage::StorageWriter, GroupObjectMapProcessor, GroupRPathStatus, GroupStatePath,
+    NONDriverHelper, PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR, TIME_PRECISION,
 };
 
 use super::{
-    engine::{StorageCacheInfo, StorageEngineGroupState, StorageEngineMock},
+    engine::{
+        GroupObjectMapProcessorGroupState, StorageCacheInfo, StorageEngineGroupState,
+        StorageEngineMock,
+    },
     StorageEngine,
 };
 
@@ -50,6 +53,7 @@ pub struct GroupStorage {
     cache: StorageCacheInfo,
 
     storage_engine: StorageEngineGroupState,
+    object_map_processor: GroupObjectMapProcessorGroupState,
 }
 
 impl GroupStorage {
@@ -71,6 +75,7 @@ impl GroupStorage {
             .expect("create group state failed.");
 
         let dec_group_state = group_state.get_dec_root_manager(dec_id, true).await?;
+        let object_map_processor = GroupObjectMapProcessorGroupState::new(&dec_group_state);
 
         Ok(Self {
             group,
@@ -85,6 +90,7 @@ impl GroupStorage {
             ),
             local_device_id,
             cache: StorageCacheInfo::new(None),
+            object_map_processor,
         })
     }
 
@@ -129,6 +135,7 @@ impl GroupStorage {
         let state_path = GroupStatePath::new(rpath.to_string());
         let cache =
             StorageEngineGroupState::load_cache(&dec_group_state, &non_driver, &state_path).await?;
+        let object_map_processor = GroupObjectMapProcessorGroupState::new(&dec_group_state);
 
         Ok(Self {
             group,
@@ -140,6 +147,7 @@ impl GroupStorage {
             storage_engine: StorageEngineGroupState::new(dec_group_state, state_path),
             local_device_id,
             cache,
+            object_map_processor,
         })
     }
 
@@ -904,5 +912,9 @@ impl GroupStorage {
             certificate: qc.clone(),
             status_map,
         });
+    }
+
+    pub fn get_object_map_processor(&self) -> &dyn GroupObjectMapProcessor {
+        &self.object_map_processor
     }
 }

@@ -1,4 +1,4 @@
-use cyfs_base::{BuckyResult, Group, ObjectId};
+use cyfs_base::{BuckyResult, Group, ObjectId, ObjectMapSingleOpEnvRef};
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
@@ -34,12 +34,14 @@ pub trait RPathDelegate: Sync + Send {
         &self,
         proposal: &GroupProposal,
         pre_state_id: Option<ObjectId>,
+        object_map_processor: &dyn GroupObjectMapProcessor,
     ) -> BuckyResult<ExecuteResult>;
 
     async fn on_verify(
         &self,
         proposal: &GroupProposal,
         pre_state_id: Option<ObjectId>,
+        object_map_processor: &dyn GroupObjectMapProcessor,
         execute_result: &ExecuteResult,
     ) -> BuckyResult<bool>;
 
@@ -47,7 +49,13 @@ pub trait RPathDelegate: Sync + Send {
         &self,
         proposal: &GroupProposal,
         pre_state_id: Option<ObjectId>,
+        object_map_processor: &dyn GroupObjectMapProcessor,
         execute_result: &ExecuteResult,
         block: &GroupConsensusBlock,
     );
+}
+
+#[async_trait::async_trait]
+pub trait GroupObjectMapProcessor: Send + Sync {
+    async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef>;
 }
