@@ -338,7 +338,7 @@ pub struct PathOpEnvStub {
 }
 
 impl PathOpEnvStub {
-    pub(crate) fn new(
+    pub fn new(
         processor: OpEnvOutputProcessorRef,
         target: Option<ObjectId>,
         target_dec_id: Option<ObjectId>,
