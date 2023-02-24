@@ -43,6 +43,16 @@ fn get_str(value: &Value, key: &str) -> BuckyResult<String> {
         .to_owned())
 }
 
+impl Drop for DApp {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.process.lock().unwrap().as_ref() {
+            warn!("dapp {} dropped when child process start! pid {}", &self.dec_id, child.id());
+            child.kill();
+            child.wait();
+        }
+    }
+}
+
 impl DApp {
     pub fn load_from_app_id(app_id: &str) -> BuckyResult<DApp> {
         let dapp = DApp::load_from(&get_app_dir(&app_id.to_string()))?;
@@ -181,7 +191,6 @@ impl DApp {
         let mut command = Command::new(program);
         command.args(&args[1..]).current_dir(dir);
         if let Some(out) = stdout {
-
             command.stdout(out);
         }
         #[cfg(target_os = "windows")]
@@ -235,24 +244,21 @@ impl DApp {
     pub fn start(&self) -> BuckyResult<bool> {
         if !self.status()? {
             let child = DApp::run(&self.info.start, &self.work_dir, true, None)?;
-
+            *self.process.lock().unwrap() = Some(child);
             // mark pid
             let id = child.id();
             let lock_file = self.get_pid_file_path()?;
             let buf = format!("{}", id).into_bytes();
             std::fs::write(lock_file, &buf).map_err(|e| {
-                error!(
-                    "app[{}]{} write lock file failed! err {}",
-                    self.dec_id, self.info.id, e
-                );
-                BuckyError::from(BuckyErrorCode::ExecuteError)
+                let msg = format!("app[{}]{} write lock file failed! err {}",
+                                  self.dec_id, self.info.id, e);
+                error!("{}", &msg);
+                BuckyError::new(BuckyErrorCode::ExecuteError, msg)
             })?;
             info!(
                 "start app:{} {} success! and write pid {:?}",
                 self.dec_id, self.info.id, id
             );
-
-            *self.process.lock().unwrap() = Some(child);
 
             return Ok(true);
         }
@@ -451,11 +457,11 @@ impl DApp {
         let pid = pid.unwrap();
         info!(
             "stop app[{}] by inner cmd failed, try to force kill by pid {}",
-            &self.info.id, pid
+            &self.dec_id, pid
         );
         #[cfg(windows)]
         {
-            Command::new("taskkill")
+           let mut child = Command::new("taskkill")
                 .arg("/F")
                 .arg("/T")
                 .arg("/PID")
@@ -465,10 +471,11 @@ impl DApp {
                     error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
+            let _ = child.wait();
         }
         #[cfg(not(windows))]
         {
-            Command::new("kill")
+            let mut child = Command::new("kill")
                 .arg("-9")
                 .arg(&pid)
                 .spawn()
@@ -476,6 +483,7 @@ impl DApp {
                     error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
+            let _ = child.wait();
         }
 
         let lock_file = self.get_pid_file_path()?;
