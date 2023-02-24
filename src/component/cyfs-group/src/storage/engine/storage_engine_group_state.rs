@@ -2,14 +2,15 @@ use std::{collections::HashSet, sync::Arc};
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectIdDataBuilder, ObjectMapContentItem,
-    ObjectMapPathOpEnvRef, ObjectMapRootCacheRef, ObjectMapRootManagerRef,
-    ObjectMapSimpleContentType, ObjectMapSingleOpEnvRef, OpEnvPathAccess,
+    ObjectMapIsolatePathOpEnvRef, ObjectMapPathOpEnvRef, ObjectMapRootCacheRef,
+    ObjectMapRootManagerRef, ObjectMapSimpleContentType, ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
 use cyfs_core::{GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
 
 use crate::{
-    GroupObjectMapProcessor, GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_DEC_STATE,
-    GROUP_STATE_PATH_FLIP_TIME, GROUP_STATE_PATH_RANGE,
+    GroupObjectMapProcessor, GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_BLOCK,
+    GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME, GROUP_STATE_PATH_RANGE,
+    GROUP_STATE_PATH_RESULT_STATE,
 };
 
 use super::{StorageCacheInfo, StorageEngine, StorageWriter};
@@ -90,7 +91,8 @@ impl StorageEngineGroupState {
             None => None,
         };
 
-        let prepare_block_ids = load_object_ids_with_path(&op_env, state_path.prepares()).await?;
+        let prepare_block_ids =
+            load_object_ids_with_path_map_key(&op_env, state_path.prepares()).await?;
         if prepare_block_ids.len() == 0 && commit_range.is_none() {
             return Err(BuckyError::new(
                 BuckyErrorCode::NotFound,
@@ -99,7 +101,7 @@ impl StorageEngineGroupState {
         }
 
         let pre_commit_block_ids =
-            load_object_ids_with_path(&op_env, state_path.pre_commits()).await?;
+            load_object_ids_with_path_map_key(&op_env, state_path.pre_commits()).await?;
 
         let flip_timestamp = op_env.get_by_path(state_path.flip_time()).await;
         let flip_timestamp = map_not_found_option_to_option(flip_timestamp)?.map_or(0, |id| {
@@ -113,8 +115,10 @@ impl StorageEngineGroupState {
             n
         });
 
-        let adding_proposal_ids = load_object_ids_with_path(&op_env, state_path.adding()).await?;
-        let over_proposal_ids = load_object_ids_with_path(&op_env, state_path.recycle()).await?;
+        let adding_proposal_ids =
+            load_object_ids_with_path_set(&op_env, state_path.adding()).await?;
+        let over_proposal_ids =
+            load_object_ids_with_path_set(&op_env, state_path.recycle()).await?;
 
         let load_block_ids = [
             first_header_block_ids.as_slice(),
@@ -233,7 +237,7 @@ impl StorageEngineGroupStateWriter {
             if let Err(err) = prepare_op_env.load_by_path(state_path.prepares()).await {
                 if err.code() == BuckyErrorCode::NotFound {
                     prepare_op_env
-                        .create_new(ObjectMapSimpleContentType::Set)
+                        .create_new(ObjectMapSimpleContentType::Map)
                         .await?;
                     None
                 } else {
@@ -253,20 +257,51 @@ impl StorageEngineGroupStateWriter {
         })
     }
 
-    async fn insert_prepares_inner(&mut self, block_id: &ObjectId) -> BuckyResult<()> {
+    async fn create_block_result_object_map(
+        &self,
+        block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
+    ) -> BuckyResult<ObjectId> {
+        let single_op_env = self.state_mgr.create_single_op_env(ACCESS)?;
+        single_op_env
+            .create_new(ObjectMapSimpleContentType::Map)
+            .await?;
+        single_op_env
+            .insert_with_key(GROUP_STATE_PATH_BLOCK, block_id)
+            .await?;
+        if let Some(state_id) = result_state_id.as_ref() {
+            single_op_env
+                .insert_with_key(GROUP_STATE_PATH_RESULT_STATE, state_id)
+                .await?;
+        }
+
+        single_op_env.commit().await
+    }
+
+    async fn insert_prepares_inner(
+        &mut self,
+        block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
+    ) -> BuckyResult<()> {
+        let block_result_pair = self
+            .create_block_result_object_map(block_id, result_state_id)
+            .await?;
         self.prepare_op_env
-            .insert(block_id)
+            .insert_with_key(block_id.to_string().as_str(), &block_result_pair)
             .await
-            .map(|is_changed| assert!(is_changed))
     }
 
     async fn insert_pre_commit_inner(
         &mut self,
         block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
         is_instead: bool,
     ) -> BuckyResult<()> {
-        let is_changed = self.prepare_op_env.remove(block_id).await?;
-        assert!(is_changed);
+        let block_result_pair = self
+            .prepare_op_env
+            .remove_with_key(block_id.to_string().as_str(), &None)
+            .await?;
+        assert!(block_result_pair.is_some());
 
         if is_instead {
             self.op_env
@@ -274,12 +309,17 @@ impl StorageEngineGroupStateWriter {
                 .await?;
         }
 
-        let is_changed = self
-            .op_env
-            .insert(self.state_path.pre_commits(), block_id)
+        let block_result_pair = self
+            .create_block_result_object_map(block_id, result_state_id)
             .await?;
-        assert!(is_changed);
-        Ok(())
+
+        self.op_env
+            .insert_with_key(
+                self.state_path.pre_commits(),
+                block_id.to_string().as_str(),
+                &block_result_pair,
+            )
+            .await
     }
 
     async fn push_commit_inner(
@@ -357,8 +397,11 @@ impl StorageEngineGroupStateWriter {
 
     async fn remove_prepares_inner(&mut self, block_ids: &[ObjectId]) -> BuckyResult<()> {
         for block_id in block_ids {
-            let is_changed = self.prepare_op_env.remove(block_id).await?;
-            assert!(is_changed);
+            let block_result_pair = self
+                .prepare_op_env
+                .remove_with_key(block_id.to_string().as_str(), &None)
+                .await?;
+            assert!(block_result_pair.is_some());
         }
         Ok(())
     }
@@ -486,19 +529,26 @@ impl StorageEngineGroupStateWriter {
 
 #[async_trait::async_trait]
 impl StorageWriter for StorageEngineGroupStateWriter {
-    async fn insert_prepares(&mut self, block_id: &ObjectId) -> BuckyResult<()> {
+    async fn insert_prepares(
+        &mut self,
+        block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
+    ) -> BuckyResult<()> {
         self.write_result.as_ref().map_err(|e| e.clone())?;
-        self.write_result = self.insert_prepares_inner(block_id).await;
+        self.write_result = self.insert_prepares_inner(block_id, result_state_id).await;
         self.write_result.clone()
     }
 
     async fn insert_pre_commit(
         &mut self,
         block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
         is_instead: bool,
     ) -> BuckyResult<()> {
         self.write_result.as_ref().map_err(|e| e.clone())?;
-        self.write_result = self.insert_pre_commit_inner(block_id, is_instead).await;
+        self.write_result = self
+            .insert_pre_commit_inner(block_id, result_state_id, is_instead)
+            .await;
         self.write_result.clone()
     }
 
@@ -614,7 +664,7 @@ fn parse_u64_obj(obj: &ObjectId) -> u64 {
     u64::from_le_bytes(buf)
 }
 
-async fn load_object_ids_with_path(
+async fn load_object_ids_with_path_set(
     op_env: &ObjectMapPathOpEnvRef,
     full_path: &str,
 ) -> BuckyResult<Vec<ObjectId>> {
@@ -634,6 +684,41 @@ async fn load_object_ids_with_path(
     for item in content.list.iter() {
         match item {
             ObjectMapContentItem::Set(id) => object_ids.push(id.clone()),
+            _ => {
+                log::error!("should be a set in path {}", full_path);
+                return Err(BuckyError::new(
+                    BuckyErrorCode::InvalidFormat,
+                    format!("should be a set in path {}", full_path),
+                ));
+            }
+        }
+    }
+
+    Ok(object_ids)
+}
+
+async fn load_object_ids_with_path_map_key(
+    op_env: &ObjectMapPathOpEnvRef,
+    full_path: &str,
+) -> BuckyResult<Vec<ObjectId>> {
+    let content = match op_env.list(full_path).await {
+        Ok(content) => content,
+        Err(err) => {
+            log::warn!("list by path {} failed {:?}", full_path, err);
+            if err.code() == BuckyErrorCode::NotFound {
+                return Ok(vec![]);
+            } else {
+                return Err(err);
+            }
+        }
+    };
+
+    let mut object_ids: Vec<ObjectId> = vec![];
+    for item in content.list.iter() {
+        match item {
+            ObjectMapContentItem::Map((key_id_base58, _)) => {
+                object_ids.push(ObjectId::from_base58(key_id_base58)?)
+            }
             _ => {
                 log::error!("should be a set in path {}", full_path);
                 return Err(BuckyError::new(
@@ -689,5 +774,9 @@ impl GroupObjectMapProcessorGroupState {
 impl GroupObjectMapProcessor for GroupObjectMapProcessorGroupState {
     async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         self.state_mgr.create_single_op_env(ACCESS)
+    }
+
+    async fn create_sub_tree_op_env(&self) -> BuckyResult<ObjectMapIsolatePathOpEnvRef> {
+        self.state_mgr.create_isolate_path_op_env(ACCESS)
     }
 }

@@ -22,14 +22,20 @@
 |               |--users
 |               |   |--${user-id}
 |               |       |--xxx
-|               |--last-vote-round-->u64 // 最后一次投票的轮次
+|               |--last-vote-round-->u64 // 最后一次投票的 轮次
 |               |--last-qc-->GroupQuorumCertificate // 最后一次被确认的共识证明
 |               |
 |               |--range-->(${first_height}, ${header_height}) // 保留的历史block序列号区间
 |               |--str(${height})->block
 |               |
-|               |--prepares->Set<block> // Prepare状态的block
-|               |--pre-commits->Set<block> // pre-commit状态的block
+|               |--prepares // Prepare状态的block
+|               |   |--${block.id}
+|               |       |--block
+|               |       |--result-state-->ObjectId(result-state)
+|               |--pre-commits // pre-commit状态的block
+|               |   |--${block.id}
+|               |       |--block
+|               |       |--result-state-->ObjectId(result-state)
 |               |
 |               |--finish-proposals
 |               |   |--flip-time-->Timestamp // 取block时间戳

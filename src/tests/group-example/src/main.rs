@@ -584,59 +584,59 @@ mod GroupDecService {
     }
 
     impl MyRPathDelegate {
-        pub async fn get_value_from_state_tree_with_single_op_envs(
-            pre_state_id: Option<cyfs_base::ObjectId>,
-            object_map_processor: &dyn GroupObjectMapProcessor,
-        ) -> BuckyResult<(
-            Option<ObjectId>,
-            Vec<(ObjectMapSingleOpEnvRef, &str, Option<ObjectId>)>,
-        )> {
-            let mut single_op_envs = vec![];
-            let mut parent_map_id = pre_state_id;
-            for folder in EXAMPLE_VALUE_PATH.split(STATE_PATH_SEPARATOR.as_str()) {
-                let single_op_env = object_map_processor.create_single_op_env().await.expect(
-                    format!(
-                        "create_single_op_env load folder {} with obj_id {:?} failed",
-                        folder, parent_map_id
-                    )
-                    .as_str(),
-                );
-                parent_map_id = match parent_map_id {
-                    Some(parent_map_id) => {
-                        single_op_env.load(&parent_map_id).await.expect(
-                            format!(
-                                "load folder {} parent with obj_id {:?} failed",
-                                folder, parent_map_id
-                            )
-                            .as_str(),
-                        );
-                        single_op_env.get_by_key(folder).await.expect(
-                            format!(
-                                "load folder {} with obj_id {:?} failed",
-                                folder, parent_map_id
-                            )
-                            .as_str(),
-                        )
-                    }
-                    None => {
-                        single_op_env
-                            .create_new(ObjectMapSimpleContentType::Map)
-                            .await
-                            .expect(
-                                format!(
-                                    "create folder {} with obj_id {:?} failed",
-                                    folder, parent_map_id
-                                )
-                                .as_str(),
-                            );
-                        None
-                    }
-                };
-                single_op_envs.push((single_op_env, folder, parent_map_id));
-            }
+        // pub async fn get_value_from_state_tree_with_single_op_envs(
+        //     pre_state_id: Option<cyfs_base::ObjectId>,
+        //     object_map_processor: &dyn GroupObjectMapProcessor,
+        // ) -> BuckyResult<(
+        //     Option<ObjectId>,
+        //     Vec<(ObjectMapSingleOpEnvRef, &str, Option<ObjectId>)>,
+        // )> {
+        //     let mut single_op_envs = vec![];
+        //     let mut parent_map_id = pre_state_id;
+        //     for folder in EXAMPLE_VALUE_PATH.split(STATE_PATH_SEPARATOR.as_str()) {
+        //         let single_op_env = object_map_processor.create_single_op_env().await.expect(
+        //             format!(
+        //                 "create_single_op_env load folder {} with obj_id {:?} failed",
+        //                 folder, parent_map_id
+        //             )
+        //             .as_str(),
+        //         );
+        //         parent_map_id = match parent_map_id {
+        //             Some(parent_map_id) => {
+        //                 single_op_env.load(&parent_map_id).await.expect(
+        //                     format!(
+        //                         "load folder {} parent with obj_id {:?} failed",
+        //                         folder, parent_map_id
+        //                     )
+        //                     .as_str(),
+        //                 );
+        //                 single_op_env.get_by_key(folder).await.expect(
+        //                     format!(
+        //                         "load folder {} with obj_id {:?} failed",
+        //                         folder, parent_map_id
+        //                     )
+        //                     .as_str(),
+        //                 )
+        //             }
+        //             None => {
+        //                 single_op_env
+        //                     .create_new(ObjectMapSimpleContentType::Map)
+        //                     .await
+        //                     .expect(
+        //                         format!(
+        //                             "create folder {} with obj_id {:?} failed",
+        //                             folder, parent_map_id
+        //                         )
+        //                         .as_str(),
+        //                     );
+        //                 None
+        //             }
+        //         };
+        //         single_op_envs.push((single_op_env, folder, parent_map_id));
+        //     }
 
-            Ok((parent_map_id, single_op_envs))
-        }
+        //     Ok((parent_map_id, single_op_envs))
+        // }
 
         pub async fn execute(
             &self,
@@ -644,11 +644,30 @@ mod GroupDecService {
             pre_state_id: Option<cyfs_base::ObjectId>,
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
-            let (pre_value, single_op_envs) = Self::get_value_from_state_tree_with_single_op_envs(
-                pre_state_id,
-                object_map_processor,
-            )
-            .await?;
+            let state_op_env = object_map_processor
+                .create_sub_tree_op_env()
+                .await
+                .expect(format!("create_sub_tree_op_env failed").as_str());
+            let pre_value = match pre_state_id {
+                Some(pre_state_id) => {
+                    state_op_env.load(&pre_state_id).await?;
+                    state_op_env
+                        .get_by_path(EXAMPLE_VALUE_PATH.as_str())
+                        .await
+                        .expect(
+                            format!("get_by_path {} failed", EXAMPLE_VALUE_PATH.as_str()).as_str(),
+                        )
+                }
+                None => {
+                    state_op_env
+                        .create_new(ObjectMapSimpleContentType::Map)
+                        .await
+                        .expect(
+                            format!("create_new {} failed", EXAMPLE_VALUE_PATH.as_str()).as_str(),
+                        );
+                    None
+                }
+            };
 
             let result_value = {
                 /**
@@ -674,29 +693,50 @@ mod GroupDecService {
             };
 
             let result_state_id = {
-                let mut sub_folder_value = result_value;
-                for (parent_single_op_env, folder, sub_folder_prev_value) in
-                    single_op_envs.into_iter().rev()
-                {
-                    parent_single_op_env
-                        .set_with_key(folder, &sub_folder_value, &sub_folder_prev_value, true)
-                        .await
-                        .expect(
-                            format!(
-                                "update folder {} value from {:?} to {:?} failed",
-                                folder, sub_folder_prev_value, sub_folder_value
-                            )
-                            .as_str(),
-                        );
-                    sub_folder_value = parent_single_op_env.commit().await.expect(
+                state_op_env
+                    .set_with_path(EXAMPLE_VALUE_PATH.as_str(), &result_value, &pre_value, true)
+                    .await
+                    .expect(
                         format!(
-                            "commit folder {} value from {:?} to {:?} failed",
-                            folder, sub_folder_prev_value, sub_folder_value
+                            "set_with_path {:?} from {:?} to {} failed",
+                            EXAMPLE_VALUE_PATH.as_str(),
+                            pre_value,
+                            result_value
                         )
                         .as_str(),
                     );
-                }
-                sub_folder_value
+                state_op_env.commit().await.expect(
+                    format!(
+                        "commit {:?} from {:?} to {} failed",
+                        EXAMPLE_VALUE_PATH.as_str(),
+                        pre_value,
+                        result_value
+                    )
+                    .as_str(),
+                )
+                // let mut sub_folder_value = result_value;
+                // for (parent_single_op_env, folder, sub_folder_prev_value) in
+                //     single_op_envs.into_iter().rev()
+                // {
+                //     parent_single_op_env
+                //         .set_with_key(folder, &sub_folder_value, &sub_folder_prev_value, true)
+                //         .await
+                //         .expect(
+                //             format!(
+                //                 "update folder {} value from {:?} to {:?} failed",
+                //                 folder, sub_folder_prev_value, sub_folder_value
+                //             )
+                //             .as_str(),
+                //         );
+                //     sub_folder_value = parent_single_op_env.commit().await.expect(
+                //         format!(
+                //             "commit folder {} value from {:?} to {:?} failed",
+                //             folder, sub_folder_prev_value, sub_folder_value
+                //         )
+                //         .as_str(),
+                //     );
+                // }
+                // sub_folder_value
             };
 
             let receipt = {
@@ -784,13 +824,26 @@ mod GroupDecService {
             delta.copy_from_slice(delta_buf);
             let delta = u64::from_be_bytes(delta);
 
-            let pre_value = Self::get_value_from_state_tree_with_single_op_envs(
-                pre_state_id,
-                object_map_processor,
-            )
-            .await
-            .unwrap()
-            .0
+            let pre_value = match pre_state_id {
+                Some(pre_state_id) => {
+                    let state_op_env = object_map_processor
+                        .create_sub_tree_op_env()
+                        .await
+                        .expect(format!("create_sub_tree_op_env failed").as_str());
+                    state_op_env
+                        .load(&pre_state_id)
+                        .await
+                        .expect(format!("load {} failed", pre_state_id).as_str());
+                    state_op_env
+                        .get_by_path(EXAMPLE_VALUE_PATH.as_str())
+                        .await
+                        .expect(
+                            format!("get_by_path {:?} failed", EXAMPLE_VALUE_PATH.as_str())
+                                .as_str(),
+                        )
+                }
+                None => None,
+            }
             .map_or(0, |pre_state_id| {
                 let buf = pre_state_id.data();
                 let mut pre_value = [0u8; 8];
@@ -798,13 +851,26 @@ mod GroupDecService {
                 u64::from_be_bytes(pre_value)
             });
 
-            let result_value = Self::get_value_from_state_tree_with_single_op_envs(
-                execute_result.result_state_id,
-                object_map_processor,
-            )
-            .await
-            .unwrap()
-            .0
+            let result_value = match execute_result.result_state_id {
+                Some(result_state_id) => {
+                    let state_op_env = object_map_processor
+                        .create_sub_tree_op_env()
+                        .await
+                        .expect(format!("create_sub_tree_op_env failed").as_str());
+                    state_op_env
+                        .load(&result_state_id)
+                        .await
+                        .expect(format!("load {} failed", result_state_id).as_str());
+                    state_op_env
+                        .get_by_path(EXAMPLE_VALUE_PATH.as_str())
+                        .await
+                        .expect(
+                            format!("get_by_path {:?} failed", EXAMPLE_VALUE_PATH.as_str())
+                                .as_str(),
+                        )
+                }
+                None => None,
+            }
             .map_or(0, |result_id| {
                 let buf = result_id.data();
                 let mut result_value = [0u8; 8];

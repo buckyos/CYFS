@@ -1,4 +1,6 @@
-use cyfs_base::{BuckyResult, Group, ObjectId, ObjectMapSingleOpEnvRef};
+use cyfs_base::{
+    BuckyResult, Group, ObjectId, ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef,
+};
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
@@ -58,4 +60,5 @@ pub trait RPathDelegate: Sync + Send {
 #[async_trait::async_trait]
 pub trait GroupObjectMapProcessor: Send + Sync {
     async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef>;
+    async fn create_sub_tree_op_env(&self) -> BuckyResult<ObjectMapIsolatePathOpEnvRef>;
 }
