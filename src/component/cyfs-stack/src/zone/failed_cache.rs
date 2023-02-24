@@ -30,10 +30,13 @@ impl OrphanZoneCache {
     }
 
     pub fn get_by_device(&mut self, device_id: &DeviceId) -> Option<Zone> {
-        let ret = self.device_list.get(device_id);
+        // force remove expired items 
+        self.device_list.iter();
+        self.zone_list.iter();
+
+        let ret = self.device_list.peek(device_id);
         match ret {
             Some(v) => {
-                self.zone_list.get(&v.zone_id);
                 Some(v.zone.clone())
             }
             None => None,
@@ -41,9 +44,13 @@ impl OrphanZoneCache {
     }
 
     pub fn get(&mut self, zone_id: &ZoneId) -> Option<Zone> {
-        let ret = self.zone_list.get(zone_id);
+        // force remove expired items 
+        self.device_list.iter();
+        self.zone_list.iter();
+
+        let ret = self.zone_list.peek(zone_id);
         match ret {
-            Some(device_id) => self.device_list.get(device_id).map(|v| v.zone.clone()),
+            Some(device_id) => self.device_list.peek(device_id).map(|v| v.zone.clone()),
             None => None,
         }
     }
@@ -93,7 +100,11 @@ impl ZoneFailedCache {
 
     pub fn get_failed_owner(&self, object_id: &ObjectId) -> Option<BuckyError> {
         let mut cache = self.owner_cache.lock().unwrap();
-        cache.get(object_id).map(|v| v.clone())
+
+        // force remove expired items 
+        cache.iter();
+
+        cache.peek(object_id).map(|v| v.clone())
     }
 
     // device搜寻zone失败，创建孤儿zone并缓存
