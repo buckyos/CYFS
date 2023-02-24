@@ -108,6 +108,9 @@ impl MetaClientHelperWithObjectCache {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<Vec<u8>>> {
         let mut list = self.objects.lock().await;
+        // force remove expired items 
+        list.iter();
+
         if let Some(item) = list.peek(object_id) {
             return Ok(item.into_object_raw());
         }
