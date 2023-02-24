@@ -18,6 +18,7 @@ mod visitor;
 pub use access::*;
 pub use cache::*;
 pub use diff::*;
+pub use isolate_path_env::*;
 pub use iterator::*;
 pub use object_map::*;
 pub use op_env::*;
