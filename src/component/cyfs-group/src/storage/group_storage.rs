@@ -29,10 +29,7 @@ const PROPOSAL_MAX_TIMEOUT_AS_MICRO_SEC: u64 = PROPOSAL_MAX_TIMEOUT.as_micros() 
 pub enum BlockLinkState {
     Expired,
     Duplicate,
-    Link(
-        Option<GroupConsensusBlock>,
-        // HashMap<ObjectId, GroupProposal>,
-    ), // <prev-block, proposals>
+    Link(Option<GroupConsensusBlock>), // <prev-block>
     Pending,
     InvalidBranch,
 }
