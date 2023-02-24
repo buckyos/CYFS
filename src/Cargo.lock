@@ -1766,6 +1766,7 @@ dependencies = [
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-util",
+ "generic-array 0.12.4",
  "hex",
  "int-enum",
  "log 0.4.17",
@@ -1779,6 +1780,7 @@ dependencies = [
  "semver 1.0.16",
  "serde",
  "serde_json",
+ "sha2 0.8.2",
 ]
 
 [[package]]
@@ -1825,6 +1827,65 @@ dependencies = [
  "hkdf 0.8.0",
  "libsecp256k1",
  "rand 0.7.3",
+ "sha2 0.8.2",
+]
+
+[[package]]
+name = "cyfs-group"
+version = "0.1.1"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "chrono",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-group-lib",
+ "cyfs-lib",
+ "futures",
+ "itertools",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.6",
+ "prost-build 0.9.0",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.8.2",
+]
+
+[[package]]
+name = "cyfs-group-lib"
+version = "0.1.1"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "chrono",
+ "cyfs-base",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-util",
+ "futures",
+ "http-types",
+ "itertools",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.6",
+ "prost-build 0.9.0",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
  "sha2 0.8.2",
 ]
 
@@ -2179,6 +2240,8 @@ dependencies = [
  "cyfs-chunk-lib",
  "cyfs-core",
  "cyfs-debug",
+ "cyfs-group",
+ "cyfs-group-lib",
  "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-ndc",
@@ -3235,6 +3298,35 @@ dependencies = [
  "futures-core",
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "group-example"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-bdt-ext",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-group-lib",
+ "cyfs-lib",
+ "cyfs-meta-lib",
+ "cyfs-stack",
+ "cyfs-util",
+ "futures",
+ "lazy_static",
+ "log 0.4.17",
+ "prost 0.11.6",
+ "protobuf",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2 0.8.2",
 ]
 
 [[package]]
