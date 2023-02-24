@@ -1,22 +1,19 @@
-use std::{
-    collections::{HashMap, HashSet},
-    time::SystemTime,
-};
+use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{
-    bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId, ObjectMap, ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawDecode,
+    BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId, ObjectMap,
+    ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawDecode,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
-    GroupQuorumCertificateObject, HotstuffBlockQC, HotstuffTimeout,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, HotstuffBlockQC,
+    HotstuffTimeout,
 };
 use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
     storage::StorageWriter, GroupObjectMapProcessor, GroupRPathStatus, GroupStatePath,
-    NONDriverHelper, PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR, TIME_PRECISION,
+    NONDriverHelper, PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR,
 };
 
 use super::{
@@ -31,11 +28,10 @@ const PROPOSAL_MAX_TIMEOUT_AS_MICRO_SEC: u64 = PROPOSAL_MAX_TIMEOUT.as_micros() 
 
 pub enum BlockLinkState {
     Expired,
-    DuplicateProposal,
     Duplicate,
     Link(
         Option<GroupConsensusBlock>,
-        HashMap<ObjectId, GroupProposal>,
+        // HashMap<ObjectId, GroupProposal>,
     ), // <prev-block, proposals>
     Pending,
     InvalidBranch,
@@ -528,18 +524,6 @@ impl GroupStorage {
             return Ok(BlockLinkState::Duplicate);
         }
 
-        let now = SystemTime::now();
-        let block_time = bucky_time_to_system_time(block.named_object().desc().create_time());
-
-        if let Ok(duration) = block_time.duration_since(now) {
-            if duration > TIME_PRECISION {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::ErrorTimestamp,
-                    "error timestamp",
-                ));
-            }
-        }
-
         log::debug!(
             "[group storage] {} block_linked {} step2",
             self.local_device_id,
@@ -554,17 +538,6 @@ impl GroupStorage {
                     } else if prev_block.round() >= block.round() {
                         return Err(BuckyError::new(BuckyErrorCode::Failed, "round error"));
                     } else {
-                        let prev_block_time = bucky_time_to_system_time(
-                            prev_block.named_object().desc().create_time(),
-                        );
-                        if let Ok(duration) = prev_block_time.duration_since(block_time) {
-                            if duration > TIME_PRECISION {
-                                return Err(BuckyError::new(
-                                    BuckyErrorCode::ErrorTimestamp,
-                                    "error timestamp",
-                                ));
-                            }
-                        }
                         Some(prev_block)
                     }
                 }
@@ -592,66 +565,7 @@ impl GroupStorage {
             block.block_id()
         );
 
-        let mut proposals = HashMap::new();
-        let check_proposal_results =
-            futures::future::join_all(block.proposals().iter().map(|proposal_result| async {
-                if let Some(prev_block_id) = block.prev_block_id() {
-                    if self
-                        .is_proposal_finished(&proposal_result.proposal, prev_block_id)
-                        .await?
-                    {
-                        return Ok(BlockLinkState::DuplicateProposal);
-                    }
-                }
-
-                let proposal = self
-                    .non_driver
-                    .get_proposal(&proposal_result.proposal, Some(block.owner()))
-                    .await?;
-
-                let proposal_time = bucky_time_to_system_time(proposal.desc().create_time());
-                if block_time
-                    .duration_since(proposal_time)
-                    .or(proposal_time.duration_since(block_time))
-                    .unwrap()
-                    > TIME_PRECISION
-                {
-                    return Err(BuckyError::new(
-                        BuckyErrorCode::ErrorTimestamp,
-                        "error timestamp",
-                    ));
-                }
-
-                Ok(BlockLinkState::Link(
-                    None,
-                    HashMap::from([(proposal_result.proposal, proposal)]),
-                ))
-            }))
-            .await;
-
-        for check_result in check_proposal_results {
-            match check_result {
-                Ok(result) => match result {
-                    BlockLinkState::Link(_, proposal) => {
-                        let (proposal_id, proposal) = proposal.into_iter().next().unwrap();
-                        if proposals.get(&proposal_id).is_some() {
-                            return Ok(BlockLinkState::DuplicateProposal);
-                        }
-                        proposals.insert(proposal_id, proposal);
-                    }
-                    _ => return Ok(result),
-                },
-                _ => return check_result,
-            }
-        }
-
-        log::debug!(
-            "[group storage] {} block_linked {} step4",
-            self.local_device_id,
-            block.block_id()
-        );
-
-        Ok(BlockLinkState::Link(prev_block, proposals))
+        Ok(BlockLinkState::Link(prev_block))
     }
 
     pub fn find_block_in_cache(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {
