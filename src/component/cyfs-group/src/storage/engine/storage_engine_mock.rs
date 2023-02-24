@@ -71,7 +71,11 @@ pub struct StorageEngineMockWriter<'a> {
 
 #[async_trait::async_trait]
 impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
-    async fn insert_prepares(&mut self, block_id: &ObjectId) -> BuckyResult<()> {
+    async fn insert_prepares(
+        &mut self,
+        block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
+    ) -> BuckyResult<()> {
         if !self.engine.prepare_blocks.insert(block_id.clone()) {
             assert!(false);
             return Err(BuckyError::new(
@@ -85,6 +89,7 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     async fn insert_pre_commit(
         &mut self,
         block_id: &ObjectId,
+        result_state_id: &Option<ObjectId>,
         is_instead: bool,
     ) -> BuckyResult<()> {
         if !self.engine.prepare_blocks.remove(block_id) {
