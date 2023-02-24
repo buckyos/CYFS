@@ -10,6 +10,8 @@ pub const GROUP_STATE_PATH_LAST_TC: &str = "last-tc";
 pub const GROUP_STATE_PATH_RANGE: &str = "range";
 pub const GROUP_STATE_PATH_PREPARES: &str = "prepares";
 pub const GROUP_STATE_PATH_PRE_COMMITS: &str = "pre-commits";
+pub const GROUP_STATE_PATH_BLOCK: &str = "block";
+pub const GROUP_STATE_PATH_RESULT_STATE: &str = "result-state";
 pub const GROUP_STATE_PATH_FINISH_PROPOSALS: &str = "finish-proposals";
 pub const GROUP_STATE_PATH_FLIP_TIME: &str = "flip-time";
 pub const GROUP_STATE_PATH_RECYCLE: &str = "recycle";
@@ -164,8 +166,40 @@ impl GroupStatePath {
         self.prepares.as_str()
     }
 
+    pub fn prepares_block(&self, block_id: &ObjectId) -> String {
+        Self::join(&[
+            self.prepares.as_str(),
+            block_id.to_string().as_str(),
+            GROUP_STATE_PATH_BLOCK,
+        ])
+    }
+
+    pub fn prepares_result_state(&self, block_id: &ObjectId) -> String {
+        Self::join(&[
+            self.prepares.as_str(),
+            block_id.to_string().as_str(),
+            GROUP_STATE_PATH_RESULT_STATE,
+        ])
+    }
+
     pub fn pre_commits(&self) -> &str {
         self.pre_commits.as_str()
+    }
+
+    pub fn pre_commits_block(&self, block_id: &ObjectId) -> String {
+        Self::join(&[
+            self.prepares.as_str(),
+            block_id.to_string().as_str(),
+            GROUP_STATE_PATH_BLOCK,
+        ])
+    }
+
+    pub fn pre_commits_result_state(&self, block_id: &ObjectId) -> String {
+        Self::join(&[
+            self.prepares.as_str(),
+            block_id.to_string().as_str(),
+            GROUP_STATE_PATH_RESULT_STATE,
+        ])
     }
 
     pub fn finish_proposals(&self) -> &str {
