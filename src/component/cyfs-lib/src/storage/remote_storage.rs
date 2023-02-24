@@ -1,3 +1,4 @@
+use cyfs_base::DeviceId;
 use super::collection::*;
 use super::remote_noc::*;
 use crate::stack::*;
@@ -23,6 +24,17 @@ impl RemoteNOCStorage {
         let remote_noc = RemoteNamedObjectCache::new(
             stack.non_service().clone_processor(),
             &stack.local_device_id(),
+        );
+        NOCCollectionSync::new(id, remote_noc.into_noc())
+    }
+
+    pub fn new_noc_collection_sync_uni<T>(id: &str, stack: &UniCyfsStackRef, device_id: &DeviceId) -> NOCCollectionSync<T>
+        where
+            T: Default + CollectionCodec<T> + Send + 'static,
+    {
+        let remote_noc = RemoteNamedObjectCache::new(
+            stack.non_service().clone(),
+            device_id,
         );
         NOCCollectionSync::new(id, remote_noc.into_noc())
     }

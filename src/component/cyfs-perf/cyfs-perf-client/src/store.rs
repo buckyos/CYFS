@@ -19,8 +19,8 @@ pub(crate) struct PerfStore {
 }
 
 impl PerfStore {
-    pub fn new(id: String, stack: &SharedCyfsStack) -> Self {
-        let cache = RemoteNOCStorage::new_noc_collection_sync(&id, stack);
+    pub fn new(id: String, stack: &UniCyfsStackRef, device_id: &DeviceId) -> Self {
+        let cache = RemoteNOCStorage::new_noc_collection_sync_uni(&id, stack, device_id);
         let locked = Arc::new(AtomicBool::new(false));
         Self { cache, locked }
     }

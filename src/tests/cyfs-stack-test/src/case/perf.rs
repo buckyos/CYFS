@@ -28,7 +28,7 @@ pub async fn test() {
     let ret = perf.start().await;
     assert!(ret.is_ok());
 
-    let isolate = perf.new_isolate("main");
+    let isolate = perf.get_isolate("main");
     test_flush(perf.clone()).await;
     test_request(isolate.clone()).await;
     test_acc(isolate.clone()).await;
