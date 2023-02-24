@@ -38,16 +38,18 @@ mod Common {
         CyfsStackNOCParams, CyfsStackParams,
     };
 
-    lazy_static::lazy_static! {
-    //     pub static ref EXAMPLE_ADMINS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("admin", 4);
-    //     pub static ref EXAMPLE_MEMBERS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("member", 9);
+    /**
+     * |--root
+     *      |--folder1
+     *          |--folder2
+     *              |--value-->u64
+     */
 
-    //     pub static ref EXAMPLE_GROUP: Group = create_group(&EXAMPLE_ADMINS.get(0).unwrap().0.0, EXAMPLE_ADMINS.iter().map(|m| &m.0.0).collect(), EXAMPLE_MEMBERS.iter().map(|m| &m.0.0).collect(), EXAMPLE_ADMINS.iter().map(|m| &m.1.0).collect());
-    //     pub static ref EXAMPLE_GROUP_CHUNK: ChunkMeta = ChunkMeta::from(&*EXAMPLE_GROUP);
+    lazy_static::lazy_static! {
         pub static ref EXAMPLE_APP_NAME: String = "group-example".to_string();
-    //     pub static ref EXAMPLE_DEC_APP: DecApp = DecApp::create(EXAMPLE_ADMINS.get(0).unwrap().0.0.desc().object_id(), EXAMPLE_APP_NAME.as_str());
-    //     pub static ref EXAMPLE_DEC_APP_ID: DecAppId = DecAppId::try_from(EXAMPLE_DEC_APP.desc().object_id()).unwrap();
         pub static ref EXAMPLE_RPATH: String = "rpath-example".to_string();
+        pub static ref EXAMPLE_VALUE_PATH: String = "/root/folder1/folder2/value".to_string();
+        pub static ref STATE_PATH_SEPARATOR: String = "/".to_string();
     }
 
     fn create_member(
@@ -495,7 +497,7 @@ mod Client {
 }
 
 mod GroupDecService {
-    use std::{collections::HashSet, sync::Arc};
+    use std::{collections::HashSet, fmt::format, sync::Arc};
 
     use async_std::sync::Mutex;
     use cyfs_base::*;
@@ -503,8 +505,10 @@ mod GroupDecService {
         DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
-    use cyfs_group::{DelegateFactory, ExecuteResult, RPathDelegate};
+    use cyfs_group::{DelegateFactory, ExecuteResult, GroupObjectMapProcessor, RPathDelegate};
     use cyfs_stack::CyfsStack;
+
+    use crate::Common::{EXAMPLE_VALUE_PATH, STATE_PATH_SEPARATOR};
 
     pub struct DecService {}
 
@@ -580,17 +584,78 @@ mod GroupDecService {
     }
 
     impl MyRPathDelegate {
-        pub fn execute(
+        pub async fn get_value_from_state_tree_with_single_op_envs(
+            pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
+        ) -> BuckyResult<(
+            Option<ObjectId>,
+            Vec<(ObjectMapSingleOpEnvRef, &str, Option<ObjectId>)>,
+        )> {
+            let mut single_op_envs = vec![];
+            let mut parent_map_id = pre_state_id;
+            for folder in EXAMPLE_VALUE_PATH.split(STATE_PATH_SEPARATOR.as_str()) {
+                let single_op_env = object_map_processor.create_single_op_env().await.expect(
+                    format!(
+                        "create_single_op_env load folder {} with obj_id {:?} failed",
+                        folder, parent_map_id
+                    )
+                    .as_str(),
+                );
+                parent_map_id = match parent_map_id {
+                    Some(parent_map_id) => {
+                        single_op_env.load(&parent_map_id).await.expect(
+                            format!(
+                                "load folder {} parent with obj_id {:?} failed",
+                                folder, parent_map_id
+                            )
+                            .as_str(),
+                        );
+                        single_op_env.get_by_key(folder).await.expect(
+                            format!(
+                                "load folder {} with obj_id {:?} failed",
+                                folder, parent_map_id
+                            )
+                            .as_str(),
+                        )
+                    }
+                    None => {
+                        single_op_env
+                            .create_new(ObjectMapSimpleContentType::Map)
+                            .await
+                            .expect(
+                                format!(
+                                    "create folder {} with obj_id {:?} failed",
+                                    folder, parent_map_id
+                                )
+                                .as_str(),
+                            );
+                        None
+                    }
+                };
+                single_op_envs.push((single_op_env, folder, parent_map_id));
+            }
+
+            Ok((parent_map_id, single_op_envs))
+        }
+
+        pub async fn execute(
             &self,
             proposal: &GroupProposal,
             pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
-            let result_state_id = {
+            let (pre_value, single_op_envs) = Self::get_value_from_state_tree_with_single_op_envs(
+                pre_state_id,
+                object_map_processor,
+            )
+            .await?;
+
+            let result_value = {
                 /**
                  * pre_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
                  */
-                let pre_value = pre_state_id.map_or(0, |pre_state_id| {
-                    let buf = pre_state_id.data();
+                let pre_value = pre_value.map_or(0, |pre_value| {
+                    let buf = pre_value.data();
                     let mut pre_value = [0u8; 8];
                     pre_value.copy_from_slice(&buf[..8]);
                     u64::from_be_bytes(pre_value)
@@ -608,6 +673,32 @@ mod GroupDecService {
                     .unwrap()
             };
 
+            let result_state_id = {
+                let mut sub_folder_value = result_value;
+                for (parent_single_op_env, folder, sub_folder_prev_value) in
+                    single_op_envs.into_iter().rev()
+                {
+                    parent_single_op_env
+                        .set_with_key(folder, &sub_folder_value, &sub_folder_prev_value, true)
+                        .await
+                        .expect(
+                            format!(
+                                "update folder {} value from {:?} to {:?} failed",
+                                folder, sub_folder_prev_value, sub_folder_value
+                            )
+                            .as_str(),
+                        );
+                    sub_folder_value = parent_single_op_env.commit().await.expect(
+                        format!(
+                            "commit folder {} value from {:?} to {:?} failed",
+                            folder, sub_folder_prev_value, sub_folder_value
+                        )
+                        .as_str(),
+                    );
+                }
+                sub_folder_value
+            };
+
             let receipt = {
                 /**
                  * 返回给Client的对象，相当于这个请求的结果或者叫回执？
@@ -623,7 +714,7 @@ mod GroupDecService {
             };
 
             /**
-             * (result_state_id, return_object) = pre_state_id + proposal + context
+             * (result_state_id, return_object) = pre_value + proposal + context
              */
             Ok(ExecuteResult {
                 context,
@@ -632,17 +723,20 @@ mod GroupDecService {
             })
         }
 
-        pub fn verify(
+        pub async fn verify(
             &self,
             proposal: &GroupProposal,
             pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
             execute_result: &ExecuteResult,
         ) -> BuckyResult<bool> {
             /**
              * let is_same = (execute_result.result_state_id, execute_result.return_object)
              *  == pre_state_id + proposal + execute_result.context
              */
-            let result = self.execute(proposal, pre_state_id)?;
+            let result = self
+                .execute(proposal, pre_state_id, object_map_processor)
+                .await?;
 
             let is_ok = execute_result.result_state_id == result.result_state_id
                 && execute_result.context.is_none()
@@ -658,23 +752,28 @@ mod GroupDecService {
             &self,
             proposal: &GroupProposal,
             pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
-            self.execute(proposal, pre_state_id)
+            self.execute(proposal, pre_state_id, object_map_processor)
+                .await
         }
 
         async fn on_verify(
             &self,
             proposal: &GroupProposal,
             pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
             execute_result: &ExecuteResult,
         ) -> BuckyResult<bool> {
-            self.verify(proposal, pre_state_id, execute_result)
+            self.verify(proposal, pre_state_id, object_map_processor, execute_result)
+                .await
         }
 
         async fn on_commited(
             &self,
             proposal: &GroupProposal,
             pre_state_id: Option<cyfs_base::ObjectId>,
+            object_map_processor: &dyn GroupObjectMapProcessor,
             execute_result: &ExecuteResult,
             block: &GroupConsensusBlock,
         ) {
@@ -685,14 +784,28 @@ mod GroupDecService {
             delta.copy_from_slice(delta_buf);
             let delta = u64::from_be_bytes(delta);
 
-            let pre_value = pre_state_id.map_or(0, |pre_state_id| {
+            let pre_value = Self::get_value_from_state_tree_with_single_op_envs(
+                pre_state_id,
+                object_map_processor,
+            )
+            .await
+            .unwrap()
+            .0
+            .map_or(0, |pre_state_id| {
                 let buf = pre_state_id.data();
                 let mut pre_value = [0u8; 8];
                 pre_value.copy_from_slice(&buf[..8]);
                 u64::from_be_bytes(pre_value)
             });
 
-            let result_value = execute_result.result_state_id.map_or(0, |result_id| {
+            let result_value = Self::get_value_from_state_tree_with_single_op_envs(
+                execute_result.result_state_id,
+                object_map_processor,
+            )
+            .await
+            .unwrap()
+            .0
+            .map_or(0, |result_id| {
                 let buf = result_id.data();
                 let mut result_value = [0u8; 8];
                 result_value.copy_from_slice(&buf[..8]);
@@ -901,7 +1014,7 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 10 == 0 {
+        if i % 1 == 0 {
             async_std::task::sleep(Duration::from_millis(1000)).await;
             log::info!("will push new proposals, i: {}", i);
         }
