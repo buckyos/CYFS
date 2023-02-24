@@ -291,10 +291,16 @@ impl GroupStorage {
          */
         // storage
         let mut writer = self.storage_engine.create_writer().await?;
-        writer.insert_prepares(block_id.object_id()).await?;
-        if let Some((new_pre_commit, _)) = new_pre_commit.as_ref() {
+        writer
+            .insert_prepares(block_id.object_id(), block.result_state_id())
+            .await?;
+        if let Some((new_pre_commit_id, new_pre_commit)) = new_pre_commit.as_ref() {
             writer
-                .insert_pre_commit(new_pre_commit, new_header.is_some())
+                .insert_pre_commit(
+                    new_pre_commit_id,
+                    new_pre_commit.result_state_id(),
+                    new_header.is_some(),
+                )
                 .await?;
         }
         if let Some(new_header) = new_header.as_ref() {
