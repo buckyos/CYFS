@@ -337,8 +337,8 @@ impl AppController {
                 }
             }
         } else {
-            let reader = self.dapp_instance.read().unwrap();
-            if let Some(dapp) = reader.get(app_id) {
+            let mut app_list = self.dapp_instance.write().unwrap();
+            if let Some(dapp) = app_list.remove(app_id) {
                 let result = dapp.stop().map_err(|e| {
                     warn!("stop app directly failed, app:{}, err:{}", app_id, e);
                     SubErrorCode::CommondFailed
