@@ -13,6 +13,7 @@ use cyfs_core::{
 };
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
+use itertools::Itertools;
 
 use crate::{
     consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
@@ -365,7 +366,7 @@ impl HotstuffRunner {
             }
         }
 
-        let (prev_block, proposals) = match self.check_block_linked(&block, remote).await {
+        let prev_block = match self.check_block_linked(&block, remote).await {
             Ok(link) => link,
             Err(err) => return err
         };
@@ -391,9 +392,6 @@ impl HotstuffRunner {
             self,
             block.block_id());
 
-        self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
-            .await?;
-
         self.synchronizer.pop_link_from(block);
 
         self.process_qc(block.qc()).await;
@@ -402,7 +400,7 @@ impl HotstuffRunner {
             self.advance_round(tc.round).await;
         }
 
-        self.process_block(block, remote, &proposals).await
+        self.process_block(block, remote, &HashMap::new()).await
     }
 
     fn check_block_result_state(block: &GroupConsensusBlock) -> BuckyResult<()> {
@@ -574,7 +572,7 @@ impl HotstuffRunner {
         }
     }
 
-    async fn check_block_linked(&mut self, block: &GroupConsensusBlock, remote: ObjectId) -> Result<(Option<GroupConsensusBlock>, HashMap<ObjectId, GroupProposal>), BuckyResult<()>> {
+    async fn check_block_linked(&mut self, block: &GroupConsensusBlock, remote: ObjectId) -> Result<Option<GroupConsensusBlock>, BuckyResult<()>> {
         match self.store.block_linked(block).await
             .map_err(|err| Err(err))? {
 
@@ -584,16 +582,6 @@ impl HotstuffRunner {
                     self
                 );
                 Err(Err(BuckyError::new(BuckyErrorCode::Ignored, "expired")))
-            }
-            crate::storage::BlockLinkState::DuplicateProposal => {
-                log::warn!(
-                    "[hotstuff] local: {:?}, receive block with duplicate proposal.",
-                    self
-                );
-                Err (Err(BuckyError::new(
-                    BuckyErrorCode::AlreadyExists,
-                    "duplicate proposal",
-                )))
             }
             crate::storage::BlockLinkState::Duplicate => {
                 log::warn!(
@@ -605,7 +593,7 @@ impl HotstuffRunner {
                     "duplicate block",
                 )))
             }
-            crate::storage::BlockLinkState::Link(prev_block, proposals) => {
+            crate::storage::BlockLinkState::Link(prev_block) => {
                 log::debug!(
                     "[hotstuff] local: {:?}, receive in-order block, height: {}.",
                     self,
@@ -614,7 +602,7 @@ impl HotstuffRunner {
 
                 // 顺序连接状态
                 Self::check_empty_block_result_state_with_prev(block, &prev_block).map_err(|err| Err(err))?;
-                Ok((prev_block, proposals))
+                Ok(prev_block)
             }
             crate::storage::BlockLinkState::Pending => {
                 log::warn!(
@@ -942,20 +930,6 @@ impl HotstuffRunner {
             return None;
         }
 
-        // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
-        let mut proposal_temp: HashMap<ObjectId, GroupProposal> = HashMap::new();
-        if proposals.len() == 0 && block.proposals().len() > 0 {
-            match self.non_driver.load_all_proposals_for_block(block, &mut proposal_temp).await {
-                Ok(_) => proposals = &proposal_temp,
-                Err(_) => return None
-            }
-        } else {
-            assert_eq!(proposals.len(), block.proposals().len());
-        }
-        if !Self::check_timestamp_precision(block, proposals) {
-            return None;
-        }
-
         // round只能逐个递增
         let qc_round = block.qc().as_ref().map_or(0, |qc| qc.round);
         let is_valid_round = if block.round() == qc_round + 1 {
@@ -982,6 +956,22 @@ impl HotstuffRunner {
             return None;
         }
 
+        let prev_block = match block.prev_block_id() {
+            Some(prev_block_id) => match self.store.find_block_in_cache(prev_block_id) {
+                Ok(block) => Some(block.clone()),
+                Err(_) => {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for prev-block {:?} is invalid",
+                        self,
+                        block.block_id(),
+                        block.prev_block_id()
+                    );
+
+                    return None
+                },
+            },
+            None => None
+        };
+
         match self.check_group_is_latest(block.group_chunk_id()).await {
             Ok(is_latest) if is_latest => {}
             _ => {
@@ -992,6 +982,77 @@ impl HotstuffRunner {
                 return None;
             }
         }
+
+        // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
+        let mut proposal_temp: HashMap<ObjectId, GroupProposal> = HashMap::new();
+        if proposals.len() == 0 && block.proposals().len() > 0 {
+            match self.non_driver.load_all_proposals_for_block(block, &mut proposal_temp).await {
+                Ok(_) => proposals = &proposal_temp,
+                Err(err) => {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for load proposals failed {:?}",
+                        self,
+                        block.block_id(),
+                        err
+                    );
+                    return None
+                }
+            }
+        } else {
+            assert_eq!(proposals.len(), block.proposals().len());
+        }
+
+        if !Self::check_timestamp_precision(block, prev_block.as_ref(), proposals) {
+            return None;
+        }
+
+        if proposals.len() != block.proposals().len() {
+            let mut dup_proposals = block.proposals().clone();
+            dup_proposals.sort_unstable_by_key(|p| p.proposal);
+            log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for proposals {:?} duplicate",
+                self,
+                block.block_id(),
+                dup_proposals.iter().group_by(|p| p.proposal).into_iter().map(|g| (g.0, g.1.count())).filter(|g| g.1 > 1).map(|g| g.0).collect_vec()
+            );
+            return None;
+        }
+
+        let check_proposal_results =
+            futures::future::join_all(block.proposals().iter().map(|proposal_result| async {
+                match block.prev_block_id() {
+                    Some(prev_block_id) => self.store.is_proposal_finished(&proposal_result.proposal, prev_block_id)
+                        .await.map(|is_finished| (is_finished, &proposal_result.proposal)),
+                    None => Ok((false, &proposal_result.proposal))
+                }
+            }))
+            .await;
+
+        for check_result in check_proposal_results {
+            match check_result {
+                Ok((is_finished, proposal_id)) => {
+                    if is_finished {
+                        log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for proposals {:?} duplicate",
+                            self,
+                            block.block_id(),
+                            proposal_id
+                        );
+                        return None;
+                    }
+                },
+                Err(err) => {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore check duplicate failed {:?}",
+                        self,
+                        block.block_id(),
+                        err
+                    );
+                    return None;
+                },
+            }
+        }
+
+        if self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
+            .await.is_err() {
+                return None;
+            }
 
         log::debug!("[hotstuff] local: {:?}, make-vote before sign {}, round: {}",
             self, block.block_id(), block.round());
@@ -1021,12 +1082,23 @@ impl HotstuffRunner {
         Some(vote)
     }
 
-    fn check_timestamp_precision(block: &GroupConsensusBlock, proposals: &HashMap<ObjectId, GroupProposal>) -> bool {
+    fn check_timestamp_precision(block: &GroupConsensusBlock, prev_block: Option<&GroupConsensusBlock>, proposals: &HashMap<ObjectId, GroupProposal>) -> bool {
         let now = SystemTime::now();
         let block_timestamp = bucky_time_to_system_time(block.named_object().desc().create_time());
         if Self::calc_time_delta(now, block_timestamp) > TIME_PRECISION {
             false
         } else {
+            if let Some(prev_block) = prev_block {
+                let prev_block_time = bucky_time_to_system_time(
+                    prev_block.named_object().desc().create_time(),
+                );
+                if let Ok(duration) = prev_block_time.duration_since(block_timestamp) {
+                    if duration > TIME_PRECISION {
+                        return false
+                    }
+                }                
+            }
+
             for proposal in block.proposals() {
                 let proposal = proposals.get(&proposal.proposal).expect("should load all proposals");
                 let proposal_timestamp = bucky_time_to_system_time(proposal.desc().create_time());
