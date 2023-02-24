@@ -1022,7 +1022,7 @@ impl tunnel::Tunnel for Tunnel {
         }
     } 
 
-    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage) -> Result<usize, BuckyError> {
         if package.cmd_code() == PackageCmdCode::SessionData {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "session data should not send from tcp tunnel"));
         }
@@ -1043,7 +1043,8 @@ impl tunnel::Tunnel for Tunnel {
         if to_connect {
             let _ = self.connect();
         }
-        Ok(())
+        
+        Ok(0)
     }
 
     fn raw_data_header_len(&self) -> usize {
