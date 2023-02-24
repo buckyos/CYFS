@@ -78,7 +78,7 @@ function meta_url(channel) {
     }
 }
 
-let version = `1.0.${version_from_channel(channel)}.${buildnumber}`;
+let version = `1.1.${version_from_channel(channel)}.${buildnumber}`;
 
 let repo_path = process.env.FFS_SERVICE_REPO_DESC;
 if (!repo_path) {
