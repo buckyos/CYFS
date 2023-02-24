@@ -1,3 +1,23 @@
+## [1.0.0.722] -- 2023/2/24
+0d1eecc5 Add mechanism that trigger immediate update after system config changes  
+64f019fe Fix two log param errors  
+1776889e Add dynamic monitoring mechanism for system-config.toml  
+afb5c68c Add repeated loading supports to system-config.toml in ood-daemon  
+e81821d7 Fix two warning after package updated  
+8a2bba37 Switch meta repo to dynamic dependency on system config  
+1cf5799f Fix: pack script error  
+16eaf64c Fix: Missing app-manager lib.rs  
+de517952 Add app repo downloader for ood-installer  
+4eda0873 Add semver epoch check into ood-daemon  
+06717ad2 Add cache for meta config repo in ood-daemon  
+69f88233 Add meta client helper with object cache  
+0d5e5a69 Add service_version and preview relate supports into ood-daemon for better control of services update  
+7622e76a Add semver support into dec_app core object and with test cases  
+a976a6bf App-tool support change preview service version, pack script add preview version to service  
+b0e496bb Fix the panic that may be caused by check db in cyfs-noc  
+06201fbe Add api edition relate header to requestors  
+12d526f9 Add check mechanism to noc meta db in case of main table missing  
+
 ## [1.0.0.718] -- 2023/2/21  
 1b0cf118 Change sync services packages from parallel to serial  
 638848a2 Remove two spawn task using for cancel on timeout  
