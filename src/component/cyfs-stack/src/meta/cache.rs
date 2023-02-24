@@ -46,7 +46,11 @@ where
         Key: Borrow<Q>,
         Q: Ord,
     {
-        self.list.get(&key).map(|v| v.value.clone())
+        // force remove expired items 
+        self.list.iter();
+
+        // do not update the last used timestamp
+        self.list.peek(&key).map(|v| v.value.clone())
     }
 }
 

@@ -97,7 +97,11 @@ impl MetaFailCacheImpl {
 
     pub fn get(&mut self, key: &MetaCacheKey) -> Option<BuckyError> {
         // 首先查询是不是存在缓存
-        let ret = self.list.get(&key).map(|v| v.error.clone());
+        // force remove expired items 
+        self.list.iter();
+
+        // use peek instead of get, do not update the last use timestamp!
+        let ret = self.list.peek(&key).map(|v| v.error.clone());
         if ret.is_some() {
             return ret;
         }
