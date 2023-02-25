@@ -1,5 +1,5 @@
 use crate::config::*;
-use crate::isolate::PerfIsolate;
+use crate::isolate::PerfIsolateInstance;
 use crate::reporter::*;
 use crate::store::PerfStore;
 use cyfs_base::*;
@@ -22,7 +22,7 @@ pub struct PerfClientInner {
     cyfs_stack: UniCyfsStackRef,
     store: PerfStore,
 
-    isolates: Mutex<HashMap<String, PerfIsolate>>,
+    isolates: Mutex<HashMap<String, PerfIsolateInstance>>,
 
     local_device: DeviceId,
     owner: ObjectId
@@ -139,11 +139,11 @@ impl PerfClientInner {
         Ok(())
     }
 
-    pub fn get_isolate(&self, id: &str) -> PerfIsolate {
+    pub fn get_isolate(&self, id: &str) -> PerfIsolateInstance {
         let mut isolates = self.isolates.lock().unwrap();
         isolates.entry(id.to_owned()).or_insert_with(|| {
             log::info!("create isolate module: id={}", id);
-            PerfIsolate::new(id)
+            PerfIsolateInstance::new(id)
         }).clone()
     }
 }
@@ -164,6 +164,10 @@ impl PerfClient {
         Self(Arc::new(ret))
     }
 
+    pub fn get_isolate(&self, id: &str) -> PerfIsolateInstance {
+        self.0.get_isolate(id)
+    }
+
     pub async fn start(&self) -> BuckyResult<()> {
         self.0.start().await?;
 
@@ -182,5 +186,17 @@ impl Deref for PerfClient {
     type Target = PerfClientInner;
     fn deref(&self) -> &PerfClientInner {
         &self.0
+    }
+}
+
+
+#[async_trait::async_trait]
+impl PerfManager for PerfClient {
+    async fn flush(&self) -> BuckyResult<()> {
+        self.0.flush().await
+    }
+
+    fn get_isolate(&self, id: &str) -> PerfIsolateRef {
+        self.0.get_isolate(id).into_isolate()
     }
 }

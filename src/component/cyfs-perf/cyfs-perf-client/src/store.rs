@@ -59,7 +59,7 @@ impl PerfStore {
     }
 
     // 尝试保存到noc，保存成功后会清空isolates内容
-    pub fn save(&self, isolates: &HashMap<String, PerfIsolate>) {
+    pub fn save(&self, isolates: &HashMap<String, PerfIsolateInstance>) {
         // 锁定状态下，不可修改数据
         if self.is_locked() {
             warn!("perf store still in locked state!");
