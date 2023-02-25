@@ -218,8 +218,11 @@ impl NONOutputTransformer {
 
     async fn put_object(
         &self,
-        req: NONPutObjectOutputRequest,
+        mut req: NONPutObjectOutputRequest,
     ) -> BuckyResult<NONPutObjectOutputResponse> {
+        // Make sure the object field is not empty!
+        req.object.try_decode()?;
+
         let in_req = NONPutObjectInputRequest {
             common: self.convert_common(req.common),
 
@@ -263,8 +266,11 @@ impl NONOutputTransformer {
 
     async fn post_object(
         &self,
-        req: NONPostObjectOutputRequest,
+        mut req: NONPostObjectOutputRequest,
     ) -> BuckyResult<NONPostObjectOutputResponse> {
+        // Make sure the object field is not empty!
+        req.object.try_decode()?;
+
         let in_req = NONPostObjectInputRequest {
             common: self.convert_common(req.common),
 
