@@ -104,7 +104,7 @@ impl AppController {
                         let old_hash = this.sn_hash.read().unwrap().clone();
                         if old_hash != sn_hash {
                             info!("sn list from stack changed, {:?}", &sn_list);
-                            match this.named_cache_client.get().unwrap().reset_sn_list(sn_list).await {
+                            match this.named_cache_client.get().unwrap().reset_known_sn_list(sn_list) {
                                 Ok(_) => {
                                     *this.sn_hash.write().unwrap() = sn_hash;
                                 }
