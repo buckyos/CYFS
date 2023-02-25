@@ -1306,53 +1306,55 @@ impl NamedObjectMeta for SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaPutObjectRequest,
     ) -> BuckyResult<NamedObjectMetaPutObjectResponse> {
-        self.update(req).await
+        perf_scope_request!("noc.meta.put_object", { self.update(req).await })
     }
 
     async fn get_object(
         &self,
         req: &NamedObjectMetaGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectMetaData>> {
-        self.get(req).await
+        perf_scope_request!("noc.meta.get_object", { self.get(req).await })
     }
 
     async fn delete_object(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
-        self.delete(req).await
+        perf_scope_request!("noc.meta.delete_object", { self.delete(req).await })
     }
 
     async fn exists_object(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool> {
-        self.exists(req)
+        perf_scope_request!("noc.meta.exists_object", { self.exists(req) })
     }
 
     async fn update_last_access(
         &self,
         req: &NamedObjectMetaUpdateLastAccessRequest,
     ) -> BuckyResult<bool> {
-        match Self::update_last_access(&self, req)? {
-            n if n >= 1 => Ok(true),
-            _ => Ok(false),
-        }
+        perf_scope_request!("noc.meta.update_last_access", {
+            match Self::update_last_access(&self, req)? {
+                n if n >= 1 => Ok::<bool, BuckyError>(true),
+                _ => Ok(false),
+            }
+        })
     }
 
     async fn update_object_meta(
         &self,
         req: &NamedObjectMetaUpdateObjectMetaRequest,
     ) -> BuckyResult<()> {
-        Self::update_object_meta(&self, req).await
+        perf_scope_request!("noc.meta.update_object_meta", { Self::update_object_meta(&self, req).await })
     }
 
     async fn check_object_access(
         &self,
         req: &NamedObjectMetaCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
-        Self::check_object_access(&self, req).await
+        perf_scope_request!("noc.meta.check_object_access", { Self::check_object_access(&self, req).await })
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {
-        Self::stat(&self).await
+        perf_scope_request!("noc.meta.stat", { Self::stat(&self).await })
     }
 
     fn bind_object_meta_access_provider(
