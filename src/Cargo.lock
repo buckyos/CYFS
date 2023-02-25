@@ -2247,6 +2247,7 @@ dependencies = [
  "cyfs-meta-lib",
  "cyfs-ndc",
  "cyfs-noc",
+ "cyfs-perf-client",
  "cyfs-task-manager",
  "cyfs-tracker-cache",
  "cyfs-util",

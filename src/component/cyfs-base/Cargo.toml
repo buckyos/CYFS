@@ -16,6 +16,7 @@ protoc-bin-vendored = '3'
 [features]
 default = []
 sqlx-error = ['dep:sqlx']
+perf = []
 
 [dependencies]
 cyfs-base-derive = { path = '../cyfs-base-derive', version = '0.5' }
