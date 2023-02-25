@@ -190,6 +190,7 @@ async fn create_global_state_manager() -> GlobalStateManager {
         known_device: vec![],
         known_passive_pn: vec![],
         udp_sn_only: None,
+        sn_mode: SNMode::Default,
     };
     let config = StackGlobalConfig::new(params, bdt_params);
 
