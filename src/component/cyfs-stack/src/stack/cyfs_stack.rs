@@ -42,7 +42,6 @@ use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
     pub ndn_service: Arc<NDNService>,
@@ -570,6 +569,10 @@ impl CyfsStackImpl {
             }
         });
 
+        if param.config.perf_service {
+            let _ = stack.init_perf().await;
+        }
+
         Ok(stack)
     }
 
@@ -754,7 +757,6 @@ impl CyfsStackImpl {
         let task = async_std::task::spawn(async move {
             // 初始化known_objects
             for object in known_objects.list.into_iter() {
-
                 let req = NamedObjectCachePutObjectRequest {
                     source: RequestSourceInfo::new_local_system(),
                     object,
@@ -770,7 +772,7 @@ impl CyfsStackImpl {
         if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
             task.await;
         }
-        
+
         Ok(noc)
     }
 
@@ -1006,6 +1008,44 @@ impl CyfsStackImpl {
         };
 
         processors
+    }
+
+    async fn init_perf(&self) -> BuckyResult<()> {
+        use cyfs_perf_client::*;
+
+        // The same process can only be initialized once, there may be other cyfs-stacks in the same process
+        if !cyfs_base::PERF_MANGER.get().is_none() {
+            warn!("perf manager already initialized!");
+            return Ok(());
+        } 
+
+        let info = self.zone_manager.get_current_info().await?;
+
+        let perf = PerfClient::new(
+            "cyfs-stack".to_owned(),
+            cyfs_base::get_version().to_owned(),
+            None,
+            PerfConfig {
+                reporter: PerfServerConfig::Default,
+                save_to_file: false,
+                report_interval: std::time::Duration::from_secs(60 * 10),
+            },
+            self.open_uni_stack(&None).await,
+            info.device_id.clone(),
+            info.owner_id.clone(),
+        );
+
+        if let Err(e) = perf.start().await {
+            error!("init perf client failed! {}", e);
+        }
+
+        if let Err(_) = cyfs_base::PERF_MANGER.set(Box::new(perf)) {
+            warn!("init perf manager but already initialized!");
+        }
+
+        info!("init perf manager success! current={}", info.device_id);
+        
+        Ok(())
     }
 }
 
