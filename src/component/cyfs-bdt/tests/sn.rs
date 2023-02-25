@@ -80,7 +80,7 @@ async fn call_sn_without_ping() {
         rn_secret, 
         rn_params).await.unwrap();
 
-    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn.clone()]).wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
@@ -168,8 +168,7 @@ async fn reset_sn_list() {
         rn_dev, 
         rn_secret, 
         rn_params).await.unwrap();
-
-    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn1.clone()]).wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
@@ -288,7 +287,7 @@ async fn use_next_sn() {
         rn_secret, 
         rn_params).await.unwrap();
 
-    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn1.clone(), sn2.clone()]).wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
@@ -358,7 +357,7 @@ async fn call_with_tcp() {
         rn_secret, 
         rn_params).await.unwrap();
 
-    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn.clone()]).wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
@@ -428,7 +427,7 @@ async fn sn_with_ipv6() {
         rn_secret, 
         rn_params).await.unwrap();
 
-    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn.clone()]).wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
