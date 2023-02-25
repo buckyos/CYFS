@@ -142,7 +142,7 @@ impl PerfReporterInner {
 
         let perf_server = self.perf_server.as_ref().map(|id| id.object_id().to_owned());
 
-        match self.put_object(&perf_obj, perf_server, 0, self.save_to_local).await {
+        match self.send_perf(perf_obj, perf_server, self.save_to_local).await {
             Ok(_) => {
                 info!(
                     "report perf success! id={}, target={:?}, perf_object={}",
@@ -161,60 +161,58 @@ impl PerfReporterInner {
     }
 
     // NON_REQUEST_FLAG_SIGN_BY_DEVICE | NON_REQUEST_FLAG_SIGN_SET_DESC | NON_REQUEST_FLAG_SIGN_SET_BODY
-    pub async fn put_object(
+    pub async fn send_perf(
         &self,
-        obj: &Perf,
+        obj: Perf,
         target: Option<ObjectId>,
-        sign_flags: u32,
         save_to_local: bool
     ) -> BuckyResult<()>
     {
-        let raw;
+        let raw= obj.to_vec().unwrap();
         let object_id = obj.desc().calculate_id();
-        if sign_flags != 0 {
-            let object_raw = obj.to_vec().unwrap();
-            let req = CryptoSignObjectRequest::new(object_id.clone(), object_raw, sign_flags);
 
-            // 先给Obj签名, 用Client的Device
-            let resp = self.cyfs_stack.crypto_service().sign_object(req).await
-                .map_err(|e| {
-                    error!("{} sign failed, err {}", &object_id, e);
-                    e
-                })?;
-            raw = resp.object.unwrap().object_raw;
+        // 如果存到本地，就直接用put
+        if save_to_local {
+            let mut req = NONPutObjectOutputRequest::new(
+                NONAPILevel::NOC,
+                object_id.clone(), raw);
+            req.common.dec_id = Some(PERF_DEC_ID.clone());
+            match self.cyfs_stack.non_service().put_object(req).await {
+                Ok(_) => {
+                    info!("### save perf obj {} to local success!", &object_id);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("### save perf obj {} to local failed! {}", &object_id, e);
+                    Err(e)
+                }
+            }?;
+            // 存到root_state
+            let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Path);
+            req.common.target = target.clone();
+            req.common.target_dec_id = self.dec_id.clone();
+
+            let resp = self.cyfs_stack.root_state().create_op_env(req).await?;
+            let path_env = PathOpEnvStub::new(resp, target.clone(), self.dec_id.clone());
+            let key = obj.get_time_range().to_string();
+            path_env.set_with_key("/stat", key, &object_id, None, true).await?;
+            path_env.commit().await?;
         } else {
-            raw = obj.to_vec().unwrap();
+            let mut req = NONPostObjectRequest::new_router(target, object_id.clone(), raw);
+            req.common.dec_id = Some(PERF_DEC_ID.clone());
+            req.common.req_path = Some(PERF_REPORT_PATH.to_owned());
+            let str_target = target.map_or("ood".to_owned(), |id| id.to_string());
+            match self.cyfs_stack.non_service().post_object(req).await {
+                Ok(_) => {
+                    info!("### send perf obj {} to {} success!", &object_id, str_target);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("### send perf obj {} to {} failed! {}", &object_id, str_target, e);
+                    Err(e)
+                }
+            }?;
         }
-
-        // 把obj再put出去
-        let target = if save_to_local { None } else { target };
-        let mut req = NONPutObjectOutputRequest::new(
-            if save_to_local { NONAPILevel::NOC } else { NONAPILevel::Router },
-            object_id.clone(), raw);
-        req.common.target = target.clone();
-        req.common.dec_id = obj.desc().dec_id().clone();
-        let str_target = if save_to_local { "local".to_owned() } else {target.map_or("ood".to_owned(), |id| id.to_string())};
-        match self.cyfs_stack.non_service().put_object(req).await {
-            Ok(_) => {
-                info!("### put perf obj {} to {} success!", &object_id, str_target);
-                Ok(())
-            }
-            Err(e) => {
-                error!("### put perf obj [{}] to {} failed! {}", &object_id, str_target, e);
-                Err(e)
-            }
-        }?;
-
-        // 存到root_state
-        let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Path);
-        req.common.target = target.clone();
-        req.common.target_dec_id = self.dec_id.clone();
-
-        let resp = self.cyfs_stack.root_state().create_op_env(req).await?;
-        let path_env = PathOpEnvStub::new(resp, target.clone(), self.dec_id.clone());
-        let key = obj.get_time_range().to_string();
-        path_env.set_with_key("/stat", key, &object_id, None, true).await?;
-        path_env.commit().await?;
 
         Ok(())
     }
