@@ -2074,6 +2074,7 @@ dependencies = [
  "cyfs-lib",
  "cyfs-util",
  "int-enum",
+ "lazy_static",
  "log 0.4.17",
  "protobuf",
  "protoc-bin-vendored",
