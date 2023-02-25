@@ -14,7 +14,7 @@ use wait_timeout::ChildExt;
 const STATUS_CMD_TIME_OUT_IN_SECS: u64 = 15;
 const STOP_CMD_TIME_OUT_IN_SECS: u64 = 60;
 const START_CMD_TIME_OUT_IN_SECS: u64 = 5 * 60;
-const INSTALL_CMD_TIME_OUT_IN_SECS: u64 = 10 * 60;
+const INSTALL_CMD_TIME_OUT_IN_SECS: u64 = 15 * 60;
 
 #[derive(Deserialize, Clone)]
 pub struct DAppInfo {

@@ -431,8 +431,6 @@ impl AppManager {
     }
 
     /* 根据local_status检查app状态
-    Starting,Stopping,Installing,Uninstalling为中间状态，
-    处于此种状态超过一定时间（STATUS_LASTED_TIME_LIMIT_IN_MICROS 10分钟）会进入错误状态。
     已经入错误状态的app不用管。等下一个命令纠正它。
     已经入Running状态的app要确保它正在运行。
     除Running状态的其他非中间状态，不用管。
@@ -451,55 +449,6 @@ impl AppManager {
                 //这里考虑重启ood以后，已经处于running状态的app，如果正在运行，要重启一次，如果没运行，要拉起一次
                 self.check_running_app(&app_id, status.clone()).await;
                 continue;
-            }
-
-            let mut status_clone = None;
-            {
-                //要在锁里操作，因为执行器也可能改变App的状态
-                let mut status = status.lock().unwrap();
-                let status_code = status.status();
-                let status_lasted_time = bucky_time_now() - status.last_status_update_time();
-                let is_lasted_exceeds_limit =
-                    status_lasted_time > STATUS_LASTED_TIME_LIMIT_IN_MICROS;
-                let mut target_status_code = None;
-                if is_lasted_exceeds_limit {
-                    //中间状态超过持续时间，认为失败
-                    match status_code {
-                        AppLocalStatusCode::Starting => {
-                            target_status_code = Some(AppLocalStatusCode::StartFailed);
-                        }
-                        AppLocalStatusCode::Stopping => {
-                            target_status_code = Some(AppLocalStatusCode::StopFailed);
-                        }
-                        AppLocalStatusCode::Installing => {
-                            target_status_code = Some(AppLocalStatusCode::InstallFailed);
-                        }
-                        AppLocalStatusCode::Uninstalling => {
-                            target_status_code = Some(AppLocalStatusCode::UninstallFailed);
-                        }
-                        _ => {
-                            //info!("check status pass, app:{}, status: {}", app_id, v);
-                        }
-                    }
-                }
-
-                match target_status_code {
-                    Some(target_status) => {
-                        info!(
-                            "[STATUS CHECK] will change status by checker, app:{}, from [{}] to [{}], is lasted exceeds limit: {}",
-                            app_id, status_code, target_status, is_lasted_exceeds_limit
-                        );
-
-                        status.set_status(target_status);
-                        status_clone = Some(status.clone());
-                    }
-                    None => {
-                        info!("check status pass, app:{}, status: {}", app_id, status_code);
-                    }
-                }
-            }
-            if let Some(new_status) = status_clone {
-                let _ = self.non_helper.put_local_status(&new_status).await;
             }
         }
     }
