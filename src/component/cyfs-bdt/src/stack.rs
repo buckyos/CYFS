@@ -378,8 +378,7 @@ impl Stack {
         if params.known_sn.is_some() {
             std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
         }
-        stack.reset_sn_list(known_sn);
-        
+        stack.reset_known_sn(known_sn.clone());
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -465,13 +464,16 @@ impl Stack {
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
         info!("{} reset_sn_list {:?}", self, sn_id_list);
-        
+        self.sn_client().reset_sn_list(sn_list)
+    }
+
+    pub fn reset_known_sn(&self, sn_list: Vec<Device>) {
+        let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
+        info!("{} reset_known_sn_list {:?}", self, sn_id_list);
         for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
             self.device_cache().add_static(id, sn);
         }
-        self.sn_client().cache().add_known_sn(&sn_id_list);
-
-        self.sn_client().reset_sn_list(sn_list)
+        self.sn_client().cache().reset_known_sn(&sn_id_list);
     }
 
     pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> PingClients {
