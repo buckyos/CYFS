@@ -71,7 +71,7 @@ impl NamedObjectLocalStorage {
         &self,
         request: &NamedObjectCachePutObjectRequest,
     ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
-        let meta_req = self.gen_meta_put_request(request);
+        let meta_req = self.gen_meta_put_request(request)?;
         let meta_ret = self.meta.put_object(&meta_req).await?;
 
         info!(
@@ -145,8 +145,8 @@ impl NamedObjectLocalStorage {
     fn gen_meta_put_request(
         &self,
         request: &NamedObjectCachePutObjectRequest,
-    ) -> NamedObjectMetaPutObjectRequest {
-        let obj = request.object.object.as_ref().unwrap();
+    ) -> BuckyResult<NamedObjectMetaPutObjectRequest> {
+        let obj = request.object.object_if_none_then_decode()?;
 
         let object_create_time = match obj.create_time() {
             0 => None,
@@ -169,7 +169,7 @@ impl NamedObjectLocalStorage {
             None => AccessString::default().value(),
         };
 
-        NamedObjectMetaPutObjectRequest {
+        Ok(NamedObjectMetaPutObjectRequest {
             source: request.source.clone(),
             object_id: request.object.object_id.clone(),
             owner_id,
@@ -190,7 +190,7 @@ impl NamedObjectLocalStorage {
             context: request.context.clone(),
             last_access_rpath: request.last_access_rpath.clone(),
             access_string,
-        }
+        })
     }
 
     fn merge_body_and_signs(
