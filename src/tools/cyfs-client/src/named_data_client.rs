@@ -187,7 +187,6 @@ impl NamedCacheClient {
             let port = rand::thread_rng().gen_range(30000, 50000) as u16;
             for ip in cyfs_util::get_all_ips().unwrap() {
                 if ip.is_ipv4() {
-                    endpoints.push(Endpoint::from((Protocol::Tcp, ip, port)));
                     endpoints.push(Endpoint::from((Protocol::Udp, ip, port)));
                 }
             }
@@ -242,12 +241,12 @@ impl NamedCacheClient {
         }
     }
 
-    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+    pub fn reset_known_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         if let Some(stack) = self.stack.get() {
             info!("named data client reset sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()
             }).collect::<Vec<ObjectId>>());
-            stack.reset_sn_list(sn_list).wait_online().await?;
+            stack.reset_known_sn(sn_list);
             Ok(())
         } else {
             Err(BuckyError::from(BuckyErrorCode::NotInit))
