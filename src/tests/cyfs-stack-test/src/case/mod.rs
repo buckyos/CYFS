@@ -45,8 +45,6 @@ pub async fn test() {
     
     // role::test().await;
 
-    // meta::test().await;
-
     // crypto::test().await;
 
     noc::test().await;
@@ -60,6 +58,9 @@ pub async fn test() {
     ndn::test().await;
     call::test().await;
     object_meta_access::test().await;
+
+    async_std::task::sleep(std::time::Duration::from_secs(60 * 30)).await;
+    
     return;
 
     test_restart().await;
@@ -69,7 +70,7 @@ pub async fn test() {
     // test_drive::test().await;
 
     events::test().await;
-    // crypto::test().await;
+
     zone::test().await;
 
     non_handlers::test().await;

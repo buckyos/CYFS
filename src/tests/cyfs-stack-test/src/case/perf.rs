@@ -17,7 +17,7 @@ fn new_dec(name: &str) -> ObjectId {
 pub async fn test() {
     let dec_id = new_dec("test-perf");
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-    stack.online().await;
+    stack.online().await.unwrap();
     let device = stack.local_device();
     let owner = device.desc().owner().as_ref().unwrap().clone();
     let device_id = device.desc().device_id();
