@@ -1027,7 +1027,7 @@ impl CyfsStackImpl {
             None,
             PerfConfig {
                 reporter: PerfServerConfig::Default,
-                save_to_file: false,
+                save_to_file: true,
                 report_interval: std::time::Duration::from_secs(60 * 10),
             },
             self.open_uni_stack(&None).await,
@@ -1044,7 +1044,7 @@ impl CyfsStackImpl {
         }
 
         info!("init perf manager success! current={}", info.device_id);
-        
+
         Ok(())
     }
 }
