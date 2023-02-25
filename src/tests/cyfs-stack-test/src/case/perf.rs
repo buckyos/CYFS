@@ -1,7 +1,7 @@
 use std::time::Duration;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_perf_client::{PerfClient, PerfConfig, PerfIsolate, PerfServerConfig};
+use cyfs_perf_client::{PerfClient, PerfConfig, PerfIsolateInstance, PerfServerConfig};
 use zone_simulator::*;
 
 fn new_dec(name: &str) -> ObjectId {
@@ -47,7 +47,7 @@ pub async fn test() {
     // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 }
 
-async fn test_request(perf: PerfIsolate) {
+async fn test_request(perf: PerfIsolateInstance) {
     async_std::task::spawn(async move {
         loop {
             perf.begin_request("connect", "address");
@@ -59,7 +59,7 @@ async fn test_request(perf: PerfIsolate) {
     });
 }
 
-async fn test_acc(perf: PerfIsolate) {
+async fn test_acc(perf: PerfIsolateInstance) {
     async_std::task::spawn(async move {
         loop {
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;

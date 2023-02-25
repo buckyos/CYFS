@@ -114,8 +114,11 @@ impl PerfReporterInner {
             let end: chrono::DateTime<Local> = bucky_time_to_system_time(data.time_range.end).into();
             let pretty_format = "%Y%m%d_%H%M%S";
             let file_name = format!("{}-{}.stat", begin.format(pretty_format), end.format(pretty_format));
-            if let Ok(file) = std::fs::File::create(path.join(file_name)) {
-                serde_json::to_writer_pretty(&file, &data);
+            let file_path = path.join(file_name);
+            if let Ok(file) = std::fs::File::create(&file_path) {
+                if let Err(e) = serde_json::to_writer_pretty(&file, &data) {
+                    error!("save perf data to local file failed! file={}, {}", file_path.display(), e);
+                }
             }
         }
 
