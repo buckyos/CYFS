@@ -12,7 +12,7 @@ async fn main_run() {
     CyfsLoggerBuilder::new_app("cyfs-stack-test")
         .level("debug")
         .console("debug")
-        .enable_bdt(Some("error"), Some("error"))
+        .enable_bdt(Some("debug"), Some("debug"))
         .disable_file_config(true)
         .file(true)
         .build()
