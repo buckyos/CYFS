@@ -14,7 +14,7 @@ use cyfs_stack::CyfsStack;
 use Common::{create_stack, EXAMPLE_RPATH};
 use GroupDecService::DecService;
 
-use crate::Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME};
+use crate::Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME, EXAMPLE_VALUE_PATH};
 
 mod Common {
     use std::{fmt::format, io::ErrorKind, sync::Arc};
@@ -505,8 +505,15 @@ mod GroupDecService {
         DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
-    use cyfs_group::{DelegateFactory, ExecuteResult, GroupObjectMapProcessor, RPathDelegate};
+    use cyfs_group::{
+        DelegateFactory, ExecuteResult, GroupObjectMapProcessor, RPathControl, RPathDelegate,
+    };
+    use cyfs_lib::{
+        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestSourceInfo,
+        RouterHandlerChain,
+    };
     use cyfs_stack::CyfsStack;
+    use cyfs_util::EventListenerAsyncRoutine;
 
     use crate::Common::{EXAMPLE_VALUE_PATH, STATE_PATH_SEPARATOR};
 
@@ -522,9 +529,41 @@ mod GroupDecService {
                     Box::new(GroupRPathDelegateFactory { local_name }),
                 )
                 .await
-                .unwrap()
+                .unwrap();
+
+            // let source = RequestSourceInfo {
+            //     protocol: todo!(),
+            //     zone: todo!(),
+            //     dec: todo!(),
+            //     verified: todo!(),
+            // };
+
+            // cyfs_stack
+            //     .router_handlers()
+            //     .handlers(&RouterHandlerChain::PostRouter)
+            //     .post_object()
+            //     .add_handler(RouterHandler::new());
         }
     }
+
+    // pub struct PostProposalRoutine {
+    //     controller: RPathControl,
+    // }
+
+    // #[async_trait::async_trait]
+    // impl EventListenerAsyncRoutine<NONPostObjectInputRequest, NONPostObjectInputResponse>
+    //     for PostProposalRoutine
+    // {
+    //     async fn call(
+    //         &self,
+    //         param: &NONPostObjectInputRequest,
+    //     ) -> BuckyResult<NONPostObjectInputResponse> {
+    //         let (proposal, remain) = GroupProposal::raw_decode(param.object.object_raw.as_slice())?;
+    //         assert_eq!(remain.len(), 0);
+    //         self.controller.push_proposal(proposal).await?;
+    //         Ok(NONPostObjectInputResponse { object: None })
+    //     }
+    // }
 
     pub struct GroupRPathDelegateFactory {
         local_name: String,
@@ -778,6 +817,16 @@ mod GroupDecService {
                 .execute(proposal, pre_state_id, object_map_processor)
                 .await?;
 
+            log::info!(
+                "verify expect: {:?}/{}/{}, got: {:?}/{}/{}",
+                execute_result.result_state_id,
+                execute_result.context.is_none(),
+                execute_result.receipt.is_none(),
+                result.result_state_id,
+                result.context.is_none(),
+                result.receipt.is_none()
+            );
+
             let is_ok = execute_result.result_state_id == result.result_state_id
                 && execute_result.context.is_none()
                 && execute_result.receipt.is_none();
@@ -1007,7 +1056,7 @@ async fn main_run() {
 
     log::info!("proposals will be prepared.");
 
-    let PROPOSAL_COUNT = 1000usize;
+    let PROPOSAL_COUNT = 5usize;
     for i in 1..PROPOSAL_COUNT {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
         let owner = &admins.get(i % admins.len()).unwrap().0 .0;
@@ -1085,6 +1134,28 @@ async fn main_run() {
             log::info!("will push new proposals, i: {}", i);
         }
     }
+
+    let client = admin_stacks
+        .get(0)
+        .unwrap()
+        .group_mgr()
+        .rpath_client(
+            &group.desc().object_id(),
+            dec_app_id.object_id(),
+            &EXAMPLE_RPATH,
+        )
+        .await
+        .unwrap();
+
+    let value_obj = client
+        .get_by_path(EXAMPLE_VALUE_PATH.as_str())
+        .await
+        .unwrap();
+    let buf = value_obj.as_ref().unwrap().object_id.data();
+    let mut value = [0u8; 8];
+    value.copy_from_slice(&buf[..8]);
+
+    log::info!("value from client is: {}", u64::from_be_bytes(value));
 }
 
 fn main() {
