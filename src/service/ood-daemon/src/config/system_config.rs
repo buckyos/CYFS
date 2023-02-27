@@ -41,6 +41,10 @@ impl SystemConfig {
         }
     }
 
+    pub fn compare(&self, other: &SystemConfig) -> bool {
+        *self == *other
+    }
+    
     pub async fn load_config(&mut self) -> BuckyResult<()> {
         let config_file = PATHS.system_config.clone();
 
