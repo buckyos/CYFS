@@ -7,6 +7,7 @@ use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_lib::NONObjectInfo;
+use itertools::Itertools;
 use sha2::Digest;
 
 use crate::GroupRPathStatus;
@@ -185,12 +186,13 @@ impl std::fmt::Debug for HotstuffMessage {
                     result.as_ref().map(|status| {
                         let desc = status.block_desc.content();
                         format!(
-                            "({:?}/{:?}, {}/{}/{})",
+                            "({:?}/{:?}, {}/{}/{}) sub-count: {:?}",
                             desc.result_state_id(),
                             status.block_desc.object_id(),
                             desc.height(),
                             desc.round(),
-                            status.certificate.round
+                            status.certificate.round,
+                            status.status_map.iter().map(|(key, _)| key).collect_vec()
                         )
                     })
                 )
@@ -315,12 +317,13 @@ impl std::fmt::Debug for HotstuffPackage {
                         |status| {
                             let desc = status.block_desc.content();
                             let ok = format!(
-                                "({:?}/{:?}, {}/{}/{})",
+                                "({:?}/{:?}, {}/{}/{}) sub-count: {:?}",
                                 desc.result_state_id(),
                                 status.block_desc.object_id(),
                                 desc.height(),
                                 desc.round(),
-                                status.certificate.round
+                                status.certificate.round,
+                                status.status_map.iter().map(|(key, _)| key).collect_vec()
                             );
                             Ok(ok)
                         }

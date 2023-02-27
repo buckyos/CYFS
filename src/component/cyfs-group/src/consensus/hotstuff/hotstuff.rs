@@ -4,7 +4,7 @@ use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
     ObjectDesc, ObjectId, ObjectLink, OwnerObjectDesc, RawConvertTo, RawDecode, RawEncode,
-    RsaCPUObjectSigner, SignatureSource, Signer,
+    RsaCPUObjectSigner, SignatureSource, Signer, ObjectTypeCode,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -19,11 +19,13 @@ use crate::{
     consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
     ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
     PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT,
+    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT, GroupObjectMapProcessor,
 };
 
 /**
  * TODO: generate empty block when the 'Node' is synchronizing
+ * 
+ * synchronizing: max_quorum_round - round > THRESHOLD
 */
 
 pub(crate) struct Hotstuff {
@@ -212,6 +214,7 @@ struct HotstuffRunner {
     round: u64,                       // 当前轮次
     high_qc: Option<HotstuffBlockQC>, // 最后一次通过投票的确认信息
     tc: Option<HotstuffTimeout>,
+    max_quorum_round: u64,
     timer: Timer, // 定时器
     vote_mgr: VoteMgr,
     network_sender: crate::network::Sender,
@@ -311,6 +314,7 @@ impl HotstuffRunner {
             proposal_consumer,
             rx_proposal_waiter: None,
             tc,
+            max_quorum_round: round - 1,
             state_pusher,
             tx_block_gen,
             rx_block_gen,
@@ -366,15 +370,6 @@ impl HotstuffRunner {
             }
         }
 
-        let prev_block = match self.check_block_linked(&block, remote).await {
-            Ok(link) => link,
-            Err(err) => return err
-        };
-
-        log::debug!("[hotstuff] local: {:?}, handle_block-step3: {:?}",
-            self,
-            block.block_id());
-
         self.committee
             .verify_block(block, remote)
             .await
@@ -387,6 +382,18 @@ impl HotstuffRunner {
                 );
                 err
             })?;
+
+        let quorum_round = block.qc().as_ref().map_or(0, |qc| qc.round);
+        self.update_max_quorum_round(quorum_round);
+
+        log::debug!("[hotstuff] local: {:?}, handle_block-step3: {:?}",
+            self,
+            block.block_id());
+
+        let prev_block = match self.check_block_linked(&block, remote).await {
+            Ok(link) => link,
+            Err(err) => return err
+        };
 
         log::debug!("[hotstuff] local: {:?}, handle_block-step4: {:?}",
             self,
@@ -452,10 +459,19 @@ impl HotstuffRunner {
         block: &GroupConsensusBlock,
         proposals: &HashMap<ObjectId, GroupProposal>,
         prev_block: &Option<GroupConsensusBlock>,
+        remote: &ObjectId,
     ) -> BuckyResult<()> {
-        let mut prev_state_id = prev_block
-            .as_ref()
-            .map_or(None, |block| block.result_state_id().clone());
+        let mut prev_state_id = match prev_block
+            .as_ref() {
+                Some(prev_block) => {
+                    let result_state_id = block.result_state_id();
+                    if let Some(result_state_id) = result_state_id {
+                        self.make_sure_result_state(result_state_id, &[prev_block.owner(), remote]).await?;
+                    }
+                    result_state_id.clone()
+                },
+                None => None
+            };
 
         for proposal_exe_info in block.proposals() {
             // 去重
@@ -672,7 +688,7 @@ impl HotstuffRunner {
             err
         })?;
 
-        if let Some(header_block) = new_header_block.map(|b| b.0.clone()) {
+        if let Some((header_block, old_header_block)) = new_header_block.map(|(header_block, old_header_block, _discard_blocks)| (header_block.clone(), old_header_block)) {
             log::info!(
                 "[hotstuff] local: {:?}, new header-block {:?} committed",
                 self, header_block.block_id()
@@ -696,29 +712,18 @@ impl HotstuffRunner {
                 .next()
                 .expect("the pre-commit block must exist.");
 
-            self.notify_block_committed(header_block.clone(), qc_block).await;
+            self.notify_block_committed(&header_block, &old_header_block, qc_block).await;
 
             log::debug!(
                 "[hotstuff] local: {:?}, process_block-step2 {:?}",
                 self, block.block_id()
             );
 
-            let leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
-                log::warn!(
-                    "[hotstuff] local: {:?}, get leader in round {} failed {:?}",
-                    self, self.round, err
-                );
-
-                err
-            });
-
             // notify by leader
-            if let Ok(leader) = leader {
-                if self.local_device_id == leader {
-                    self.state_pusher
-                        .notify_block_commit(header_block, qc_block.clone())
-                        .await;
-                }
+            if &self.local_id == header_block.owner() {
+                self.state_pusher
+                    .notify_block_commit(header_block, qc_block.clone())
+                    .await;
             }
 
             log::debug!(
@@ -733,7 +738,7 @@ impl HotstuffRunner {
                     "[hotstuff] local: {:?}, the qc of block {:?} has received before",
                     self, block.block_id()
                 );
-                return self.process_block_qc(qc, block, remote).await;
+                return self.process_block_qc(qc, block).await;
             },
             VoteThresholded::TC(tc, max_high_qc_block) => {
                 log::debug!(
@@ -762,7 +767,7 @@ impl HotstuffRunner {
             return Ok(());
         }
 
-        if let Some(vote) = self.make_vote(block, proposals).await {
+        if let Some(vote) = self.make_vote(block, proposals, &remote).await {
             log::info!("[hotstuff] local: {:?}, vote to block {}, round: {}",
                 self, block.block_id(), block.round());
 
@@ -791,22 +796,12 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn notify_block_committed(&self, new_header: GroupConsensusBlock, qc_block: &GroupConsensusBlock) -> BuckyResult<()> {
-        let mut pre_state_id = match new_header.prev_block_id() {
-            Some(block_id) => self
-                .non_driver
-                .get_block(block_id, None)
-                .await.map_err(|err| {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, get prev-block {:?} before commit-notify failed {:?}",
-                        self, block_id, err
-                    );
-                    err
-                })?
-                .result_state_id()
-                .clone(),
-            None => None,
-        };
+    async fn notify_block_committed(&self, new_header: &GroupConsensusBlock, old_header_block: &Option<GroupConsensusBlock>, qc_block: &GroupConsensusBlock) -> BuckyResult<()> {
+        assert_eq!(new_header.prev_block_id(), old_header_block.as_ref().map(|b| b.block_id().object_id()));
+
+        let mut pre_state_id = old_header_block
+            .as_ref()
+            .map_or(None, |b| b.result_state_id().clone());
 
         for proposal in new_header.proposals() {
             let proposal_obj = self
@@ -900,6 +895,12 @@ impl HotstuffRunner {
         }
     }
 
+    fn update_max_quorum_round(&mut self, quorum_round: u64) {
+        if quorum_round > self.max_quorum_round {
+            self.max_quorum_round = quorum_round;
+        }
+    }
+
     async fn cleanup_proposal(&mut self, commited_block: &GroupConsensusBlock) -> BuckyResult<()> {
         let proposals = commited_block
             .proposals()
@@ -922,10 +923,17 @@ impl HotstuffRunner {
             .await;
     }
 
-    async fn make_vote(&mut self, block: &GroupConsensusBlock, mut proposals: &HashMap<ObjectId, GroupProposal>) -> Option<HotstuffBlockQCVote> {
+    async fn make_vote(&mut self, block: &GroupConsensusBlock, mut proposals: &HashMap<ObjectId, GroupProposal>, remote: &ObjectId) -> Option<HotstuffBlockQCVote> {
         if block.round() <= self.store.last_vote_round() {
             log::debug!("[hotstuff] local: {:?}, make vote ignore for timeouted block {}/{}, last vote roud: {}",
                 self, block.block_id(), block.round(), self.store.last_vote_round());
+
+            return None;
+        }
+
+        if self.max_quorum_round >= self.round {
+            log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{}.",
+                self, block.block_id(), block.round(), self.max_quorum_round, self.round);
 
             return None;
         }
@@ -1002,6 +1010,10 @@ impl HotstuffRunner {
         }
 
         if !Self::check_timestamp_precision(block, prev_block.as_ref(), proposals) {
+            log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for timestamp mismatch",
+                self,
+                block.block_id(),
+            );
             return None;
         }
 
@@ -1016,43 +1028,14 @@ impl HotstuffRunner {
             return None;
         }
 
-        let check_proposal_results =
-            futures::future::join_all(block.proposals().iter().map(|proposal_result| async {
-                match block.prev_block_id() {
-                    Some(prev_block_id) => self.store.is_proposal_finished(&proposal_result.proposal, prev_block_id)
-                        .await.map(|is_finished| (is_finished, &proposal_result.proposal)),
-                    None => Ok((false, &proposal_result.proposal))
-                }
-            }))
-            .await;
-
-        for check_result in check_proposal_results {
-            match check_result {
-                Ok((is_finished, proposal_id)) => {
-                    if is_finished {
-                        log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for proposals {:?} duplicate",
-                            self,
-                            block.block_id(),
-                            proposal_id
-                        );
-                        return None;
-                    }
-                },
-                Err(err) => {
-                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore check duplicate failed {:?}",
-                        self,
-                        block.block_id(),
-                        err
-                    );
-                    return None;
-                },
-            }
+        if let Err(err) = self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block, remote).await {
+            log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for app verify failed {:?}",
+                self,
+                block.block_id(),
+                err
+            );
+            return None;
         }
-
-        if self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
-            .await.is_err() {
-                return None;
-            }
 
         log::debug!("[hotstuff] local: {:?}, make-vote before sign {}, round: {}",
             self, block.block_id(), block.round());
@@ -1075,7 +1058,12 @@ impl HotstuffRunner {
             }
         };
 
-        if self.store.set_last_vote_round(block.round()).await.is_err() {
+        if let Err(err) = self.store.set_last_vote_round(block.round()).await {
+            log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for update last-vote-round failed {:?}",
+                self,
+                block.block_id(),
+                err
+            );
             return None;
         }
 
@@ -1086,23 +1074,39 @@ impl HotstuffRunner {
         let now = SystemTime::now();
         let block_timestamp = bucky_time_to_system_time(block.named_object().desc().create_time());
         if Self::calc_time_delta(now, block_timestamp) > TIME_PRECISION {
+            log::warn!("[hotstuff] block {} check timestamp {:?} failed with now {:?}",
+                block.block_id(),
+                block_timestamp,
+                now
+            );
+
             false
         } else {
             if let Some(prev_block) = prev_block {
-                let prev_block_time = bucky_time_to_system_time(
-                    prev_block.named_object().desc().create_time(),
-                );
+                let prev_block_time = bucky_time_to_system_time(prev_block.named_object().desc().create_time());
                 if let Ok(duration) = prev_block_time.duration_since(block_timestamp) {
                     if duration > TIME_PRECISION {
+                        log::warn!("[hotstuff] block {} check timestamp {:?} failed with prev-block {:?}",
+                            block.block_id(),
+                            block_timestamp,
+                            prev_block_time
+                        );
                         return false
                     }
                 }                
             }
 
             for proposal in block.proposals() {
-                let proposal = proposals.get(&proposal.proposal).expect("should load all proposals");
+                let proposal_id = proposal.proposal;
+                let proposal = proposals.get(&proposal_id).expect("should load all proposals");
                 let proposal_timestamp = bucky_time_to_system_time(proposal.desc().create_time());
                 if Self::calc_time_delta(block_timestamp, proposal_timestamp) > TIME_PRECISION {
+                    log::warn!("[hotstuff] block {} check timestamp {:?} failed with proposal({:?}) {:?}",
+                        block.block_id(),
+                        block_timestamp,
+                        proposal_id,
+                        proposal_timestamp
+                    );
                     return false
                 }
             }
@@ -1174,7 +1178,7 @@ impl HotstuffRunner {
                 if is_prev_none {"None"} else {"Some"}
             );
 
-            self.process_block_qc(qc, &block, remote).await?;
+            self.process_block_qc(qc, &block).await?;
         } else if vote.round > self.round && is_prev_none {
             self.fetch_block(&vote.block_id, remote).await?;
         }
@@ -1185,7 +1189,6 @@ impl HotstuffRunner {
         &mut self,
         qc: HotstuffBlockQC,
         prev_block: &GroupConsensusBlock,
-        remote: ObjectId,
     ) -> BuckyResult<()> {
         let qc_block_id = qc.block_id;
         let qc_round = qc.round;
@@ -1334,7 +1337,10 @@ impl HotstuffRunner {
                 .collect::<Vec<String>>(),
             max_high_qc_block.as_ref().map(|qc| qc.prev_block_id())
         );
-        
+
+        let quorum_round = tc.round;
+        self.update_max_quorum_round(quorum_round);
+
         self.store.save_tc(&tc).await?;
 
         self.advance_round(tc.round).await;
@@ -1453,6 +1459,9 @@ impl HotstuffRunner {
 
         log::debug!("[hotstuff] local: {:?},  save-tc round {}", self, tc.round);
 
+        let quorum_round = tc.round;
+        self.update_max_quorum_round(quorum_round);
+
         self.store.save_tc(&tc).await?;
 
         self.advance_round(tc.round).await;
@@ -1501,8 +1510,7 @@ impl HotstuffRunner {
             self.round,
             self.local_device_id,
             &self.signer,
-        )
-        .await.map_err(|err| {
+        ).await.map_err(|err| {
             log::warn!(
                 "[hotstuff] local: {:?}, local_timeout_round create new timeout-vote failed {:?}",
                 self, err
@@ -1541,7 +1549,13 @@ impl HotstuffRunner {
         proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
         let prev_block = match self.high_qc.as_ref() {
-            Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id)?),
+            Some(qc) => {
+                let prev_block = self.store.find_block_in_cache(&qc.block_id)?;
+                if let Some(result_state_id) = prev_block.result_state_id() {
+                    self.make_sure_result_state(result_state_id, &[prev_block.owner()]).await?;
+                }
+                Some(prev_block)
+            },
             None => None,
         };
         let latest_group = self.committee.get_group(None).await.map_err(|err| {
@@ -1938,6 +1952,58 @@ impl HotstuffRunner {
         let group_chunk = ChunkMeta::from(&latest_group).to_chunk().await?;
         let latest_chunk_id = group_chunk.calculate_id();
         Ok(latest_chunk_id.as_object_id() == group_chunk_id)
+    }
+
+    async fn make_sure_result_state(&self, result_state_id: &ObjectId, remotes: &[&ObjectId]) -> BuckyResult<()> {
+        // TODO: 需要一套通用的同步ObjectMap树的实现，这里缺少对于异常的处理
+        let obj_map_processor = self.store.get_object_map_processor();
+
+        #[async_recursion::async_recursion]
+        async fn make_sure_sub_tree(root_id: &ObjectId, non_driver: crate::network::NONDriverHelper, remote: &ObjectId, obj_map_processor: &dyn GroupObjectMapProcessor) -> BuckyResult<()> {
+            if non_driver.get_object(&root_id, None).await.is_ok() {
+                // TODO: 可能有下级分支子树因为异常不齐全
+                return Ok(());
+            }
+            let obj = non_driver.get_object(root_id, Some(remote)).await?;
+            match obj.object.as_ref() {
+                Some(obj) if obj.obj_type_code() == ObjectTypeCode::ObjectMap => {
+                    let single_op_env = obj_map_processor.create_single_op_env().await?;
+                    single_op_env.load(root_id).await?;
+                    loop {
+                        let branchs = single_op_env.next(16).await?;
+                        for branch in branchs.list.iter() {
+                            let branch_id = match branch {
+                                cyfs_base::ObjectMapContentItem::DiffMap(diff_map) => match diff_map.1.altered.as_ref() {
+                                    Some(branch_id) => branch_id,
+                                    None => continue,
+                                },
+                                cyfs_base::ObjectMapContentItem::Map(map) => &map.1,
+                                cyfs_base::ObjectMapContentItem::DiffSet(diff_set) => match diff_set.altered.as_ref() {
+                                    Some(branch_id) => branch_id,
+                                    None => continue,
+                                },
+                                cyfs_base::ObjectMapContentItem::Set(set) => set,
+                            };
+                            make_sure_sub_tree(branch_id, non_driver.clone(), remote, obj_map_processor).await?;
+                        }
+
+                        if branchs.list.len() < 16 {
+                            return Ok(())
+                        }
+                    }
+                },
+                _ => return Ok(())
+            }
+        }
+
+        let mut result = Ok(());
+        for remote in remotes {
+            result = make_sure_sub_tree(result_state_id, self.non_driver.clone(), remote, obj_map_processor).await;
+            if result.is_ok() {
+                return result;
+            }
+        }
+        result
     }
 
     async fn recover(&mut self) {
