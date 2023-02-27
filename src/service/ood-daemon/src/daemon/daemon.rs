@@ -9,7 +9,7 @@ use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering, AtomicBool};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -49,6 +49,7 @@ pub struct Daemon {
     no_monitor: bool,
     last_active: Arc<ActionActive>,
     check_update_waker: Arc<Mutex<Option<AbortHandle>>>,
+    wakedup_once: Arc<AtomicBool>,
 }
 
 impl Daemon {
@@ -59,6 +60,7 @@ impl Daemon {
             no_monitor,
             last_active: Arc::new(ActionActive::default()),
             check_update_waker: Arc::new(Mutex::new(None)),
+            wakedup_once: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -92,6 +94,9 @@ impl Daemon {
         if let Some(abort_handle) = self.check_update_waker.lock().unwrap().take() {
             info!("will wakeup check update now!");
             abort_handle.abort();
+        } else {
+            info!("wakeup check udpate but still in checking loop! now will mark");
+            self.wakedup_once.store(true, Ordering::SeqCst);
         }
     }
 
@@ -186,11 +191,16 @@ impl Daemon {
                 }
             }
 
-            // 检查绑定状态
+            let ret = self.wakedup_once.swap(false, Ordering::SeqCst);
+            if ret {
+                continue;
+            }
+
             let timer = task::sleep(Duration::from_secs(60 * 30));
 
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
 
+            // check ood's binding status
             if !OOD_CONTROLLER.is_bind() {
                 *notify.abort_handle.lock().unwrap() = Some(abort_handle.clone());
             }
@@ -198,6 +208,7 @@ impl Daemon {
 
             match Abortable::new(timer, abort_registration).await {
                 Ok(_) => {
+                    self.check_update_waker.lock().unwrap().take();
                     debug!("check update loop wait timeout, now will check once");
                 }
                 Err(futures::future::Aborted { .. }) => {
