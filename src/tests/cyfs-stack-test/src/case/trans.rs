@@ -603,6 +603,8 @@ async fn test_shared_data() {
         unreachable!();
     }
 
+    info!("pub chunk as shared data success!");
+    
     {
         let req = NDNGetDataRequest::new_ndc(id.object_id().to_owned(), None);
 
@@ -620,7 +622,10 @@ async fn test_shared_data() {
         let new_id = shared_chunk.calculate_id();
         assert_eq!(new_id, id);
     }
+
+    info!("test shared data success!");
 }
+
 async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) {
     let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("trans");
     let local_path = data_dir.join("test-chunk");
