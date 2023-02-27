@@ -69,6 +69,10 @@ impl DecStorage {
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         for folder in sub_path.split(STATE_PATH_SEPARATOR) {
+            if folder.len() == 0 {
+                continue;
+            }
+
             let parent_state = match verifiable_status.status_map.get(&parent_state_id) {
                 Some(state) => state,
                 None => return Ok(None),
@@ -98,6 +102,8 @@ impl DecStorage {
             assert_eq!(remain.len(), 0);
 
             let sub_map_id = parent.get_by_key(&cache, folder).await?;
+            log::debug!("get sub-folder {} result: {:?}", folder, sub_map_id);
+
             match sub_map_id {
                 Some(sub_map_id) => {
                     // for next folder
