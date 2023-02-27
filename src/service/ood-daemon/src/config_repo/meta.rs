@@ -333,29 +333,35 @@ impl DeviceConfigMetaRepo {
         let service = self.load_service(service_id).await?;
 
         // first find the correct version
-        let config_version = match &get_system_config().service_version {
-            ServiceVersion::Default => version_in_service_list.to_owned(),
-            ServiceVersion::Specific(v) => v.clone(),
+        let version = match &get_system_config().service_version {
+            ServiceVersion::Default => {
+                // direct use the full version configed in the service list
+                version_in_service_list
+            },
+            ServiceVersion::Specific(config_version) => {
+                let preview = match get_system_config().preview {
+                    true => Some("preview"),
+                    false => None,
+                };
+        
+                let (version, semver) = service.find_version(&config_version, preview).map_err(|e| {
+                    let msg = format!(
+                        "find version from service object failed! id={}, configed version={}, preview={:?}, {}",
+                        service_id, config_version, preview, e,
+                    );
+                    error!("{}", msg);
+        
+                    BuckyError::new(BuckyErrorCode::NotFound, msg)
+                })?;
+        
+                // check if the target service version is valid
+                SemVerEpochCheck::check_version_with_semver_epoch(&semver)?;
+
+                version
+            }
         };
 
-        let preview = match get_system_config().preview {
-            true => Some("preview"),
-            false => None,
-        };
-
-        let (version, semver) = service.find_version(&config_version, preview).map_err(|e| {
-            let msg = format!(
-                "find version from service object failed! id={}, configed version={}, preview={:?}, {}",
-                service_id, config_version, preview, e,
-            );
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::NotFound, msg)
-        })?;
-
-        // check if the target service version is valid
-        SemVerEpochCheck::check_version_with_semver_epoch(&semver)?;
-
+        
         let ret = service.find_source(&version);
         if ret.is_err() {
             let msg = format!(
