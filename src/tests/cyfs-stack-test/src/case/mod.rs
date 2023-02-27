@@ -42,7 +42,8 @@ pub async fn test() {
         shared_stack::test().await;
     });
 
-    
+    test_restart().await;
+
     // role::test().await;
 
     // crypto::test().await;
@@ -59,29 +60,24 @@ pub async fn test() {
     call::test().await;
     object_meta_access::test().await;
 
+    test_obj_searcher::test().await;
+    events::test().await;
+    zone::test().await;
+    // mnemonic::test().await;
+    app_manager::test().await;
+    trans::test().await;
+
     async_std::task::sleep(std::time::Duration::from_secs(60 * 30)).await;
-    
+
     return;
 
-    test_restart().await;
-
-    test_obj_searcher::test().await;
-
+    
     // test_drive::test().await;
-
-    events::test().await;
-
-    zone::test().await;
 
     non_handlers::test().await;
     //non_file::test().await;
 
-    trans::test().await;
-
     router_handlers::test().await;
-
-    //mnemonic::test().await;
-    app_manager::test().await;
 
     admin::test().await;
     sync::test().await;
