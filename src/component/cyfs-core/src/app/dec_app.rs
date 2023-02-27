@@ -219,8 +219,8 @@ impl DecAppObj for DecApp {
 
         let req_version = semver::VersionReq::parse(req_semver).map_err(|e| {
             let msg = format!(
-                "invalid semver request string! id={}, name={}, value={}, {}",
-                id, name, req_semver, e
+                "invalid semver request string! id={}, name={}, value={}, pre={:?}, {}",
+                id, name, req_semver, pre, e
             );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
@@ -241,8 +241,8 @@ impl DecAppObj for DecApp {
         for (version, new_version) in list {
             let mut semver = semver::Version::parse(&new_version).map_err(|e| {
                 let msg = format!(
-                    "invalid semver string! id={}, name={}, value={}, {}",
-                    id, name, version, e,
+                    "invalid semver string! id={}, name={}, value={}, pre={:?}, {}",
+                    id, name, version, pre, e,
                 );
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
@@ -267,8 +267,8 @@ impl DecAppObj for DecApp {
         let ret = semver_list.iter().find(|(version, semver)| {
             if req_version.matches(semver) {
                 info!(
-                    "app version matched: id={}, name={}, req={}, got={}",
-                    id, name, req_semver, version
+                    "app version matched: id={}, name={}, req={}, got={}, prev={:?}",
+                    id, name, req_semver, version, pre,
                 );
                 true
             } else {
