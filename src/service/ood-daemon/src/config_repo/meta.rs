@@ -450,13 +450,30 @@ impl DeviceConfigMetaRepo {
         // 从mete-chain拉取对应的service_list
         let service_list = self.load_service_list(&current_system_config).await?;
 
+        let mut service_list_is_the_same = None;
+
         // Only in the default version case, it will use the cache of servicelist
         if current_system_config.service_version.is_default() {
             let cache = self.cache.lock().unwrap();
             if let Some(cache) = &*cache {
-                if cache.system_config.compare(&current_system_config) && Self::compare_service_list(&cache.service_list, &service_list) {
+                service_list_is_the_same = Some(Self::compare_service_list(&cache.service_list, &service_list));
+                if cache.system_config.compare(&current_system_config) && service_list_is_the_same == Some(true)  {
                     return Ok(cache.device_config_str.clone());
                 }
+            }
+        }
+
+        {
+            if service_list_is_the_same.is_none() {
+                let cache = self.cache.lock().unwrap();
+                if let Some(cache) = &*cache {
+                    service_list_is_the_same = Some(Self::compare_service_list(&cache.service_list, &service_list));
+                }
+            }
+            
+            if service_list_is_the_same == Some(false) {
+                warn!("service list changed! now will clear meta cache");
+                self.clear_cache().await;
             }
         }
 
