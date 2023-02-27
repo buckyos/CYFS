@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, Signature,
+    BuckyError, BuckyErrorCode, BuckyResult, ObjectId, Signature,
 };
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, HotstuffBlockQC, HotstuffBlockQCSign,

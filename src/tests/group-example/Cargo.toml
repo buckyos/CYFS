@@ -28,3 +28,4 @@ cyfs-group = { path = '../../component/cyfs-group' }
 cyfs-stack = { path = '../../component/cyfs-stack' }
 cyfs-meta-lib = { path = '../../component/cyfs-meta-lib' }
 cyfs-bdt-ext = { path = '../../component/cyfs-bdt-ext' }
+cyfs-util = { path = '../../component/cyfs-util' }

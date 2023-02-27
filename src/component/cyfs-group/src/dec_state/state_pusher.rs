@@ -13,7 +13,7 @@ use crate::{HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND};
 
 enum StatePushMessage {
     ProposalResult(GroupProposal, BuckyError),
-    BlockCommit(GroupConsensusBlock, GroupConsensusBlock),
+    BlockCommit(GroupConsensusBlock, GroupConsensusBlock), // <header, qc>
     LastStateRequest(ObjectId),
     DelayBroadcast,
 }
