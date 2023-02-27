@@ -2,14 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId, ObjectMap,
-    ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawDecode,
+    ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawConvertTo, RawDecode,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, HotstuffBlockQC,
     HotstuffTimeout,
 };
-use cyfs_lib::GlobalStateManagerRawProcessorRef;
+use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 
 use crate::{
     storage::StorageWriter, GroupObjectMapProcessor, GroupRPathStatus, GroupStatePath,
@@ -223,7 +223,13 @@ impl GroupStorage {
     pub async fn push_block(
         &mut self,
         block: GroupConsensusBlock,
-    ) -> BuckyResult<Option<(&GroupConsensusBlock, Vec<GroupConsensusBlock>)>> {
+    ) -> BuckyResult<
+        Option<(
+            &GroupConsensusBlock,
+            Option<GroupConsensusBlock>,
+            Vec<GroupConsensusBlock>,
+        )>,
+    > {
         let header_height = self.header_height();
         assert!(block.height() > header_height && block.height() <= header_height + 3);
 
@@ -399,9 +405,10 @@ impl GroupStorage {
                     }
                 }
 
-                self.cache.header_block = Some(new_header);
+                let old_header_block = self.cache.header_block.replace(new_header);
                 return Ok(Some((
                     self.cache.header_block.as_ref().unwrap(),
+                    old_header_block,
                     removed_blocks,
                 )));
             }
@@ -736,6 +743,7 @@ impl GroupStorage {
     }
 
     pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
+        // TODO: 需要一套通用的同步ObjectMap树的实现
         let (header_block, qc) = match self.cache.header_block.as_ref() {
             Some(block) => {
                 let (_, qc_block) = self
@@ -778,6 +786,9 @@ impl GroupStorage {
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         for folder in sub_path.split(STATE_PATH_SEPARATOR) {
+            if folder.len() == 0 {
+                continue;
+            }
             let parent_state = self.non_driver.get_object(&parent_state_id, None).await?;
 
             if ObjectTypeCode::ObjectMap != parent_state.object().obj_type_code() {
@@ -806,6 +817,8 @@ impl GroupStorage {
             status_map.insert(parent_state_id, parent_state);
 
             let sub_map_id = parent.get_by_key(&cache, folder).await?;
+            log::debug!("get sub-folder {} result: {:?}", folder, sub_map_id);
+
             match sub_map_id {
                 Some(sub_map_id) => {
                     // for next folder
@@ -821,7 +834,11 @@ impl GroupStorage {
             }
         }
 
-        let leaf_state = self.non_driver.get_object(&parent_state_id, None).await?;
+        let leaf_state = if parent_state_id.is_data() {
+            NONObjectInfo::new(parent_state_id, parent_state_id.to_vec()?, None)
+        } else {
+            self.non_driver.get_object(&parent_state_id, None).await?
+        };
         status_map.insert(parent_state_id, leaf_state);
 
         return Ok(GroupRPathStatus {

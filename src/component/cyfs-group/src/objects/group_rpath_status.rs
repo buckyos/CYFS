@@ -69,8 +69,25 @@ impl<'de> RawDecode<'de> for GroupRPathStatus {
         assert_eq!(remain.len(), 0);
         let mut status_map = HashMap::new();
         for obj_buf in proto.status_list.iter() {
-            let (status, remain) = NONObjectInfo::raw_decode(obj_buf.as_slice())?;
-            assert_eq!(remain.len(), 0);
+            log::debug!("will decode len: {}", obj_buf.len());
+            // size + object_id
+            let status = if obj_buf.len() > OBJECT_ID_LEN + 1 {
+                let (status, remain) = NONObjectInfo::raw_decode(obj_buf.as_slice())?;
+                assert_eq!(remain.len(), 0);
+                status
+            } else if obj_buf.len() == OBJECT_ID_LEN + 1 {
+                NONObjectInfo::new(
+                    ObjectId::clone_from_slice(&obj_buf.as_slice()[1..])?,
+                    obj_buf.clone(),
+                    None,
+                )
+            } else {
+                return Err(BuckyError::new(
+                    BuckyErrorCode::InvalidData,
+                    "expect NONObjectInfo",
+                ));
+            };
+
             status_map.insert(status.object_id, status);
         }
 

@@ -154,6 +154,11 @@ impl DecStateRequestorRunner {
                     .await
                     .map(|r| r.cloned());
 
+                log::debug!(
+                    "handle_verifiable_state sub_path: {}, result: {:?}",
+                    sub_path,
+                    result
+                );
                 self.query_state_notifier.reply(&sub_path, result).await
             }
             Err(e) => self.query_state_notifier.reply(&sub_path, Err(e)).await,
