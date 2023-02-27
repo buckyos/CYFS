@@ -410,7 +410,7 @@ impl Task for DownloadFileTask {
     }
 
     fn get_task_type(&self) -> TaskType {
-        DOWNLOAD_FILE_TASK
+        self.params.task_type
     }
 
     fn get_task_category(&self) -> TaskCategory {
