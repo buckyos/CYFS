@@ -464,7 +464,7 @@ impl HotstuffRunner {
         let mut prev_state_id = match prev_block
             .as_ref() {
                 Some(prev_block) => {
-                    let result_state_id = block.result_state_id();
+                    let result_state_id = prev_block.result_state_id();
                     if let Some(result_state_id) = result_state_id {
                         self.make_sure_result_state(result_state_id, &[prev_block.owner(), remote]).await?;
                     }
@@ -520,14 +520,24 @@ impl HotstuffRunner {
                     err
                 })?
             {
+                log::debug!(
+                    "[hotstuff] local: {:?}, block verify ok by app, proposal: {}, prev_state: {:?}/{:?}, expect-result: {:?}/{:?}",
+                    self,
+                    proposal_exe_info.proposal,
+                    prev_state_id, prev_block.as_ref().map(|b| b.block_id()),
+                    proposal_exe_info.result_state,
+                    block.block_id()
+                );
+
                 prev_state_id = proposal_exe_info.result_state;
             } else {
                 log::warn!(
-                    "[hotstuff] local: {:?}, block verify failed by app, proposal: {}, prev_state: {:?}, expect-result: {:?}",
+                    "[hotstuff] local: {:?}, block verify failed by app, proposal: {}, prev_state: {:?}/{:?}, expect-result: {:?}/{:?}",
                     self,
                     proposal_exe_info.proposal,
-                    prev_state_id,
-                    proposal_exe_info.result_state
+                    prev_state_id, prev_block.as_ref().map(|b| b.block_id()),
+                    proposal_exe_info.result_state,
+                    block.block_id()
                 );
 
                 return Err(BuckyError::new(BuckyErrorCode::Reject, "verify failed"));
@@ -966,7 +976,7 @@ impl HotstuffRunner {
 
         let prev_block = match block.prev_block_id() {
             Some(prev_block_id) => match self.store.find_block_in_cache(prev_block_id) {
-                Ok(block) => Some(block.clone()),
+                Ok(block) => Some(block),
                 Err(_) => {
                     log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for prev-block {:?} is invalid",
                         self,
@@ -1960,11 +1970,18 @@ impl HotstuffRunner {
 
         #[async_recursion::async_recursion]
         async fn make_sure_sub_tree(root_id: &ObjectId, non_driver: crate::network::NONDriverHelper, remote: &ObjectId, obj_map_processor: &dyn GroupObjectMapProcessor) -> BuckyResult<()> {
+            if root_id.is_data() {
+                return Ok(());
+            }
+
             if non_driver.get_object(&root_id, None).await.is_ok() {
                 // TODO: 可能有下级分支子树因为异常不齐全
                 return Ok(());
             }
-            let obj = non_driver.get_object(root_id, Some(remote)).await?;
+            let obj = non_driver.get_object(root_id, Some(remote)).await.map_err(|err| {
+                log::warn!("get branch {} failed {:?}", root_id, err);
+                err
+            })?;
             match obj.object.as_ref() {
                 Some(obj) if obj.obj_type_code() == ObjectTypeCode::ObjectMap => {
                     let single_op_env = obj_map_processor.create_single_op_env().await?;
