@@ -818,7 +818,8 @@ mod GroupDecService {
                 .await?;
 
             log::info!(
-                "verify expect: {:?}/{}/{}, got: {:?}/{}/{}",
+                "verify expect: prev-state: {:?}, {:?}/{}/{}, got: {:?}/{}/{}",
+                pre_state_id,
                 execute_result.result_state_id,
                 execute_result.context.is_none(),
                 execute_result.receipt.is_none(),
