@@ -11,6 +11,7 @@ use cyfs_util::LOCAL_DEVICE_MANAGER;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize)]
 struct DeviceConfigGenerator {
@@ -123,6 +124,7 @@ impl DeviceConfigGenerator {
 }
 
 struct LocalCache {
+    system_config: Arc<SystemConfig>,
     service_list: AppList,
     device_config_str: String,
 }
@@ -156,14 +158,15 @@ impl DeviceConfigMetaRepo {
     }
 
     pub fn init(&self) -> BuckyResult<()> {
-        Self::gen_service_list_id()?;
+        // just for verify system-config on init
+        Self::gen_service_list_id(&get_system_config())?;
 
         Ok(())
     }
 
-    fn gen_service_list_id() -> BuckyResult<ObjectId> {
-        let device_id = Self::load_device(&get_system_config().config_desc)?;
-        let service_list_version = get_system_config().service_list_version.to_string();
+    fn gen_service_list_id(system_config: &Arc<SystemConfig>) -> BuckyResult<ObjectId> {
+        let device_id = Self::load_device(&system_config.config_desc)?;
+        let service_list_version = system_config.service_list_version.to_string();
 
         // 计算ServiceList对象id
         let service_list_id = AppList::generate_id(
@@ -174,7 +177,7 @@ impl DeviceConfigMetaRepo {
 
         info!(
             "device config repo: config_desc={}, device_id={}, service_list_id={}, version={}",
-            get_system_config().config_desc,
+            system_config.config_desc,
             device_id,
             service_list_id,
             service_list_version
@@ -196,8 +199,8 @@ impl DeviceConfigMetaRepo {
         Ok(ret)
     }
 
-    async fn load_service_list(&self) -> BuckyResult<AppList> {
-        let service_list_id = Self::gen_service_list_id()?;
+    async fn load_service_list(&self, system_config: &Arc<SystemConfig>,) -> BuckyResult<AppList> {
+        let service_list_id = Self::gen_service_list_id(system_config)?;
         let ret = MetaClientHelper::get_object(&self.meta_client, &service_list_id).await?;
         if ret.is_none() {
             let msg = format!(
@@ -288,8 +291,8 @@ impl DeviceConfigMetaRepo {
     }
 
     // 从dir里面加载当前target对应的fid
-    fn load_fid(&self, dir_id: &str, dir: Dir) -> BuckyResult<String> {
-        let mut target = get_system_config().target.clone();
+    fn load_fid(&self, system_config: &Arc<SystemConfig>, dir_id: &str, dir: Dir) -> BuckyResult<String> {
+        let mut target = system_config.target.clone();
 
         match dir.desc().content().obj_list() {
             NDNObjectInfo::ObjList(entries) => {
@@ -326,6 +329,7 @@ impl DeviceConfigMetaRepo {
 
     async fn load_service_fid(
         &self,
+        system_config: &Arc<SystemConfig>,
         device_config: &mut DeviceConfigGenerator,
         service_id: &ObjectId,
         version_in_service_list: &str,
@@ -333,13 +337,13 @@ impl DeviceConfigMetaRepo {
         let service = self.load_service(service_id).await?;
 
         // first find the correct version
-        let version = match &get_system_config().service_version {
+        let version = match &system_config.service_version {
             ServiceVersion::Default => {
                 // direct use the full version configed in the service list
                 version_in_service_list
             },
             ServiceVersion::Specific(config_version) => {
-                let preview = match get_system_config().preview {
+                let preview = match system_config.preview {
                     true => Some("preview"),
                     false => None,
                 };
@@ -381,7 +385,7 @@ impl DeviceConfigMetaRepo {
 
         // 查找当前平台对应的fid
         let dir_id = dir_id.to_string();
-        let fid = self.load_fid(&dir_id, dir)?;
+        let fid = self.load_fid(&system_config, &dir_id, dir)?;
 
         // 更新
         device_config.update_service(&service, &fid, version);
@@ -391,6 +395,7 @@ impl DeviceConfigMetaRepo {
 
     async fn gen_service_list_to_device_config(
         &self,
+        system_config: &Arc<SystemConfig>,
         service_list: &AppList,
     ) -> BuckyResult<DeviceConfigGenerator> {
         let mut device_config = DeviceConfigGenerator::new();
@@ -399,7 +404,7 @@ impl DeviceConfigMetaRepo {
 
             let version = status.version();
 
-            self.load_service_fid(&mut device_config, id.object_id(), version)
+            self.load_service_fid(&system_config, &mut device_config, id.object_id(), version)
                 .await
                 .map_err(|e| {
                     error!(
@@ -440,21 +445,23 @@ impl DeviceConfigMetaRepo {
     }
 
     async fn fetch_inner(&self) -> BuckyResult<String> {
+        let current_system_config = get_system_config();
+
         // 从mete-chain拉取对应的service_list
-        let service_list = self.load_service_list().await?;
+        let service_list = self.load_service_list(&current_system_config).await?;
 
         // Only in the default version case, it will use the cache of servicelist
-        if get_system_config().service_version.is_default() {
+        if current_system_config.service_version.is_default() {
             let cache = self.cache.lock().unwrap();
             if let Some(cache) = &*cache {
-                if Self::compare_service_list(&cache.service_list, &service_list) {
+                if cache.system_config.compare(&current_system_config) && Self::compare_service_list(&cache.service_list, &service_list) {
                     return Ok(cache.device_config_str.clone());
                 }
             }
         }
 
         let mut device_config = self
-            .gen_service_list_to_device_config(&service_list)
+            .gen_service_list_to_device_config(&current_system_config, &service_list)
             .await?;
 
         device_config.sort();
@@ -463,6 +470,7 @@ impl DeviceConfigMetaRepo {
         {
             let mut cache = self.cache.lock().unwrap();
             *cache = Some(LocalCache {
+                system_config: current_system_config,
                 service_list,
                 device_config_str: device_config_str.clone(),
             });
