@@ -557,8 +557,12 @@ impl AppManager {
             .await
         {
             Ok(is_running) => {
-                info!("[RUNNING CHECK] running: [{}] app:{}", is_running, app_id);
+                let running_counter = self.start_couter.write().unwrap().entry(app_id.clone()).or_insert(0);
+                info!("[RUNNING CHECK] running: [{}] app:{}, start counter: {}", is_running, app_id, *running_counter);
                 if is_running {
+                    if *running_counter > 0 {
+                        *running_counter = 0;
+                    }
                     return;
                 } else {
                     let mut try_start = false;
@@ -575,17 +579,15 @@ impl AppManager {
                             return;
                         }
                         //status is running, but not actually
-                        let mut counters = self.start_couter.write().unwrap();
-                        let cur_count = *counters.get(app_id).unwrap_or(&0);
-                        if cur_count > START_RETRY_LIMIT {
+                        if *running_counter > START_RETRY_LIMIT {
                             let target_status_code = AppLocalStatusCode::RunException;
                             info!("[RUNNING CHECK] app failed count is out of limit! app:{}, change app status from [{}] to [{}]", 
                             app_id, cur_status_code, target_status_code);
                             status.set_status(target_status_code);
                             status_clone = Some(status.clone());
                         } else {
-                            info!("[RUNNING CHECK] app status is running, but not actually. will restart it, app:{}, retry count:{}", app_id, cur_count + 1);
-                            counters.insert(app_id.clone(), cur_count + 1);
+                            *running_counter = *running_counter + 1;
+                            info!("[RUNNING CHECK] app status is running, but not actually. will restart it, app:{}, retry count:{}", app_id, *running_counter);
                             try_start = true;
                         }
                     }
