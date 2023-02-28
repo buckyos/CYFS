@@ -45,7 +45,6 @@ pub async fn test() {
     test_restart().await;
 
     // role::test().await;
-
     // crypto::test().await;
 
     noc::test().await;
@@ -67,20 +66,17 @@ pub async fn test() {
     app_manager::test().await;
     trans::test().await;
 
-    async_std::task::sleep(std::time::Duration::from_secs(60 * 30)).await;
-
-    return;
-
-    
-    // test_drive::test().await;
-
-    non_handlers::test().await;
-    //non_file::test().await;
-
-    router_handlers::test().await;
-
     admin::test().await;
     sync::test().await;
+
+    async_std::task::sleep(std::time::Duration::from_secs(60 * 30)).await;
+
+    // test_drive::test().await;
+
+    // non_handlers::test().await;
+    // non_file::test().await;
+
+    // router_handlers::test().await;
 
     info!("test all case success!");
 }
