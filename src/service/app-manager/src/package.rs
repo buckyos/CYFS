@@ -34,7 +34,7 @@ impl AppPackage {
                 Self::install_from_local(app_id, &tmp_path, true)
             }
             RepoMode::Local => {
-                let repo_path = get_cyfs_root_path().join("app_repo");
+                let repo_path = get_cyfs_root_path().join("app_repo").join(dir.to_string());
                 Self::install_from_local(app_id, &repo_path, false)
             }
         }
@@ -64,6 +64,7 @@ impl AppPackage {
     }
 
     pub fn install_from_local(app_id: &DecAppId, local_path: &Path, delete_source: bool) -> BuckyResult<()> {
+        info!("install app {} from local path {}", app_id, local_path.display());
         let app_str = app_id.to_string();
         let service_path = get_app_dir(&app_str);
         let acl_path = get_app_acl_dir(&app_str);
