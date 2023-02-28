@@ -39,6 +39,11 @@ impl AppRepoDownloader {
             return Err(BuckyError::new(e.code(), msg));
         }
 
+        let known_sn = cyfs_util::get_sn_desc().iter().map(|(_, device)| {
+            device.clone()
+        }).collect();
+        let _ = self.client.reset_known_sn_list(known_sn);
+
         Ok(())
     }
 
