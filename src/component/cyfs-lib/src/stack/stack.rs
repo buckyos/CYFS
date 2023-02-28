@@ -76,7 +76,7 @@ impl Drop for ObjectServices {
 pub struct SharedCyfsStack {
     param: SharedCyfsStackParam,
 
-    // 所属的dec_id
+    // The dec_id it belongs to
     dec_id: SharedObjectStackDecID,
 
     services: Arc<ObjectServices>,
@@ -88,7 +88,7 @@ pub struct SharedCyfsStack {
     // router events
     router_events: RouterEventManager,
 
-    // 当前协议栈的device
+    // Device of the current protocol stack
     device_info: Arc<RwLock<Option<(DeviceId, Device)>>>,
 
     // uni_stack
@@ -161,10 +161,10 @@ impl CyfsStackRequestorConfig {
 pub struct SharedCyfsStackParam {
     pub dec_id: Option<ObjectId>,
 
-    // 基于http协议的服务地址
+    // Service address based on the HTTP protocol
     pub service_url: Url,
 
-    // 基于websocket协议的服务地址
+    // Service address based on the WebSocket protocol
     pub ws_url: Url,
 
     pub event_type: CyfsStackEventType,
@@ -186,7 +186,7 @@ impl SharedCyfsStackParam {
         Self::default(dec_id)
     }
 
-    // 默认切换到websocket模式
+    // Switch to the websocket mode by default
     pub fn default(dec_id: Option<ObjectId>) -> Self {
         let (service_url, ws_url) =
             Self::gen_url(cyfs_base::NON_STACK_HTTP_PORT, cyfs_base::NON_STACK_WS_PORT);
@@ -200,7 +200,7 @@ impl SharedCyfsStackParam {
         }
     }
 
-    // 提供给cyfs-runtime使用的shareobjectstack
+    // SharedCyfsStack provided to Cyfs-Runtime
     pub fn default_runtime(dec_id: Option<ObjectId>) -> Self {
         let (service_url, ws_url) = Self::gen_url(
             cyfs_base::CYFS_RUNTIME_NON_STACK_HTTP_PORT,
@@ -216,7 +216,7 @@ impl SharedCyfsStackParam {
         }
     }
 
-    // 打开指定端口的shareobjectstack
+    // Open shared stack of the specified port
     pub fn gen(dec_id: Option<ObjectId>, http_port: u16, ws_port: u16) -> Self {
         let (service_url, ws_url) = Self::gen_url(http_port, ws_port);
 
@@ -263,6 +263,7 @@ struct RequestorHolder {
     requestor_config: CyfsStackRequestorConfig,
     http: Option<HttpRequestorRef>,
     ws: Option<HttpRequestorRef>,
+    data: Option<HttpRequestorRef>,
 }
 
 impl RequestorHolder {
@@ -271,6 +272,7 @@ impl RequestorHolder {
             requestor_config,
             http: None,
             ws: None,
+            data: None,
         }
     }
 
@@ -283,7 +285,7 @@ impl RequestorHolder {
             CyfsStackRequestorType::Http => {
                 self.http
                     .get_or_insert_with(|| {
-                        // 基于标准http的requestor
+                        // Requestor based on standard http
                         let addr = format!(
                             "{}:{}",
                             param.service_url.host_str().unwrap(),
@@ -306,12 +308,27 @@ impl RequestorHolder {
             CyfsStackRequestorType::WebSocket => {
                 self.ws
                     .get_or_insert_with(|| {
-                        // 基于websocket协议的requestor
+                        // Requestor based on the WebSocket protocol
                         Arc::new(Box::new(WSHttpRequestor::new(param.ws_url.clone())))
                     })
                     .clone()
             }
         }
+    }
+
+    fn data_requestor(&mut self, param: &SharedCyfsStackParam) -> HttpRequestorRef {
+        self.data
+            .get_or_insert_with(|| {
+                // Requestor based on standard HTTP
+                let addr = format!(
+                    "{}:{}",
+                    param.service_url.host_str().unwrap(),
+                    param.service_url.port().unwrap()
+                );
+
+                Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+            })
+            .clone()
     }
 
     async fn stop(&self) {
@@ -383,7 +400,7 @@ impl SharedCyfsStack {
         let requestor =
             requestor_holder.select_requestor(&param, &param.requestor_config.ndn_service);
         let data_requestor =
-            requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
+            requestor_holder.data_requestor(&param);
         let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor, Some(data_requestor));
 
         // sync
@@ -433,7 +450,7 @@ impl SharedCyfsStack {
             local_cache_meta,
         });
 
-        // 初始化对应的事件处理器，二选一
+        // Initialize the corresponding event processor, choose one in the two choices
         let router_handlers = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
                 RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone())
@@ -446,7 +463,7 @@ impl SharedCyfsStack {
             }
         };
 
-        // 缓存所有processors，用以uni_stack直接返回使用
+        // Caches all processors, use UNI_STACK to return to use directly
         let processors = Arc::new(CyfsStackProcessors {
             non_service: services.non_service.clone_processor(),
             ndn_service: services.ndn_service.clone_processor(),
@@ -502,7 +519,7 @@ impl SharedCyfsStack {
         Self::open(param).await
     }
 
-    // 等待协议栈上线
+    // Waiting for the protocol stack online
     pub async fn wait_online(&self, timeout: Option<std::time::Duration>) -> BuckyResult<()> {
         let this = self.clone();
         let ft = async move {
@@ -512,7 +529,7 @@ impl SharedCyfsStack {
                     Err(e) => {
                         match e.code() {
                             BuckyErrorCode::ConnectFailed | BuckyErrorCode::Timeout => {
-                                // 需要重试
+                                // Need to retry
                             }
                             _ => {
                                 error!("stack online failed! {}", e);
@@ -540,7 +557,7 @@ impl SharedCyfsStack {
     }
 
     pub async fn online(&self) -> BuckyResult<()> {
-        // 获取当前协议栈的device_id
+        // Get Device_id of the current protocol stack
         let req = UtilGetDeviceOutputRequest::new();
         let resp = self.services.util_service.get_device(req).await?;
 
@@ -551,7 +568,7 @@ impl SharedCyfsStack {
         Ok(())
     }
 
-    // 如果初始化时候没有指定，那么可以延迟绑定一次
+    // If it is not specified during initialization, it can be delayed init once
     pub fn bind_dec(&self, dec_id: ObjectId) {
         self.dec_id.set(dec_id).unwrap();
     }
@@ -560,7 +577,7 @@ impl SharedCyfsStack {
         self.dec_id.get()
     }
 
-    // 下面两个接口必须调用onlien成功一次之后才可以调用
+    // The following two interfaces must be called online successfully before you can call them
     pub fn local_device_id(&self) -> DeviceId {
         self.device_info.read().unwrap().as_ref().unwrap().0.clone()
     }
@@ -601,7 +618,7 @@ impl SharedCyfsStack {
         &self.router_events
     }
 
-    // root_state 根状态管理相关接口
+    // root_state Root State Management Related Interface
     pub fn root_state(&self) -> &GlobalStateRequestor {
         &self.services.root_state
     }
@@ -720,7 +737,7 @@ impl SharedCyfsStack {
         )
     }
 
-    // uni_stack相关接口
+    // uni_stack related interface
     fn create_uni_stack(&self) -> UniCyfsStackRef {
         Arc::new(self.clone())
     }
