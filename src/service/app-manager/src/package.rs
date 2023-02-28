@@ -65,6 +65,9 @@ impl AppPackage {
 
     pub fn install_from_local(app_id: &DecAppId, local_path: &Path, delete_source: bool) -> BuckyResult<()> {
         info!("install app {} from local path {}", app_id, local_path.display());
+        if !local_path.exists() {
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, format!("local path {} not found", local_path.display())));
+        }
         let app_str = app_id.to_string();
         let service_path = get_app_dir(&app_str);
         let acl_path = get_app_acl_dir(&app_str);
