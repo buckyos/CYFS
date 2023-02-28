@@ -53,7 +53,31 @@ impl Indexer {
     }
 }
 
+async fn test_http_version() {
+    use std::str::FromStr;
+
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1StandbyOOD);
+    let chunk_id = ChunkId::from_str("7EwH3v5RwuzSfu6oGHJvEN69cw2YyfCu72Euo3wmauzy").unwrap();
+    let req = NDNGetDataOutputRequest::new_ndc(chunk_id.object_id(), None);
+    let _resp = stack.ndn_service().get_data(req).await.unwrap();
+
+    let req = NDNGetDataOutputRequest::new_ndc(chunk_id.object_id(), None);
+    let _resp = stack.ndn_service().get_data(req).await.unwrap();
+}
+
 pub async fn test() {
+    async_std::task::spawn(async move {
+        test_http_version().await;
+    });
+    
+    async_std::task::spawn(async move {
+        test_http_version().await;
+    });
+
+    async_std::task::spawn(async move {
+        test_http_version().await;
+    });
+
     let index = Indexer::new();
 
     let index1 = index.clone();
@@ -68,6 +92,8 @@ pub async fn test() {
         let stack = TestLoader::get_shared_stack(DeviceIndex::User1StandbyOOD);
         test_standby_ood_get(&stack, index).await;
     });
+
+    async_std::task::sleep(std::time::Duration::from_secs(60 * 5)).await;
 }
 
 async fn add_chunk(stack: &SharedCyfsStack) -> ChunkId {
@@ -385,20 +411,6 @@ async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
         let expect = indexer.get(&root_info.root).unwrap();
         assert_eq!(expect, v);
 
-        let ret = op_env.get_by_path("/data/object_id1").await.unwrap();
-        let v = ret.unwrap();
-        assert!(v.is_data());
-
-        let req = RootStateAccessorGetObjectByPathOutputRequest::new("/data/object_id1");
-        let ret = stack.root_state_accessor().get_object_by_path(req).await;
-        assert!(ret.is_ok());
-        let ret = ret.unwrap();
-        assert!(ret.object.object.is_empty());
-        assert!(ret.object.object.object_id.is_data());
-
-        let object = stack.root_state_accessor_stub(None, None).get_object_by_path("/data/object_id1").await.unwrap();
-        assert!(object.object.is_empty());
-        assert!(object.object.object_id.is_data());
         
         info!("device will get text_object: {}", v);
         let req = NONGetObjectRequest::new_noc(v, None);
@@ -413,6 +425,22 @@ async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
             let _resp = stack.ndn_service().get_data(req).await.unwrap();
             info!("device got target chunk: {}", chunk_id);
         }
+
+
+        let ret = op_env.get_by_path("/data/object_id1").await.unwrap();
+        let ret = ret.unwrap();
+        assert!(ret.is_data());
+
+        let req = RootStateAccessorGetObjectByPathOutputRequest::new("/data/object_id1");
+        let ret = stack.root_state_accessor().get_object_by_path(req).await;
+        assert!(ret.is_ok());
+        let ret = ret.unwrap();
+        assert!(ret.object.object.is_empty());
+        assert!(ret.object.object.object_id.is_data());
+
+        let object = stack.root_state_accessor_stub(None, None).get_object_by_path("/data/object_id1").await.unwrap();
+        assert!(object.object.is_empty());
+        assert!(object.object.object_id.is_data());
 
         async_std::task::sleep(std::time::Duration::from_secs(15)).await;
     }
