@@ -1051,13 +1051,13 @@ async fn main_run() {
             .unwrap();
     }
 
-    async_std::task::sleep(Duration::from_millis(30000)).await;
+    async_std::task::sleep(Duration::from_millis(10000)).await;
 
     let mut proposals: Vec<GroupProposal> = vec![];
 
     log::info!("proposals will be prepared.");
 
-    let PROPOSAL_COUNT = 5usize;
+    let PROPOSAL_COUNT = 20usize;
     for i in 1..PROPOSAL_COUNT {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
         let owner = &admins.get(i % admins.len()).unwrap().0 .0;
@@ -1130,11 +1130,13 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        if i % 1 == 0 {
+        if i % 10 == 0 {
             async_std::task::sleep(Duration::from_millis(1000)).await;
             log::info!("will push new proposals, i: {}", i);
         }
     }
+
+    async_std::task::sleep(Duration::from_millis(10000)).await;
 
     let client = admin_stacks
         .get(0)
