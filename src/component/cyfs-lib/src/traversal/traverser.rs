@@ -137,7 +137,10 @@ impl ObjectTraverser {
                     let item = traverser.finish();
 
                     match item.object.object_id.obj_type_code() {
-                        ObjectTypeCode::File => {}
+                        ObjectTypeCode::File => {
+                            let traverser = FileObjectTraverser::new(item, cb.clone());
+                            traverser.tranverse().await;
+                        }
                         ObjectTypeCode::Dir => {}
                         _ => {}
                     }
