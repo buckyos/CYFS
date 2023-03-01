@@ -93,6 +93,9 @@ pub struct TraverseChunkItem {
 pub trait ObjectTraverserCallBack: Send + Sync {
     async fn on_object(&self, item: TraverseObjectItem);
     async fn on_chunk(&self, item: TraverseChunkItem);
+
+    async fn on_error(&self, id: &ObjectId, e: BuckyError);
+    async fn on_missing(&self, id: &ObjectId);
 }
 
 pub type ObjectTraverserCallBackRef = Arc<Box<dyn ObjectTraverserCallBack>>;

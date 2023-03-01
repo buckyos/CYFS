@@ -162,7 +162,10 @@ impl ObjectTraverser {
                             let traverser = FileObjectTraverser::new(item, cb.clone());
                             traverser.tranverse().await;
                         }
-                        ObjectTypeCode::Dir => {}
+                        ObjectTypeCode::Dir => {
+                            let mut traverser = DirObjectTraverser::new(self.loader.clone(), item, cb.clone());
+                            traverser.tranverse().await;
+                        }
                         _ => {}
                     }
                 }
@@ -274,5 +277,13 @@ impl ObjectTraverserCallBack for ObjectTraverser {
 
     async fn on_chunk(&self, item: TraverseChunkItem) {
         self.handler.on_chunk(&item.chunk_id).await;
+    }
+
+    async fn on_error(&self, id: &ObjectId, e: BuckyError) {
+        self.handler.on_error(id, e).await;
+    }
+
+    async fn on_missing(&self, id: &ObjectId) {
+        self.handler.on_missing(id).await
     }
 }
