@@ -64,6 +64,7 @@ members = [
     "./misc/cyfs-monitor",
     "./misc/misc-util",
     "./misc/sn-online-test",
+    "./misc/perf-service",
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",
