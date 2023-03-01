@@ -120,6 +120,11 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>>;
 
+    fn query_object_meta(
+        &self,
+        object_data: &dyn ObjectSelectorDataProvider,
+    ) -> Option<GlobalStateObjectMetaConfigItemValue>;
+
     // path config
     async fn add_path_config(&self, item: GlobalStatePathConfigItem) -> BuckyResult<bool>;
 

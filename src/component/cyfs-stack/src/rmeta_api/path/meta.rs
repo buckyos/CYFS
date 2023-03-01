@@ -59,7 +59,7 @@ impl GlobalStatePathMetaSyncCollection {
     pub fn into_processor(self) -> GlobalStateMetaRawProcessorRef {
         Arc::new(Box::new(self))
     }
-    
+
     fn dump(&self) {
         let data = {
             let meta = self.meta.coll().read().unwrap();
@@ -292,6 +292,19 @@ impl GlobalStatePathMetaSyncCollection {
         )
     }
 
+    pub fn query_object_meta(
+        &self,
+        object_data: &dyn ObjectSelectorDataProvider,
+    ) -> Option<GlobalStateObjectMetaConfigItemValue> {
+        let meta = self.meta.coll().read().unwrap();
+        meta.object
+            .query_object_meta(object_data)
+            .map(|ret| GlobalStateObjectMetaConfigItemValue {
+                access: ret.access,
+                depth: ret.depth,
+            })
+    }
+
     // path config
     pub async fn add_path_config(&self, item: GlobalStatePathConfigItem) -> BuckyResult<bool> {
         {
@@ -390,11 +403,7 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
     }
 
     // link relate methods
-    async fn add_link(
-        &self,
-        source: &str,
-        target: &str,
-    ) -> BuckyResult<bool> {
+    async fn add_link(&self, source: &str, target: &str) -> BuckyResult<bool> {
         Self::add_link(self, source, target).await
     }
 
@@ -426,6 +435,13 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_object_meta(self).await
     }
 
+    pub fn query_object_meta(
+        &self,
+        object_data: &dyn ObjectSelectorDataProvider,
+    ) -> Option<GlobalStateObjectMetaConfigItemValue> {
+        Self::query_object_meta(self, object_data)
+    }
+    
     fn check_object_access(
         &self,
         target_dec_id: &ObjectId,

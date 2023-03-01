@@ -110,6 +110,39 @@ impl GlobalStateObjectMetaList {
         self.list.is_empty()
     }
 
+    pub fn query_object_meta(&self, object_data: &dyn ObjectSelectorDataProvider) -> Option<&ObjectMeta> {
+        if self.list.is_empty() {
+            return None;
+        }
+
+        for item in &self.list {
+            let ret = item.selector.eval(object_data);
+            if ret.is_err() {
+                error!(
+                    "eval object meta exp error! exp={}, object={}, {}",
+                    item.selector.exp(),
+                    object_data.object_id(),
+                    ret.unwrap_err()
+                );
+                continue;
+            }
+            let ret = ret.unwrap();
+            if !ret {
+                continue;
+            }
+
+            debug!(
+                "eval object meta matched! exp={}, object={}",
+                item.selector.exp(),
+                object_data.object_id(),
+            );
+
+            return Some(item);
+        }
+
+        None
+    }
+
     pub fn check(
         &self,
         target_dec_id: &ObjectId,

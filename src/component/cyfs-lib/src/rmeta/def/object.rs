@@ -22,6 +22,14 @@ impl std::fmt::Display for GlobalStateObjectMetaItem {
     }
 }
 
+pub struct GlobalStateObjectMetaConfigItemValue {
+    // Access value
+    pub access: GlobalStatePathGroupAccess,
+
+    // Object referer's depth, default is 1
+    pub depth: Option<u8>,
+}
+
 pub trait ObjectSelectorDataProvider: Send + Sync {
     fn object_id(&self) -> &ObjectId;
     fn obj_type(&self) -> u16;
