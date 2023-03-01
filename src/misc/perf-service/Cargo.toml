@@ -1,0 +1,26 @@
+[package]
+name = "perf-service"
+version = "0.5.0"
+authors = ["wangzhi <wangzhi@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust perf-service package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-perf-base = {path="../../component/cyfs-perf/cyfs-perf-base"}
+cyfs-base = {path="../../component/cyfs-base"}
+cyfs-debug = {path="../../component/cyfs-debug"}
+cyfs-core = {path="../../component/cyfs-core"}
+cyfs-util = {path="../../component/cyfs-util"}
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+cyfs-lib = {path="../../component/cyfs-lib"}
+log = "0.4"
+async-trait = "0.1.53"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+mongodb = { version = "2", default-features = false, features = ["async-std-runtime", "bson-chrono-0_4"]}
+toml = "0.7"
+clap = "2"
+chrono = "0.4"
