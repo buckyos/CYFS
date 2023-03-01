@@ -74,6 +74,12 @@ impl GlobalStateMetaLocalService {
         }
     }
 
+    pub(crate) fn clone_raw_processor(
+        &self,
+    ) -> GlobalStateMetaManagerRawProcessorRef {
+        Arc::new(Box::new(self.clone()))
+    }
+
     pub(crate) fn clone_processor(
         &self,
         category: GlobalStateCategory,
@@ -186,6 +192,22 @@ impl NamedObjectCacheObjectMetaAccessProvider for GlobalStateMetaLocalService {
     }
 }
 
+#[async_trait::async_trait]
+impl GlobalStateMetaManagerRawProcessor for GlobalStatePathMetaManager {
+    async fn get_global_state_meta(
+        &self,
+        dec_id: &ObjectId,
+        category: GlobalStateCategory,
+        auto_create: bool,
+    ) -> BuckyResult<Option<GlobalStateMetaRawProcessorRef>> {
+        let rmeta = self.get_meta_manager(category);
+
+        rmeta
+            .get_option_global_state_meta(dec_id, auto_create)
+            .await.map(|ret| ret.map(|ret| ret.into_processor()))
+    }
+}
+
 #[derive(Clone)]
 pub struct GlobalStateMetaService {
     local_service: GlobalStateMetaLocalService,
@@ -238,6 +260,12 @@ impl GlobalStateMetaService {
         category: GlobalStateCategory,
     ) -> &GlobalStatePathMetaManagerRef {
         self.local_service.get_meta_manager(category)
+    }
+
+    pub(crate) fn clone_manager_raw_processor(
+        &self,
+    ) -> GlobalStateMetaManagerRawProcessorRef {
+        self.local_service.clone_raw_processor()
     }
 
     pub(crate) fn clone_local_processor(

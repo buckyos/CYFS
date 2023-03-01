@@ -89,7 +89,7 @@ impl ObjectTraverser {
         }
     }
 
-    async fn tranverse(&self, root: ObjectId) -> BuckyResult<()> {
+    pub async fn run(&self, root: ObjectId) -> BuckyResult<()> {
         assert_eq!(root.obj_type_code(), ObjectTypeCode::ObjectMap);
 
         let ret = self.loader.get_object(&root).await?;

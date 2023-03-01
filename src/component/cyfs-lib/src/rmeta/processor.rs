@@ -1,6 +1,6 @@
 use super::def::*;
 use super::output_request::*;
-use crate::RequestSourceInfo;
+use crate::{RequestSourceInfo, GlobalStateCategory};
 use cyfs_base::*;
 
 use std::sync::Arc;
@@ -138,3 +138,16 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
 }
 
 pub type GlobalStateMetaRawProcessorRef = Arc<Box<dyn GlobalStateMetaRawProcessor>>;
+
+
+#[async_trait::async_trait]
+pub trait GlobalStateMetaManagerRawProcessor: Send + Sync {
+    async fn get_global_state_meta(
+        &self,
+        dec_id: &ObjectId,
+        category: GlobalStateCategory,
+        auto_create: bool,
+    ) -> BuckyResult<Option<GlobalStateMetaRawProcessorRef>>;
+}
+
+pub type GlobalStateMetaManagerRawProcessorRef = Arc<Box<dyn GlobalStateMetaManagerRawProcessor>>;
