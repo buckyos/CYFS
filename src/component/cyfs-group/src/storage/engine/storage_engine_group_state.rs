@@ -6,11 +6,11 @@ use cyfs_base::{
     ObjectMapRootManagerRef, ObjectMapSimpleContentType, ObjectMapSingleOpEnvRef, OpEnvPathAccess,
 };
 use cyfs_core::{GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
+use cyfs_lib::GroupObjectMapProcessor;
 
 use crate::{
-    GroupObjectMapProcessor, GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_BLOCK,
-    GROUP_STATE_PATH_DEC_STATE, GROUP_STATE_PATH_FLIP_TIME, GROUP_STATE_PATH_RANGE,
-    GROUP_STATE_PATH_RESULT_STATE,
+    GroupStatePath, NONDriverHelper, GROUP_STATE_PATH_BLOCK, GROUP_STATE_PATH_DEC_STATE,
+    GROUP_STATE_PATH_FLIP_TIME, GROUP_STATE_PATH_RANGE, GROUP_STATE_PATH_RESULT_STATE,
 };
 
 use super::{StorageCacheInfo, StorageEngine, StorageWriter};
