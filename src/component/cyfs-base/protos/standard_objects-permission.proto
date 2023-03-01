@@ -60,89 +60,9 @@ message PeopleBodyContent {
     optional string ood_work_mode = 4;
 }
 
-message GroupRPathPermissionWeight {
-    string rpath = 1;
-    GroupFunctionPermissionWeight weight = 2;
-}
-
-message GroupDecPermissionWeight {
-    bytes dec_id = 1;
-    optional GroupRPathPermissionWeight default_dec_weight = 2;
-    repeated GroupRPathPermissionWeight rpath_weight = 3;
-}
-
 message GroupMember {
     bytes id = 1;
     string title = 2;
-    // uint64 shares = 3; delay
-    optional GroupGlobalPermissionWeight global_weight = 4;
-    optional GroupDecPermissionWeight weight = 5;
-}
-
-/**
-admin   修改管理员列表
-member  修改成员列表
-display-${scope} 修改展示信息
-    ${scope}=g: 修改group信息
-    ${scope}=s: 修改自身信息
-    ${scope}=m: 修改任意member信息
-    ${scope}=a: 修改任意admin信息
-property    修改资产信息
-conclusion  修改决议类别列表
-conclusion-${category} 修改决议类别配置
-it          修改DEC运行配置(ood_list/history_block_max/history_block_lifespan/consensus_interval)
-c-${any}    其他自定义(custom)权限
-*/
-
-message GroupGlobalPermissionWeight {
-    optional uint32 admin = 1;
-    optional uint32 member = 2;
-    optional uint32 display_group = 3;
-    optional uint32 display_self = 4;
-    optional uint32 display_member = 5;
-    optional uint32 display_admin = 6;
-    optional uint32 property = 7;
-}
-
-message GroupCommonPermissionWeight {
-    string category = 1;
-    uint32 weight = 2;
-}
-
-message GroupFunctionPermissionWeight {
-    optional uint32 it = 1;
-    optional uint32 conclusion = 2;
-    repeated GroupCommonPermissionWeight conclusion_category = 3;
-    repeated GroupCommonPermissionWeight custom = 4;
-}
-
-message GroupITConfig {
-    repeated bytes ood_list = 8;
-    optional uint64 history_block_max = 9;
-    optional uint64 history_block_lifespan = 10;
-    optional uint64 consensus_interval = 11; // ms
-}
-
-message GroupConclusionConfig {
-    string category = 1;
-    uint64 lifespan = 2; // ms
-}
-
-message GroupConfigItem {
-    optional GroupITConfig it = 1;
-    repeated GroupConclusionConfig conclusions = 2;
-    optional GroupFunctionPermissionWeight weight_threshold = 3;
-}
-
-message GroupRPathConfig {
-    string rpath = 1;
-    GroupConfigItem config = 2;
-}
-
-message GroupDecConfig {
-    bytes dec_id = 1;
-    optional GroupConfigItem default_dec_config = 2;
-    repeated GroupRPathConfig rpath_configs = 3;
 }
 
 message CommonGroupBodyContent {
@@ -152,17 +72,10 @@ message CommonGroupBodyContent {
 
     repeated GroupMember members = 4;
 
-    // uint64 total_equity = 5; // delay
-
-    repeated bytes revoked_conclusions = 6;
-
-    GroupConfigItem default_config = 7;
-    repeated GroupDecConfig dec_configs = 8;
-
-    GroupGlobalPermissionWeight global_weight_threshold = 9;
-    GroupFunctionPermissionWeight default_rpath_weight_threshold = 10;
+    repeated bytes ood_list = 5;
     
-    uint64 version = 11;
+    optional bytes prev_version = 6;
+    uint64 version_num = 7;
 }
 
 // simple_group
@@ -184,8 +97,7 @@ message OrgDescContent {
 
 message OrgBodyContent {
     repeated GroupMember admins = 1;
-    optional bytes token_contract = 2;
-    CommonGroupBodyContent common = 3;
+    CommonGroupBodyContent common = 2;
 }
 
 // tx
