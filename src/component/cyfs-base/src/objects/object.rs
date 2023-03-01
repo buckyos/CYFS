@@ -49,7 +49,8 @@ pub trait ObjectDesc {
 
     // 创建时间戳，如果不存在，则返回0
     fn create_time(&self) -> u64;
-
+    fn option_create_time(&self) -> Option<u64>;
+    
     // 过期时间戳
     fn expired_time(&self) -> Option<u64>;
 }

@@ -289,6 +289,10 @@ impl AnyNamedObject {
         match_any_obj!(self, o, { o.desc().create_time() }, _chunk_id, { 0 })
     }
 
+    pub fn option_create_time(&self) -> Option<u64> {
+        match_any_obj!(self, o, { o.desc().option_create_time() }, _chunk_id, { None })
+    }
+
     pub fn expired_time(&self) -> Option<u64> {
         match_any_obj!(self, o, { o.desc().expired_time() }, _chunk_id, { None })
     }
