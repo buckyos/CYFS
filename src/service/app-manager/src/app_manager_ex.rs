@@ -557,10 +557,12 @@ impl AppManager {
             .await
         {
             Ok(is_running) => {
-                let running_counter = self.start_couter.write().unwrap().entry(app_id.clone()).or_insert(0);
-                info!("[RUNNING CHECK] running: [{}] app:{}, start counter: {}", is_running, app_id, *running_counter);
+                info!("[RUNNING CHECK] running: [{}] app:{}", is_running, app_id);
                 if is_running {
+                    let mut writer = self.start_couter.write().unwrap();
+                    let running_counter = writer.entry(app_id.clone()).or_insert(0);
                     if *running_counter > 0 {
+                        info!("reset app {} restart counter {}", app_id, *running_counter);
                         *running_counter = 0;
                     }
                     return;
@@ -579,6 +581,8 @@ impl AppManager {
                             return;
                         }
                         //status is running, but not actually
+                        let mut writer = self.start_couter.write().unwrap();
+                        let running_counter = writer.entry(app_id.clone()).or_insert(0);
                         if *running_counter > START_RETRY_LIMIT {
                             let target_status_code = AppLocalStatusCode::RunException;
                             info!("[RUNNING CHECK] app failed count is out of limit! app:{}, change app status from [{}] to [{}]", 
