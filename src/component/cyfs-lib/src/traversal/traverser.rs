@@ -1,6 +1,8 @@
+use super::adapter::ObjectMapNOCCacheTranverseAdapter;
 use super::object::*;
 use crate::*;
 use cyfs_base::*;
+use cyfs_util::AsyncReadWithSeek;
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -31,6 +33,25 @@ pub trait ObjectTraverserHandler: Send + Sync {
 
 pub type ObjectTraverserHandlerRef = Arc<Box<dyn ObjectTraverserHandler>>;
 
+pub struct ObjectTraverserLoaderObjectData {
+    pub object: NONObjectInfo,
+    pub access: AccessString,
+}
+
+#[async_trait::async_trait]
+pub trait ObjectTraverserLoader: Send + Sync {
+    async fn get_object(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectTraverserLoaderObjectData>>;
+    async fn get_chunk(
+        &self,
+        chunk_id: &ChunkId,
+    ) -> BuckyResult<Option<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>>>;
+}
+
+pub type ObjectTraverserLoaderRef = Arc<Box<dyn ObjectTraverserLoader>>;
+
 struct ObjectTraverserColls {
     index: HashSet<ObjectId>,
     pending_items: VecDeque<NormalObject>,
@@ -49,21 +70,21 @@ impl ObjectTraverserColls {
 pub struct ObjectTraverser {
     coll: Arc<Mutex<ObjectTraverserColls>>,
 
+    loader: ObjectTraverserLoaderRef,
     handler: ObjectTraverserHandlerRef,
 
-    noc: NamedObjectCacheRef,
     objectmap_cache: ObjectMapRootCacheRef,
 }
 
 impl ObjectTraverser {
-    pub fn new(noc: NamedObjectCacheRef, handler: ObjectTraverserHandlerRef) -> Self {
-        let cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
+    pub fn new(loader: ObjectTraverserLoaderRef, handler: ObjectTraverserHandlerRef) -> Self {
+        let cache = ObjectMapNOCCacheTranverseAdapter::new_noc_cache(loader.clone());
         let objectmap_cache = ObjectMapRootMemoryCache::new_default_ref(None, cache);
 
         Self {
             coll: Arc::new(Mutex::new(ObjectTraverserColls::new())),
+            loader,
             handler,
-            noc,
             objectmap_cache,
         }
     }
@@ -78,8 +99,8 @@ impl ObjectTraverser {
             return Ok(());
         }
 
-        let data = ret.unwrap();
-        self.handler.on_object(&data.object).await;
+        let object = ret.unwrap();
+        self.handler.on_object(&object).await;
 
         let filter_ret = self.handler.filter_path("/").await;
         let config_ref_depth = match filter_ret {
@@ -92,7 +113,7 @@ impl ObjectTraverser {
         let item = NormalObject {
             pos: NormalObjectPostion::Middle,
             path: "/".to_owned(),
-            object: data.object.into(),
+            object: object.into(),
             config_ref_depth,
             ref_depth: 0,
         };
@@ -149,15 +170,9 @@ impl ObjectTraverser {
         }
     }
 
-    async fn load_object(&self, id: &ObjectId) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
-        let req = NamedObjectCacheGetObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
-            object_id: id.to_owned(),
-            last_access_rpath: None,
-        };
-
-        match self.noc.get_object(&req).await {
-            Ok(Some(data)) => Ok(Some(data)),
+    async fn load_object(&self, id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
+        match self.loader.get_object(&id).await {
+            Ok(Some(data)) => Ok(Some(data.object)),
             Ok(None) => {
                 warn!("get object but not exists! {}", id);
                 Ok(None)
@@ -196,8 +211,8 @@ impl ObjectTraverserCallBack for ObjectTraverser {
         }
 
         match self.load_object(id).await {
-            Ok(Some(data)) => {
-                self.handler.on_object(&data.object).await;
+            Ok(Some(object)) => {
+                self.handler.on_object(&object).await;
 
                 match item {
                     TraverseObjectItem::Normal(mut item) => {
@@ -216,7 +231,7 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                     return;
                                 }
 
-                                self.handler.filter_object(&data.object).await
+                                self.handler.filter_object(&object).await
                             }
                         };
 
@@ -235,7 +250,7 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                     }
                                 }
 
-                                item.object = data.object.into();
+                                item.object = object.into();
                                 self.append(item);
                             }
                             ObjectTraverseFilterResult::Skip => {
