@@ -470,6 +470,10 @@ impl NONSlimObjectInfo {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.object_raw.is_none() && self.object.is_none()
+    }
+
     pub fn decode(&mut self) -> BuckyResult<()> {
         assert!(self.object.is_none());
 
@@ -568,5 +572,11 @@ impl JsonCodec<NONSlimObjectInfo> for NONSlimObjectInfo {
         object.decode_and_verify()?;
 
         Ok(object)
+    }
+}
+
+impl Into<NONSlimObjectInfo> for NONObjectInfo {
+    fn into(self) -> NONSlimObjectInfo {
+        NONSlimObjectInfo::new(self.object_id, Some(self.object_raw), self.object)
     }
 }
