@@ -1,8 +1,8 @@
+use crate::NONObjectInfo;
 use cyfs_base::{
     BuckyResult, Group, ObjectId, ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef,
 };
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
-use cyfs_lib::NONObjectInfo;
 
 #[async_trait::async_trait]
 pub trait DelegateFactory: Send + Sync {
