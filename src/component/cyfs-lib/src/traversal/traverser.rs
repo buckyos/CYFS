@@ -22,7 +22,7 @@ pub enum ObjectTraverseFilterResult {
 #[async_trait::async_trait]
 pub trait ObjectTraverserHandler: Send + Sync {
     async fn filter_path(&self, path: &str) -> ObjectTraverseFilterResult;
-    async fn filter_object(&self, object: &NONObjectInfo) -> ObjectTraverseFilterResult;
+    async fn filter_object(&self, object: &NONObjectInfo, meta: Option<&NamedObjectMetaData>) -> ObjectTraverseFilterResult;
 
     async fn on_error(&self, id: &ObjectId, e: BuckyError);
     async fn on_missing(&self, id: &ObjectId);
@@ -35,7 +35,7 @@ pub type ObjectTraverserHandlerRef = Arc<Box<dyn ObjectTraverserHandler>>;
 
 pub struct ObjectTraverserLoaderObjectData {
     pub object: NONObjectInfo,
-    pub access: AccessString,
+    pub meta: Option<NamedObjectMetaData>,
 }
 
 #[async_trait::async_trait]
@@ -92,15 +92,15 @@ impl ObjectTraverser {
     async fn tranverse(&self, root: ObjectId) -> BuckyResult<()> {
         assert_eq!(root.obj_type_code(), ObjectTypeCode::ObjectMap);
 
-        let ret = self.load_object(&root).await?;
+        let ret = self.loader.get_object(&root).await?;
         if ret.is_none() {
             warn!("root object missing! root={}", root);
             self.handler.on_missing(&root).await;
             return Ok(());
         }
 
-        let object = ret.unwrap();
-        self.handler.on_object(&object).await;
+        let data = ret.unwrap();
+        self.handler.on_object(&data.object).await;
 
         let filter_ret = self.handler.filter_path("/").await;
         let config_ref_depth = match filter_ret {
@@ -113,7 +113,7 @@ impl ObjectTraverser {
         let item = NormalObject {
             pos: NormalObjectPostion::Middle,
             path: "/".to_owned(),
-            object: object.into(),
+            object: data.object.into(),
             config_ref_depth,
             ref_depth: 0,
         };
@@ -213,9 +213,9 @@ impl ObjectTraverserCallBack for ObjectTraverser {
             return;
         }
 
-        match self.load_object(id).await {
-            Ok(Some(object)) => {
-                self.handler.on_object(&object).await;
+        match self.loader.get_object(id).await {
+            Ok(Some(data)) => {
+                self.handler.on_object(&data.object).await;
 
                 match item {
                     TraverseObjectItem::Normal(mut item) => {
@@ -234,7 +234,7 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                     return;
                                 }
 
-                                self.handler.filter_object(&object).await
+                                self.handler.filter_object(&data.object, data.meta.as_ref()).await
                             }
                         };
 
@@ -253,7 +253,7 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                     }
                                 }
 
-                                item.object = object.into();
+                                item.object = data.object.into();
                                 self.append(item);
                             }
                             ObjectTraverseFilterResult::Skip => {

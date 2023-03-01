@@ -39,9 +39,14 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheTranverseAdapter {
                         // 首次加载后，直接设置id缓存，减少一次id计算
                         object.direct_set_object_id_on_init(object_id);
 
+                        let access = match resp.meta {
+                            Some(meta) => meta.access_string,
+                            None => 0,
+                        };
+
                         let item = ObjectMapCacheItem {
                             object,
-                            access: resp.access,
+                            access: AccessString::new(access),
                         };
                         Ok(Some(item))
                     }

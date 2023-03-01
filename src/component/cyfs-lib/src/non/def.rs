@@ -1,4 +1,4 @@
-use crate::{ndn::*, NamedObjectCachePutObjectResult};
+use crate::{ndn::*, NamedObjectCachePutObjectResult, rmeta::ObjectSelectorDataProvider};
 use cyfs_base::*;
 
 use serde_json::{Map, Value};
@@ -578,5 +578,43 @@ impl JsonCodec<NONSlimObjectInfo> for NONSlimObjectInfo {
 impl Into<NONSlimObjectInfo> for NONObjectInfo {
     fn into(self) -> NONSlimObjectInfo {
         NONSlimObjectInfo::new(self.object_id, Some(self.object_raw), self.object)
+    }
+}
+
+
+impl ObjectSelectorDataProvider for NONObjectInfo {
+    fn object_id(&self) -> &ObjectId {
+        &self.object_id
+    }
+    fn obj_type(&self) -> u16 {
+        self.object().obj_type()
+    }
+
+    fn object_dec_id(&self) -> &Option<ObjectId> {
+        self.object().dec_id()
+    }
+    fn object_author(&self) -> &Option<ObjectId> {
+        self.object().author()
+    }
+    fn object_owner(&self) -> &Option<ObjectId> {
+        self.object().owner()
+    }
+
+    fn object_create_time(&self) -> Option<u64> {
+        self.object().option_create_time()
+    }
+
+    fn object_update_time(&self) -> Option<u64> {
+        self.object().update_time()
+    }
+    fn object_expired_time(&self) -> Option<u64> {
+        self.object().expired_time()
+    }
+
+    fn update_time(&self) -> &u64 {
+        &0
+    }
+    fn insert_time(&self) -> &u64 {
+        &0
     }
 }

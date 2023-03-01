@@ -25,7 +25,7 @@ impl ObjectTraverserLoader for ObjectTraverserLocalLoader {
             Ok(Some(data)) => {
                 let ret = ObjectTraverserLoaderObjectData {
                     object: data.object,
-                    access: AccessString::new(data.meta.access_string),
+                    meta: Some(data.meta),
                 };
 
                 Ok(Some(ret))
