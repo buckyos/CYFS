@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use cyfs_base::{BuckyResult, ObjectId, RsaCPUObjectSigner};
 use cyfs_core::{GroupProposal, GroupRPath};
+use cyfs_lib::RPathDelegate;
 
 use crate::{
     network::NONDriverHelper, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
-    PendingProposalHandler, PendingProposalMgr, RPathDelegate,
+    PendingProposalHandler, PendingProposalMgr,
 };
 
 struct RPathControlRaw {

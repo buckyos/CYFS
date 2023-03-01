@@ -505,12 +505,10 @@ mod GroupDecService {
         DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
-    use cyfs_group::{
-        DelegateFactory, ExecuteResult, GroupObjectMapProcessor, RPathControl, RPathDelegate,
-    };
+    use cyfs_group::RPathControl;
     use cyfs_lib::{
-        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestSourceInfo,
-        RouterHandlerChain,
+        DelegateFactory, ExecuteResult, GroupObjectMapProcessor, NONPostObjectInputRequest,
+        NONPostObjectInputResponse, RPathDelegate, RequestSourceInfo, RouterHandlerChain,
     };
     use cyfs_stack::CyfsStack;
     use cyfs_util::EventListenerAsyncRoutine;
