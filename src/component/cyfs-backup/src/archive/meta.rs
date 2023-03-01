@@ -5,11 +5,65 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectArchiveDataMeta {
+    pub count: u64,
+    pub bytes: u64,
+}
+
+impl Default for ObjectArchiveDataMeta {
+    fn default() -> Self {
+        Self { count: 0, bytes: 0 }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectArchiveDataMetas {
+    pub objects: ObjectArchiveDataMeta,
+    pub chunks: ObjectArchiveDataMeta,
+}
+
+impl Default for ObjectArchiveDataMetas {
+    fn default() -> Self {
+        Self {
+            objects: ObjectArchiveDataMeta::default(),
+            chunks: ObjectArchiveDataMeta::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectArchiveDecMeta {
+    pub dec_id: ObjectId,
+    pub dec_root: ObjectId,
+
+    pub data: ObjectArchiveDataMetas,
+    pub missing: ObjectArchiveDataMetas,
+    pub error: ObjectArchiveDataMetas,
+}
+
+impl ObjectArchiveDecMeta {
+    pub fn new(dec_id: ObjectId,dec_root: ObjectId,) -> Self {
+        Self {
+            dec_id,
+            dec_root,
+
+            data: ObjectArchiveDataMetas::default(),
+            missing: ObjectArchiveDataMetas::default(),
+            error: ObjectArchiveDataMetas::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveIsolateMeta {
     isolate_id: ObjectId,
-    decs: Vec<ObjectId>,
+    decs: Vec<ObjectArchiveDecMeta>,
     root: ObjectId,
     revision: u64,
+
+    data: ObjectArchiveDataMetas,
+    missing: ObjectArchiveDataMetas,
+    error: ObjectArchiveDataMetas,
 }
 
 impl ObjectArchiveIsolateMeta {
@@ -19,13 +73,21 @@ impl ObjectArchiveIsolateMeta {
             decs: vec![],
             root,
             revision,
+
+            data: ObjectArchiveDataMetas::default(),
+            missing: ObjectArchiveDataMetas::default(),
+            error: ObjectArchiveDataMetas::default(),
         }
     }
 
-    pub fn add_dec(&mut self, dec_id: &ObjectId) {
-        if !self.decs.contains(dec_id) {
-            self.decs.push(dec_id.to_owned());
-        }
+    pub fn add_dec(&mut self, dec_meta: ObjectArchiveDecMeta) {
+        assert!(self
+            .decs
+            .iter()
+            .find(|item| item.dec_id == dec_meta.dec_id)
+            .is_none());
+
+        self.decs.push(dec_meta);
     }
 }
 
@@ -61,14 +123,14 @@ impl ObjectArchiveMeta {
         }
     }
 
-    pub fn add_isolate_dec(&mut self, isolate_id: &ObjectId, dec_id: &ObjectId) {
+    pub fn add_isolate_dec(&mut self, isolate_id: &ObjectId, dec_meta: ObjectArchiveDecMeta) {
         let ret = self
             .isolates
             .iter_mut()
             .find(|item| item.isolate_id == *isolate_id);
         match ret {
             Some(item) => {
-                item.add_dec(dec_id);
+                item.add_dec(dec_meta);
             }
             None => {
                 unreachable!();

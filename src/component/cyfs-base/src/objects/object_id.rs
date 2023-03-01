@@ -666,6 +666,13 @@ impl ObjectId {
         unsafe { std::str::from_utf8_unchecked(self.data()) }
     }
 
+    pub fn is_chunk_id(&self) -> bool {
+        match self.obj_type_code() {
+            ObjectTypeCode::Chunk => true,
+            _ => false,
+        }
+    }
+    
     pub fn as_chunk_id(&self) -> &ChunkId {
         unsafe { std::mem::transmute::<&ObjectId, &ChunkId>(&self) }
     }
