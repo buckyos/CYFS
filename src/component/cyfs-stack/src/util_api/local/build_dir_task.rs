@@ -512,7 +512,7 @@ impl BuildDirTask {
         start_pos: usize,
     ) -> BuckyResult<ObjectId> {
         let path_str = path.to_string_lossy().to_string();
-        log::info!("build_dir {}", path_str.as_str());
+        log::info!("build_dir {}, start_pos={}", path_str, start_pos);
         {
             let mut task_state = self.task_state.lock().unwrap();
             if !task_state
@@ -583,7 +583,7 @@ impl BuildDirTask {
                             let file_id = file.desc().calculate_id();
                             Ok((task_id, file_name, file_id))
                         } else {
-                            let msg = format!("build_file_object unexpect status");
+                            let msg = format!("build_file_object unexpect status, task={}", task_id);
                             log::error!("{}", msg.as_str());
                             Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg))
                         }
