@@ -78,8 +78,12 @@ impl MimeHelper {
         // 根据内容猜测
         // read some content and try sniff the mime
         use async_std::io::ReadExt;
-        let mut body = resp.take_body().into_reader();
         let body_len = resp.len();
+        if body_len == Some(0) {
+            return;
+        }
+
+        let mut body = resp.take_body().into_reader();
         let mut content: Vec<u8> = vec![0; 512];
         let read_content_len;
         match body.read(&mut content).await {
