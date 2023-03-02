@@ -352,7 +352,7 @@ message GroupProposalDescContent {
 
 message GroupProposalBodyContent {
     optional bytes payload = 1;
-
+/*
     message Signature {
         bytes signature = 1; // sign(hash(ProposalId, proponent_id, decide))
         bytes proponent_id = 2;
@@ -360,8 +360,10 @@ message GroupProposalBodyContent {
     }
 
     repeated Signature decide_signatures = 2;
+*/
 }
 
+/*
 message GroupUpdateGroupPropsalParam {
     repeated bytes target_dec_id = 1; // the proccesor decs
     optional bytes from_chunk_id = 2; // Chunk(Encode(Group))
@@ -373,6 +375,7 @@ message GroupPropsalDecideParam {
     bytes proposal_id = 2;
     bytes decide = 3;
 }
+*/
 
 message HotstuffBlockQc {
     bytes block_id = 1;
@@ -431,6 +434,7 @@ message GroupConsensusBlockBodyContent {
     optional HotstuffTimeout tc = 3;
 }
 
+/*
 message GroupActionDescContent {
     // target
     GroupRPath r_path = 1;
@@ -442,3 +446,4 @@ message GroupActionDescContent {
     optional uint64 value = 4;
     optional bytes conclusion = 5;
 }
+*/
