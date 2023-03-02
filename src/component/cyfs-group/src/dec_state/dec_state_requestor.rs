@@ -4,13 +4,11 @@ use std::sync::Arc;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_core::{GroupConsensusBlockObject, GroupRPath};
+use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
-use crate::{
-    helper::verify_rpath_value, storage::DecStorage, Committee, GroupRPathStatus, HotstuffMessage,
-    CHANNEL_CAPACITY,
-};
+use crate::{storage::DecStorage, Committee, HotstuffMessage, CHANNEL_CAPACITY};
 
 use super::{CallReplyNotifier, CallReplyWaiter};
 

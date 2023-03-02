@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use cyfs_base::{BuckyResult, ObjectId, RsaCPUObjectSigner};
 use cyfs_core::{GroupProposal, GroupRPath};
-use cyfs_lib::RPathDelegate;
+use cyfs_group_lib::RPathDelegate;
 
 use crate::{
     network::NONDriverHelper, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
-    PendingProposalHandler, PendingProposalMgr,
+    PendingProposalHandler, PendingProposalMgr, RPathEventNotifier,
 };
 
 struct RPathControlRaw {
@@ -26,7 +26,7 @@ impl RPathControl {
         local_device_id: ObjectId,
         rpath: GroupRPath,
         signer: Arc<RsaCPUObjectSigner>,
-        delegate: Arc<Box<dyn RPathDelegate>>,
+        event_notifier: RPathEventNotifier,
         network_sender: crate::network::Sender,
         non_driver: NONDriverHelper,
         store: GroupStorage,
@@ -46,7 +46,7 @@ impl RPathControl {
             network_sender.clone(),
             non_driver,
             pending_proposal_consumer,
-            delegate,
+            event_notifier,
             rpath.clone(),
         );
 
