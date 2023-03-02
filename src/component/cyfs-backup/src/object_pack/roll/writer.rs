@@ -55,13 +55,14 @@ impl ObjectPackRollWriter {
         &mut self,
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        meta: Option<Vec<u8>>,
     ) -> BuckyResult<u64> {
         if self.current.is_none() {
             self.open().await?;
         }
 
         let writer = self.current.as_mut().unwrap();
-        let bytes = writer.add_data(object_id, data).await?;
+        let bytes = writer.add_data(object_id, data, meta).await?;
         self.total_bytes_before_flush += bytes;
 
         if self.total_bytes_before_flush > 1024 * 1024 {

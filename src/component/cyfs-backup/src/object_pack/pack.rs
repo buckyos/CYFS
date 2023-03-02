@@ -4,7 +4,10 @@ use async_std::io::Read as AsyncRead;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub type ObjectPackInnerFile = Box<dyn AsyncRead + Unpin + Sync + Send + 'static>;
+pub struct ObjectPackInnerFile {
+    pub data: Box<dyn AsyncRead + Unpin + Sync + Send + 'static>,
+    pub meta: Option<Vec<u8>>,
+}
 
 #[async_trait::async_trait]
 pub trait ObjectPackReader: Send {
@@ -28,6 +31,7 @@ pub trait ObjectPackWriter: Send {
         &mut self,
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        meta: Option<Vec<u8>>,
     ) -> BuckyResult<u64>;
 
     async fn flush(&mut self) -> BuckyResult<u64>;

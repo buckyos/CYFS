@@ -1480,12 +1480,19 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-trait",
+ "byteorder",
+ "chrono",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-util",
  "log 0.4.17",
+ "prost 0.9.0",
+ "prost-build 0.9.0",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -2301,7 +2308,6 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "zip",
  "zone-simulator",
 ]
 

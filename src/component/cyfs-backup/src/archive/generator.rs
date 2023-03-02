@@ -44,8 +44,8 @@ impl ObjectArchiveGenerator {
         data: Box<dyn AsyncRead + Unpin + Send + 'static>,
     ) -> BuckyResult<u64> {
         match object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data).await,
-            _ => self.object_writer.add_data(object_id, data).await,
+            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data, None).await,
+            _ => self.object_writer.add_data(object_id, data, None).await,
         }
     }
 

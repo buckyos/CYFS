@@ -74,8 +74,21 @@ impl ZipObjectPackReader {
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
-        let reader = async_std::io::Cursor::new(buffer);
-        Ok(Box::new(reader))
+        let data = async_std::io::Cursor::new(buffer);
+
+        let meta = zip_file.extra_data();
+        let meta = if !meta.is_empty() {
+            Some(meta.to_owned())
+        } else {
+            None
+        };
+
+        let ret = ObjectPackInnerFile {
+            data: Box::new(data),
+            meta,
+        };
+
+        Ok(ret)
     }
 
     pub fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>> {
