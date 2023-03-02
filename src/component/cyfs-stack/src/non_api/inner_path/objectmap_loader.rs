@@ -27,11 +27,6 @@ impl NONObjectMapLoader {
     pub async fn load(&self, req: NONGetObjectInputRequest) -> BuckyResult<NONObjectInfo> {
         let inner_path = req.inner_path.unwrap();
 
-        info!(
-            "will get objectmap with inner path: {}, {}",
-            req.object_id, inner_path
-        );
-
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
 
         // first check access at object level
@@ -96,6 +91,11 @@ impl NONObjectMapLoader {
         }
 
         let (object, object_raw) = ret.unwrap();
+
+        info!(
+            "get object from objectmap with inner path: {}, {}, got={}",
+            req.object_id, inner_path, object_id,
+        );
 
         let info = NONObjectInfo {
             object_id: object_id.to_owned(),

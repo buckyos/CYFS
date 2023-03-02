@@ -376,7 +376,7 @@ impl BrowserSanboxHttpServer {
                         }
                     }
                     None => {
-                        warn!("browser dec request but dec_id header or query pairs missing! req={}, origin={:?}", req.url(), origin);
+                        debug!("browser dec request but dec_id header or query pairs missing! req={}, origin={:?}", req.url(), origin);
                         drop(origin);
 
                         // insert the origin dec_id
