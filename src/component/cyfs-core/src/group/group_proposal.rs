@@ -1,4 +1,4 @@
-use crate::{CoreObjectType, GroupPropsalDecideParam, GroupRPath};
+use crate::{CoreObjectType, GroupRPath};
 use async_trait::async_trait;
 use cyfs_base::*;
 use sha2::Digest;
@@ -34,45 +34,44 @@ impl DescContent for GroupProposalDescContent {
     type PublicKeyType = SubDescNone;
 }
 
-#[derive(Clone)]
-pub struct GroupProposalSignature {
-    signature: Signature,
-    proponent_id: ObjectId,
-    decide: Vec<u8>,
-}
+// #[derive(Clone)]
+// pub struct GroupProposalSignature {
+//     signature: Signature,
+//     proponent_id: ObjectId,
+//     decide: Vec<u8>,
+// }
 
-impl ProtobufTransform<&crate::codec::protos::group_proposal_body_content::Signature>
-    for GroupProposalSignature
-{
-    fn transform(
-        value: &crate::codec::protos::group_proposal_body_content::Signature,
-    ) -> BuckyResult<Self> {
-        Ok(Self {
-            signature: Signature::raw_decode(value.signature.as_slice())?.0,
-            proponent_id: ObjectId::raw_decode(value.proponent_id.as_slice())?.0,
-            decide: value.decide.clone(),
-        })
-    }
-}
+// impl ProtobufTransform<&crate::codec::protos::group_proposal_body_content::Signature>
+//     for GroupProposalSignature
+// {
+//     fn transform(
+//         value: &crate::codec::protos::group_proposal_body_content::Signature,
+//     ) -> BuckyResult<Self> {
+//         Ok(Self {
+//             signature: Signature::raw_decode(value.signature.as_slice())?.0,
+//             proponent_id: ObjectId::raw_decode(value.proponent_id.as_slice())?.0,
+//             decide: value.decide.clone(),
+//         })
+//     }
+// }
 
-impl ProtobufTransform<&GroupProposalSignature>
-    for crate::codec::protos::group_proposal_body_content::Signature
-{
-    fn transform(value: &GroupProposalSignature) -> BuckyResult<Self> {
-        Ok(Self {
-            signature: value.signature.to_vec()?,
-            proponent_id: value.proponent_id.to_vec()?,
-            decide: value.decide.clone(),
-        })
-    }
-}
+// impl ProtobufTransform<&GroupProposalSignature>
+//     for crate::codec::protos::group_proposal_body_content::Signature
+// {
+//     fn transform(value: &GroupProposalSignature) -> BuckyResult<Self> {
+//         Ok(Self {
+//             signature: value.signature.to_vec()?,
+//             proponent_id: value.proponent_id.to_vec()?,
+//             decide: value.decide.clone(),
+//         })
+//     }
+// }
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType, Default)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupProposalBodyContent)]
 pub struct GroupProposalBodyContent {
     payload: Option<Vec<u8>>,
-
-    decide_signatures: Vec<GroupProposalSignature>,
+    // decide_signatures: Vec<GroupProposalSignature>,
 }
 
 impl BodyContent for GroupProposalBodyContent {
@@ -85,14 +84,14 @@ impl ProtobufTransform<crate::codec::protos::GroupProposalBodyContent>
     for GroupProposalBodyContent
 {
     fn transform(value: crate::codec::protos::GroupProposalBodyContent) -> BuckyResult<Self> {
-        let mut decide_signatures = vec![];
-        for sign in value.decide_signatures.as_slice() {
-            decide_signatures.push(GroupProposalSignature::transform(sign)?);
-        }
+        // let mut decide_signatures = vec![];
+        // for sign in value.decide_signatures.as_slice() {
+        //     decide_signatures.push(GroupProposalSignature::transform(sign)?);
+        // }
 
         Ok(Self {
             payload: value.payload,
-            decide_signatures,
+            // decide_signatures,
         })
     }
 }
@@ -101,16 +100,16 @@ impl ProtobufTransform<&GroupProposalBodyContent>
     for crate::codec::protos::GroupProposalBodyContent
 {
     fn transform(value: &GroupProposalBodyContent) -> BuckyResult<Self> {
-        let mut decide_signatures = vec![];
-        for sign in value.decide_signatures.as_slice() {
-            decide_signatures.push(
-                crate::codec::protos::group_proposal_body_content::Signature::transform(sign)?,
-            );
-        }
+        // let mut decide_signatures = vec![];
+        // for sign in value.decide_signatures.as_slice() {
+        //     decide_signatures.push(
+        //         crate::codec::protos::group_proposal_body_content::Signature::transform(sign)?,
+        //     );
+        // }
 
         Ok(Self {
             payload: value.payload.clone(),
-            decide_signatures,
+            // decide_signatures,
         })
     }
 }
@@ -143,17 +142,17 @@ impl GroupProposalDescContent {
 }
 
 impl GroupProposalBodyContent {
-    fn hash_decide_signature(
-        proposal_id: &ObjectId,
-        proponent_id: &ObjectId,
-        decide: &[u8],
-    ) -> HashValue {
-        let mut sha256 = sha2::Sha256::new();
-        sha256.input(proposal_id.as_slice());
-        sha256.input(proponent_id.as_slice());
-        sha256.input(decide);
-        sha256.result().into()
-    }
+    // fn hash_decide_signature(
+    //     proposal_id: &ObjectId,
+    //     proponent_id: &ObjectId,
+    //     decide: &[u8],
+    // ) -> HashValue {
+    //     let mut sha256 = sha2::Sha256::new();
+    //     sha256.input(proposal_id.as_slice());
+    //     sha256.input(proponent_id.as_slice());
+    //     sha256.input(decide);
+    //     sha256.result().into()
+    // }
 }
 
 #[async_trait]
@@ -182,27 +181,27 @@ pub trait GroupProposalObject {
     fn payload(&self) -> &Option<Vec<u8>>;
     fn set_payload(&mut self, payload: Option<Vec<u8>>);
 
-    async fn verify_member_decide(
-        &self,
-        member_id: &ObjectId,
-        public_key: &PublicKey,
-    ) -> BuckyResult<Vec<&[u8]>>;
+    // async fn verify_member_decide(
+    //     &self,
+    //     member_id: &ObjectId,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<Vec<&[u8]>>;
 
-    fn decided_members_no_verify(&self) -> &Vec<GroupProposalSignature>;
+    // fn decided_members_no_verify(&self) -> &Vec<GroupProposalSignature>;
 
-    async fn decide(
-        &self,
-        member_id: ObjectId,
-        decide: Vec<u8>,
-        private_key: &PrivateKey,
-    ) -> BuckyResult<GroupPropsalDecideParam>;
+    // async fn decide(
+    //     &self,
+    //     member_id: ObjectId,
+    //     decide: Vec<u8>,
+    //     private_key: &PrivateKey,
+    // ) -> BuckyResult<GroupPropsalDecideParam>;
 
-    async fn verify_and_merge_decide(
-        &mut self,
-        decide: &GroupPropsalDecideParam,
-        member_id: ObjectId,
-        public_key: &PublicKey,
-    ) -> BuckyResult<()>;
+    // async fn verify_and_merge_decide(
+    //     &mut self,
+    //     decide: &GroupPropsalDecideParam,
+    //     member_id: ObjectId,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<()>;
 }
 
 #[async_trait]
@@ -231,7 +230,7 @@ impl GroupProposalObject for GroupProposal {
             desc,
             GroupProposalBodyContent {
                 payload,
-                decide_signatures: vec![],
+                // decide_signatures: vec![],
             },
         )
         .create_time(timestamp.map_or(bucky_time_now(), |t| t))
@@ -252,9 +251,7 @@ impl GroupProposalObject for GroupProposal {
 
     fn params_hash(&self) -> BuckyResult<Option<HashValue>> {
         match &self.desc().content().params {
-            Some(params) => {
-                HashValue::try_from(params.as_slice()).map(|h| Some(h))
-            }
+            Some(params) => HashValue::try_from(params.as_slice()).map(|h| Some(h)),
             None => Ok(None),
         }
     }
@@ -298,134 +295,130 @@ impl GroupProposalObject for GroupProposal {
         self.body_mut().as_mut().unwrap().content_mut().payload = payload;
     }
 
-    async fn verify_member_decide(
-        &self,
-        member_id: &ObjectId,
-        public_key: &PublicKey,
-    ) -> BuckyResult<Vec<&[u8]>> {
-        let signs = self
-            .body()
-            .as_ref()
-            .unwrap()
-            .content()
-            .decide_signatures
-            .as_slice();
+    // async fn verify_member_decide(
+    //     &self,
+    //     member_id: &ObjectId,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<Vec<&[u8]>> {
+    //     let signs = self
+    //         .body()
+    //         .as_ref()
+    //         .unwrap()
+    //         .content()
+    //         .decide_signatures
+    //         .as_slice();
 
-        let proposal_id = self.desc().object_id();
-        let verifier = RsaCPUObjectVerifier::new(public_key.clone());
+    //     let proposal_id = self.desc().object_id();
+    //     let verifier = RsaCPUObjectVerifier::new(public_key.clone());
 
-        let mut decides = vec![];
+    //     let mut decides = vec![];
 
-        for sign in signs {
-            if &sign.proponent_id == member_id {
-                let hash = GroupProposalBodyContent::hash_decide_signature(
-                    &proposal_id,
-                    &sign.proponent_id,
-                    sign.decide.as_slice(),
-                );
+    //     for sign in signs {
+    //         if &sign.proponent_id == member_id {
+    //             let hash = GroupProposalBodyContent::hash_decide_signature(
+    //                 &proposal_id,
+    //                 &sign.proponent_id,
+    //                 sign.decide.as_slice(),
+    //             );
 
-                if verifier.verify(hash.as_slice(), &sign.signature).await {
-                    decides.push(sign.decide.as_slice());
-                } else {
-                    return Err(BuckyError::new(
-                        BuckyErrorCode::InvalidSignature,
-                        "invalid signature",
-                    ));
-                }
-            }
-        }
+    //             if verifier.verify(hash.as_slice(), &sign.signature).await {
+    //                 decides.push(sign.decide.as_slice());
+    //             } else {
+    //                 return Err(BuckyError::new(
+    //                     BuckyErrorCode::InvalidSignature,
+    //                     "invalid signature",
+    //                 ));
+    //             }
+    //         }
+    //     }
 
-        Ok(decides)
-    }
+    //     Ok(decides)
+    // }
 
-    fn decided_members_no_verify(&self) -> &Vec<GroupProposalSignature> {
-        &self.body().as_ref().unwrap().content().decide_signatures
-    }
+    // async fn decide(
+    //     &self,
+    //     member_id: ObjectId,
+    //     decide: Vec<u8>,
+    //     private_key: &PrivateKey,
+    // ) -> BuckyResult<GroupPropsalDecideParam> {
+    //     let signs = &self.body().as_ref().unwrap().content().decide_signatures;
 
-    async fn decide(
-        &self,
-        member_id: ObjectId,
-        decide: Vec<u8>,
-        private_key: &PrivateKey,
-    ) -> BuckyResult<GroupPropsalDecideParam> {
-        let signs = &self.body().as_ref().unwrap().content().decide_signatures;
+    //     if signs.iter().find(|s| s.proponent_id == member_id).is_some() {
+    //         return Err(BuckyError::new(
+    //             BuckyErrorCode::AlreadyExists,
+    //             "duplicated decide",
+    //         ));
+    //     }
 
-        if signs.iter().find(|s| s.proponent_id == member_id).is_some() {
-            return Err(BuckyError::new(
-                BuckyErrorCode::AlreadyExists,
-                "duplicated decide",
-            ));
-        }
+    //     let proposal_id = self.desc().object_id();
 
-        let proposal_id = self.desc().object_id();
+    //     let hash = GroupProposalBodyContent::hash_decide_signature(
+    //         &proposal_id,
+    //         &member_id,
+    //         decide.as_slice(),
+    //     );
 
-        let hash = GroupProposalBodyContent::hash_decide_signature(
-            &proposal_id,
-            &member_id,
-            decide.as_slice(),
-        );
+    //     let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
+    //     let sign = signer
+    //         .sign(hash.as_slice(), &SignatureSource::RefIndex(0))
+    //         .await?;
 
-        let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
-        let sign = signer
-            .sign(hash.as_slice(), &SignatureSource::RefIndex(0))
-            .await?;
+    //     Ok(GroupPropsalDecideParam::new(sign, proposal_id, decide))
+    // }
 
-        Ok(GroupPropsalDecideParam::new(sign, proposal_id, decide))
-    }
+    // async fn verify_and_merge_decide(
+    //     &mut self,
+    //     decide: &GroupPropsalDecideParam,
+    //     member_id: ObjectId,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<()> {
+    //     let proposal_id = self.desc().object_id();
 
-    async fn verify_and_merge_decide(
-        &mut self,
-        decide: &GroupPropsalDecideParam,
-        member_id: ObjectId,
-        public_key: &PublicKey,
-    ) -> BuckyResult<()> {
-        let proposal_id = self.desc().object_id();
+    //     if decide.proposal_id() != &proposal_id {
+    //         return Err(BuckyError::new(
+    //             BuckyErrorCode::NotMatch,
+    //             format!(
+    //                 "proposal id not match for decide signature: {}/{}",
+    //                 proposal_id,
+    //                 decide.proposal_id()
+    //             ),
+    //         ));
+    //     }
 
-        if decide.proposal_id() != &proposal_id {
-            return Err(BuckyError::new(
-                BuckyErrorCode::NotMatch,
-                format!(
-                    "proposal id not match for decide signature: {}/{}",
-                    proposal_id,
-                    decide.proposal_id()
-                ),
-            ));
-        }
+    //     let hash = GroupProposalBodyContent::hash_decide_signature(
+    //         &proposal_id,
+    //         &member_id,
+    //         decide.decide(),
+    //     );
 
-        let hash = GroupProposalBodyContent::hash_decide_signature(
-            &proposal_id,
-            &member_id,
-            decide.decide(),
-        );
+    //     let verifier = RsaCPUObjectVerifier::new(public_key.clone());
+    //     if verifier.verify(hash.as_slice(), decide.signature()).await {
+    //         let signs = &mut self
+    //             .body_mut()
+    //             .as_mut()
+    //             .unwrap()
+    //             .content_mut()
+    //             .decide_signatures;
+    //         for exist in signs.iter() {
+    //             if &exist.proponent_id == &member_id && exist.decide == decide.decide() {
+    //                 return Ok(());
+    //             }
+    //         }
 
-        let verifier = RsaCPUObjectVerifier::new(public_key.clone());
-        if verifier.verify(hash.as_slice(), decide.signature()).await {
-            let signs = &mut self
-                .body_mut()
-                .as_mut()
-                .unwrap()
-                .content_mut()
-                .decide_signatures;
-            for exist in signs.iter() {
-                if &exist.proponent_id == &member_id && exist.decide == decide.decide() {
-                    return Ok(());
-                }
-            }
+    //         signs.push(GroupProposalSignature {
+    //             signature: decide.signature().clone(),
+    //             proponent_id: member_id,
+    //             decide: Vec::from(decide.decide()),
+    //         });
 
-            signs.push(GroupProposalSignature {
-                signature: decide.signature().clone(),
-                proponent_id: member_id,
-                decide: Vec::from(decide.decide()),
-            });
-
-            Ok(())
-        } else {
-            Err(BuckyError::new(
-                BuckyErrorCode::InvalidSignature,
-                "invalid signature",
-            ))
-        }
-    }
+    //         Ok(())
+    //     } else {
+    //         Err(BuckyError::new(
+    //             BuckyErrorCode::InvalidSignature,
+    //             "invalid signature",
+    //         ))
+    //     }
+    // }
 }
 
 #[cfg(test)]
