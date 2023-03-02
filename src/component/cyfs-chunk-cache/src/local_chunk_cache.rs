@@ -630,7 +630,7 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
 #[async_trait::async_trait]
 impl ChunkCache for SingleDiskChunkCache {
     async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
-        log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
+        log::debug!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
             #[cfg(target_os = "windows")]
