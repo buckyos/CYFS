@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, ObjectId, Signature,
-};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId, Signature};
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, HotstuffBlockQC, HotstuffBlockQCSign,
     HotstuffTimeout, HotstuffTimeoutSign,
 };
+use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
-use crate::{Committee, HotstuffBlockQCVote, HotstuffTimeoutVote};
+use crate::Committee;
 
 pub(crate) struct VoteMgr {
     committee: Committee,

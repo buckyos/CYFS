@@ -2,15 +2,15 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_std::sync::RwLock;
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, GroupId, ObjectId, OwnerObjectDesc, RsaCPUObjectSigner,
+    BuckyErrorCode, BuckyResult, GroupId, ObjectId, OwnerObjectDesc, RsaCPUObjectSigner,
 };
 use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
-use cyfs_lib::{DelegateFactory, GlobalStateManagerRawProcessorRef};
+use cyfs_lib::GlobalStateManagerRawProcessorRef;
 
 use crate::{
-    storage::GroupStorage, HotstuffMessage, HotstuffPackage, IsCreateRPath, NONDriver,
-    NONDriverHelper, RPathClient, RPathControl, NET_PROTOCOL_VPORT,
+    storage::GroupStorage, HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper,
+    RPathClient, RPathControl, RPathEventNotifier, NET_PROTOCOL_VPORT,
 };
 
 type ControlByRPath = HashMap<String, RPathControl>;
@@ -22,7 +22,6 @@ type ClientByDec = HashMap<ObjectId, ClientByRPath>;
 type ClientByGroup = HashMap<ObjectId, ClientByDec>;
 
 struct GroupRPathMgrRaw {
-    delegate_by_dec: HashMap<ObjectId, Box<dyn DelegateFactory>>,
     control_by_group: ControlByGroup,
     client_by_group: ClientByGroup,
 }
@@ -33,6 +32,7 @@ struct LocalInfo {
     datagram: DatagramTunnelGuard,
     bdt_stack: StackGuard,
     global_state_mgr: GlobalStateManagerRawProcessorRef,
+    event_notifier: RPathEventNotifier,
 }
 
 #[derive(Clone)]
@@ -54,12 +54,12 @@ impl GroupManager {
             datagram: datagram.clone(),
             bdt_stack,
             global_state_mgr,
+            event_notifier: RPathEventNotifier::new(),
         };
 
         let raw = GroupRPathMgrRaw {
             control_by_group: ControlByGroup::default(),
             client_by_group: ClientByGroup::default(),
-            delegate_by_dec: HashMap::default(),
         };
 
         let mgr = Self(Arc::new((local_info, RwLock::new(raw))));
@@ -69,29 +69,12 @@ impl GroupManager {
         Ok(mgr)
     }
 
-    pub async fn register(
-        &self,
-        dec_id: DecAppId,
-        delegate_factory: Box<dyn DelegateFactory>,
-    ) -> BuckyResult<()> {
-        let mut raw = self.write().await;
-        raw.delegate_by_dec
-            .insert(dec_id.object_id().clone(), delegate_factory);
-        Ok(())
-    }
-
-    pub async fn unregister(&self, dec_id: &DecAppId) -> BuckyResult<()> {
-        let mut raw = self.write().await;
-        raw.delegate_by_dec.remove(dec_id.object_id());
-        Ok(())
-    }
-
     pub async fn find_rpath_control(
         &self,
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        is_auto_create: IsCreateRPath,
+        is_auto_create: bool,
     ) -> BuckyResult<RPathControl> {
         self.find_rpath_control_inner(group_id, dec_id, rpath, is_auto_create, None, None)
             .await
@@ -204,7 +187,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         Some(&block),
                         Some(&remote),
                     )
@@ -220,7 +203,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -236,7 +219,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -252,7 +235,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -268,7 +251,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -284,7 +267,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::Yes,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -331,7 +314,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        IsCreateRPath::No,
+                        false,
                         None,
                         Some(&remote),
                     )
@@ -378,7 +361,7 @@ impl GroupManager {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        is_auto_create: IsCreateRPath,
+        is_auto_create: bool,
         block: Option<&GroupConsensusBlock>,
         remote: Option<&ObjectId>,
     ) -> BuckyResult<RPathControl> {
@@ -398,7 +381,6 @@ impl GroupManager {
 
         {
             // write
-
             let local_info = self.local_info();
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
             let local_device_id = local_info.bdt_stack.local_device_id();
@@ -411,6 +393,7 @@ impl GroupManager {
                 local_device_id.object_id().clone(),
             );
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
+            let event_notifier = local_info.event_notifier.clone();
 
             let store = GroupStorage::load(
                 group_id,
@@ -424,39 +407,24 @@ impl GroupManager {
             let store = match store {
                 Ok(store) => Some(store),
                 Err(e) => {
-                    if let IsCreateRPath::No = is_auto_create {
-                        return Err(e);
-                    }
                     if let BuckyErrorCode::NotFound = e.code() {
                         log::warn!("{}/{}/{} not found in storage", group_id, dec_id, rpath);
-                        None
+
+                        self.on_new_rpath_request(group_id, dec_id, rpath, block)
+                            .await?;
+
+                        if !is_auto_create {
+                            return Err(e);
+                        } else {
+                            None
+                        }
                     } else {
                         return Err(e);
                     }
                 }
             };
 
-            // TODO: query group
-            let group = non_driver
-                .get_group(group_id, block.map(|b| b.group_chunk_id()), remote)
-                .await?;
-
             let mut raw = self.write().await;
-
-            let delegate = {
-                let delegate_factory = raw.delegate_by_dec.get(dec_id);
-                if delegate_factory.is_none() {
-                    return Err(BuckyError::new(
-                        BuckyErrorCode::DecNotRunning,
-                        "dec not running for the rpath-control",
-                    ));
-                }
-                let delegate_factory = delegate_factory.unwrap();
-
-                delegate_factory
-                    .create_rpath_delegate(&group, rpath, block)
-                    .await?
-            };
 
             let store = match store {
                 Some(store) => store,
@@ -489,7 +457,7 @@ impl GroupManager {
                         local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
                         signer,
-                        Arc::new(delegate),
+                        event_notifier,
                         network_sender,
                         non_driver,
                         store,
@@ -500,5 +468,15 @@ impl GroupManager {
                 }
             }
         }
+    }
+
+    async fn on_new_rpath_request(
+        &self,
+        group_id: &ObjectId,
+        dec_id: &ObjectId,
+        rpath: &str,
+        with_block: Option<&GroupConsensusBlock>,
+    ) -> BuckyResult<()> {
+        unimplemented!()
     }
 }

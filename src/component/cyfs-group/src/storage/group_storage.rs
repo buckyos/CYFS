@@ -9,11 +9,12 @@ use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, HotstuffBlockQC,
     HotstuffTimeout,
 };
-use cyfs_lib::{GlobalStateManagerRawProcessorRef, GroupObjectMapProcessor, NONObjectInfo};
+use cyfs_group_lib::{GroupObjectMapProcessor, GroupRPathStatus};
+use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 
 use crate::{
-    storage::StorageWriter, GroupRPathStatus, GroupStatePath, NONDriverHelper,
-    PROPOSAL_MAX_TIMEOUT, STATE_PATH_SEPARATOR,
+    storage::StorageWriter, GroupStatePath, NONDriverHelper, PROPOSAL_MAX_TIMEOUT,
+    STATE_PATH_SEPARATOR,
 };
 
 use super::{

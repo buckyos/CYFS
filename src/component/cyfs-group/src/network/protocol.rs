@@ -1,16 +1,8 @@
-pub mod protos {
-    include!(concat!(env!("OUT_DIR"), "/mod.rs"));
-}
-
 use cyfs_base::*;
-use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
-};
+use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
+use cyfs_group_lib::{GroupRPathStatus, HotstuffBlockQCVote, HotstuffTimeoutVote};
 use cyfs_lib::NONObjectInfo;
 use itertools::Itertools;
-use sha2::Digest;
-
-use crate::GroupRPathStatus;
 
 #[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone, Debug)]
 pub enum SyncBound {
@@ -96,15 +88,11 @@ pub(crate) enum HotstuffMessage {
     SyncRequest(SyncBound, SyncBound), // [min, max]
 
     LastStateRequest,
-    StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
+    StateChangeNotify(GroupConsensusBlock, HotstuffBlockQC), // (block, qc)
     ProposalResult(
         ObjectId,
-        BuckyResult<(
-            Option<NONObjectInfo>,
-            GroupConsensusBlock,
-            GroupConsensusBlock,
-        )>,
-    ), // (proposal-id, (ExecuteResult, block, qc-block))
+        BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
+    ), // (proposal-id, (ExecuteResult, block, qc))
     QueryState(String),
     VerifiableState(String, BuckyResult<GroupRPathStatus>),
 }
@@ -151,8 +139,8 @@ impl std::fmt::Debug for HotstuffMessage {
                     "HotstuffMessage::StateChangeNotify({}/{}, {}/{})",
                     block.block_id(),
                     block.round(),
-                    qc.block_id(),
-                    qc.round()
+                    qc.block_id,
+                    qc.round
                 )
             }
             Self::LastStateRequest => {
@@ -169,8 +157,8 @@ impl std::fmt::Debug for HotstuffMessage {
                             obj.as_ref().map(|o| o.object_id),
                             block.block_id(),
                             block.round(),
-                            qc.block_id(),
-                            qc.round()
+                            qc.block_id,
+                            qc.round
                         )
                     })
                 )
@@ -214,16 +202,12 @@ pub(crate) enum HotstuffPackage {
 
     SyncRequest(ProtocolAddress, SyncBound, SyncBound),
 
-    StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
+    StateChangeNotify(GroupConsensusBlock, HotstuffBlockQC), // (block, qc)
     LastStateRequest(ProtocolAddress),
     ProposalResult(
         ObjectId,
         Result<
-            (
-                Option<NONObjectInfo>,
-                GroupConsensusBlock,
-                GroupConsensusBlock,
-            ),
+            (Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC),
             (BuckyError, ProtocolAddress),
         >,
     ), // (proposal-id, ExecuteResult)
@@ -276,8 +260,8 @@ impl std::fmt::Debug for HotstuffPackage {
                     "HotstuffPackage::StateChangeNotify({}/{}, {}/{})",
                     block.block_id(),
                     block.round(),
-                    qc.block_id(),
-                    qc.round()
+                    qc.block_id,
+                    qc.round
                 )
             }
             Self::LastStateRequest(_) => {
@@ -296,8 +280,8 @@ impl std::fmt::Debug for HotstuffPackage {
                                 obj.as_ref().map(|o| o.object_id),
                                 block.block_id(),
                                 block.round(),
-                                qc.block_id(),
-                                qc.round()
+                                qc.block_id,
+                                qc.round
                             );
                             Ok(ok)
                         }
@@ -394,23 +378,25 @@ fn decode_with_length<'de, O: RawDecode<'de>>(
 impl RawEncode for HotstuffPackage {
     fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         let len = match self {
-            HotstuffPackage::Block(b) => b.raw_measure(purpose)?,
+            HotstuffPackage::Block(b) => 3 + b.raw_measure(purpose)?,
             HotstuffPackage::BlockVote(addr, vote) => {
-                2 + addr.raw_measure(purpose)? + vote.raw_measure(purpose)?
+                2 + addr.raw_measure(purpose)? + 3 + vote.raw_measure(purpose)?
             }
             HotstuffPackage::TimeoutVote(addr, vote) => {
-                2 + addr.raw_measure(purpose)? + vote.raw_measure(purpose)?
+                2 + addr.raw_measure(purpose)? + 3 + vote.raw_measure(purpose)?
             }
             HotstuffPackage::Timeout(addr, tc) => {
-                2 + addr.raw_measure(purpose)? + tc.raw_measure(purpose)?
+                2 + addr.raw_measure(purpose)? + 3 + tc.raw_measure(purpose)?
             }
             HotstuffPackage::SyncRequest(addr, min, max) => {
-                addr.raw_measure(purpose)? + min.raw_measure(purpose)? + max.raw_measure(purpose)?
+                2 + addr.raw_measure(purpose)?
+                    + min.raw_measure(purpose)?
+                    + max.raw_measure(purpose)?
             }
             HotstuffPackage::StateChangeNotify(block, qc) => {
-                3 + block.raw_measure(purpose)? + qc.raw_measure(purpose)?
+                3 + block.raw_measure(purpose)? + 3 + qc.raw_measure(purpose)?
             }
-            HotstuffPackage::LastStateRequest(addr) => addr.raw_measure(purpose)?,
+            HotstuffPackage::LastStateRequest(addr) => 2 + addr.raw_measure(purpose)?,
             HotstuffPackage::ProposalResult(id, result) => {
                 id.raw_measure(purpose)?
                     + match result {
@@ -418,22 +404,23 @@ impl RawEncode for HotstuffPackage {
                             non.raw_measure(purpose)?
                                 + 3
                                 + block.raw_measure(purpose)?
+                                + 3
                                 + block_qc.raw_measure(purpose)?
                         }
                         Err((err, addr)) => {
-                            err.raw_measure(purpose)? + addr.raw_measure(purpose)?
+                            err.raw_measure(purpose)? + 2 + addr.raw_measure(purpose)?
                         }
                     }
             }
             HotstuffPackage::QueryState(addr, sub_path) => {
-                addr.raw_measure(purpose)? + sub_path.raw_measure(purpose)?
+                2 + addr.raw_measure(purpose)? + sub_path.raw_measure(purpose)?
             }
             HotstuffPackage::VerifiableState(sub_path, result) => {
                 sub_path.raw_measure(purpose)?
                     + match result {
-                        Ok(status) => status.raw_measure(purpose)?,
+                        Ok(status) => 3 + status.raw_measure(purpose)?,
                         Err((err, addr)) => {
-                            err.raw_measure(purpose)? + addr.raw_measure(purpose)?
+                            err.raw_measure(purpose)? + 2 + addr.raw_measure(purpose)?
                         }
                     }
             }
@@ -451,43 +438,43 @@ impl RawEncode for HotstuffPackage {
             HotstuffPackage::Block(b) => {
                 buf[0] = 0;
                 let buf = &mut buf[1..];
-                b.raw_encode(buf, purpose)
+                encode_with_length(buf, b, purpose, 3)
             }
             HotstuffPackage::BlockVote(addr, vote) => {
                 buf[0] = 1;
                 let buf = &mut buf[1..];
                 let buf = encode_with_length(buf, addr, purpose, 2)?;
-                vote.raw_encode(buf, purpose)
+                encode_with_length(buf, vote, purpose, 3)
             }
             HotstuffPackage::TimeoutVote(addr, vote) => {
                 buf[0] = 2;
                 let buf = &mut buf[1..];
                 let buf = encode_with_length(buf, addr, purpose, 2)?;
-                vote.raw_encode(buf, purpose)
+                encode_with_length(buf, vote, purpose, 3)
             }
             HotstuffPackage::Timeout(addr, tc) => {
                 buf[0] = 3;
                 let buf = &mut buf[1..];
                 let buf = encode_with_length(buf, addr, purpose, 2)?;
-                tc.raw_encode(buf, purpose)
+                encode_with_length(buf, tc, purpose, 3)
             }
             HotstuffPackage::SyncRequest(addr, min, max) => {
                 buf[0] = 4;
                 let buf = &mut buf[1..];
+                encode_with_length(buf, addr, purpose, 2)?;
                 let buf = min.raw_encode(buf, purpose)?;
-                let buf = max.raw_encode(buf, purpose)?;
-                addr.raw_encode(buf, purpose)
+                max.raw_encode(buf, purpose)
             }
             HotstuffPackage::StateChangeNotify(block, qc) => {
                 buf[0] = 5;
                 let buf = &mut buf[1..];
                 let buf = encode_with_length(buf, block, purpose, 3)?;
-                qc.raw_encode(buf, purpose)
+                encode_with_length(buf, qc, purpose, 3)
             }
             HotstuffPackage::LastStateRequest(addr) => {
                 buf[0] = 6;
                 let buf = &mut buf[1..];
-                addr.raw_encode(buf, purpose)
+                encode_with_length(buf, addr, purpose, 2)
             }
             HotstuffPackage::ProposalResult(id, result) => {
                 buf[0] = 7;
@@ -501,19 +488,19 @@ impl RawEncode for HotstuffPackage {
                     Ok((non, block, qc)) => {
                         let buf = non.raw_encode(buf, purpose)?;
                         let buf = encode_with_length(buf, block, purpose, 3)?;
-                        qc.raw_encode(buf, purpose)
+                        encode_with_length(buf, qc, purpose, 3)
                     }
                     Err((err, addr)) => {
                         let buf = err.raw_encode(buf, purpose)?;
-                        addr.raw_encode(buf, purpose)
+                        encode_with_length(buf, addr, purpose, 2)
                     }
                 }
             }
             HotstuffPackage::QueryState(addr, sub_path) => {
                 buf[0] = 8;
                 let buf = &mut buf[1..];
-                let buf = sub_path.raw_encode(buf, purpose)?;
-                addr.raw_encode(buf, purpose)
+                encode_with_length(buf, addr, purpose, 2)?;
+                sub_path.raw_encode(buf, purpose)
             }
             HotstuffPackage::VerifiableState(sub_path, result) => {
                 buf[0] = 9;
@@ -523,10 +510,10 @@ impl RawEncode for HotstuffPackage {
                 let buf = &mut buf[1..];
                 let buf = sub_path.raw_encode(buf, purpose)?;
                 match result {
-                    Ok(status) => status.raw_encode(buf, purpose),
+                    Ok(status) => encode_with_length(buf, status, purpose, 3),
                     Err((err, addr)) => {
                         let buf = err.raw_encode(buf, purpose)?;
-                        addr.raw_encode(buf, purpose)
+                        encode_with_length(buf, addr, purpose, 2)
                     }
                 }
             }
@@ -542,49 +529,49 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
         match pkg_type {
             0 => {
                 let buf = &buf[1..];
-                let (b, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                let (b, buf) = decode_with_length(buf, 3)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::Block(b), buf))
             }
             1 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
-                let (vote, buf) = HotstuffBlockQCVote::raw_decode(buf)?;
+                let (vote, buf) = decode_with_length(buf, 3)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::BlockVote(addr, vote), buf))
             }
             2 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
-                let (vote, buf) = HotstuffTimeoutVote::raw_decode(buf)?;
+                let (vote, buf) = decode_with_length(buf, 3)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::TimeoutVote(addr, vote), buf))
             }
             3 => {
                 let buf = &buf[1..];
                 let (addr, buf) = decode_with_length(buf, 2)?;
-                let (vote, buf) = HotstuffTimeout::raw_decode(buf)?;
+                let (vote, buf) = decode_with_length(buf, 3)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::Timeout(addr, vote), buf))
             }
             4 => {
                 let buf = &buf[1..];
+                let (addr, buf) = decode_with_length(buf, 2)?;
                 let (min, buf) = SyncBound::raw_decode(buf)?;
                 let (max, buf) = SyncBound::raw_decode(buf)?;
-                let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::SyncRequest(addr, min, max), buf))
             }
             5 => {
                 let buf = &buf[1..];
                 let (block, buf) = decode_with_length(buf, 3)?;
-                let (qc, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                let (qc, buf) = decode_with_length(buf, 3)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::StateChangeNotify(block, qc), buf))
             }
             6 => {
                 let buf = &buf[1..];
-                let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                let (addr, buf) = decode_with_length(buf, 2)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::LastStateRequest(addr), buf))
             }
@@ -596,7 +583,7 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                     true => {
                         let (non, buf) = Option::<NONObjectInfo>::raw_decode(buf)?;
                         let (block, buf) = decode_with_length(buf, 3)?;
-                        let (qc, buf) = GroupConsensusBlock::raw_decode(buf)?;
+                        let (qc, buf) = decode_with_length(buf, 3)?;
                         assert_eq!(buf.len(), 0);
                         Ok((
                             HotstuffPackage::ProposalResult(id, Ok((non, block, qc))),
@@ -605,7 +592,7 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                     }
                     false => {
                         let (err, buf) = BuckyError::raw_decode(buf)?;
-                        let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                        let (addr, buf) = decode_with_length(buf, 2)?;
                         assert_eq!(buf.len(), 0);
                         Ok((HotstuffPackage::ProposalResult(id, Err((err, addr))), buf))
                     }
@@ -613,8 +600,8 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
             }
             8 => {
                 let buf = &buf[1..];
+                let (addr, buf) = decode_with_length(buf, 2)?;
                 let (sub_path, buf) = String::raw_decode(buf)?;
-                let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
                 assert_eq!(buf.len(), 0);
                 Ok((HotstuffPackage::QueryState(addr, sub_path), buf))
             }
@@ -624,13 +611,13 @@ impl<'de> RawDecode<'de> for HotstuffPackage {
                 let (sub_path, buf) = String::raw_decode(buf)?;
                 match is_ok {
                     true => {
-                        let (status, buf) = GroupRPathStatus::raw_decode(buf)?;
+                        let (status, buf) = decode_with_length(buf, 3)?;
                         assert_eq!(buf.len(), 0);
                         Ok((HotstuffPackage::VerifiableState(sub_path, Ok(status)), buf))
                     }
                     false => {
                         let (err, buf) = BuckyError::raw_decode(buf)?;
-                        let (addr, buf) = ProtocolAddress::raw_decode(buf)?;
+                        let (addr, buf) = decode_with_length(buf, 2)?;
                         assert_eq!(buf.len(), 0);
                         Ok((
                             HotstuffPackage::VerifiableState(sub_path, Err((err, addr))),
@@ -695,189 +682,6 @@ impl ProtocolAddress {
             ProtocolAddress::Full(rpath) => rpath,
             ProtocolAddress::Channel(_) => panic!("no rpath"),
         }
-    }
-}
-
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
-#[cyfs_protobuf_type(crate::protos::HotstuffBlockQcVote)]
-pub(crate) struct HotstuffBlockQCVote {
-    pub block_id: ObjectId,
-    pub prev_block_id: Option<ObjectId>,
-    pub round: u64,
-    pub voter: ObjectId,
-    pub signature: Signature,
-}
-
-impl HotstuffBlockQCVote {
-    pub async fn new(
-        block: &GroupConsensusBlock,
-        local_device_id: ObjectId,
-        signer: &RsaCPUObjectSigner,
-    ) -> BuckyResult<Self> {
-        let block_id = block.block_id().object_id();
-        let round = block.round();
-
-        log::debug!(
-            "[block vote] local: {:?}, vote hash {}, round: {}",
-            local_device_id,
-            block.block_id(),
-            block.round()
-        );
-
-        let hash = Self::hash_content(block_id, block.prev_block_id(), round);
-
-        log::debug!(
-            "[block vote] local: {:?}, vote sign {}, round: {}",
-            local_device_id,
-            block.block_id(),
-            block.round()
-        );
-
-        let signature = signer
-            .sign(
-                hash.as_slice(),
-                &SignatureSource::Object(ObjectLink {
-                    obj_id: local_device_id,
-                    obj_owner: None,
-                }),
-            )
-            .await?;
-
-        Ok(Self {
-            block_id: block_id.clone(),
-            round,
-            voter: local_device_id,
-            signature,
-            prev_block_id: block.prev_block_id().map(|id| id.clone()),
-        })
-    }
-
-    pub fn hash(&self) -> HashValue {
-        Self::hash_content(&self.block_id, self.prev_block_id.as_ref(), self.round)
-    }
-
-    fn hash_content(
-        block_id: &ObjectId,
-        prev_block_id: Option<&ObjectId>,
-        round: u64,
-    ) -> HashValue {
-        let mut sha256 = sha2::Sha256::new();
-        sha256.input(block_id.as_slice());
-        sha256.input(round.to_le_bytes());
-        if let Some(prev_block_id) = prev_block_id {
-            sha256.input(prev_block_id.as_slice());
-        }
-        sha256.result().into()
-    }
-}
-
-impl ProtobufTransform<crate::protos::HotstuffBlockQcVote> for HotstuffBlockQCVote {
-    fn transform(value: crate::protos::HotstuffBlockQcVote) -> BuckyResult<Self> {
-        Ok(Self {
-            voter: ObjectId::raw_decode(value.voter.as_slice())?.0,
-            signature: Signature::raw_decode(value.signature.as_slice())?.0,
-            block_id: ObjectId::raw_decode(value.block_id.as_slice())?.0,
-            round: value.round,
-            prev_block_id: match value.prev_block_id.as_ref() {
-                Some(id) => Some(ObjectId::raw_decode(id.as_slice())?.0),
-                None => None,
-            },
-        })
-    }
-}
-
-impl ProtobufTransform<&HotstuffBlockQCVote> for crate::protos::HotstuffBlockQcVote {
-    fn transform(value: &HotstuffBlockQCVote) -> BuckyResult<Self> {
-        let ret = crate::protos::HotstuffBlockQcVote {
-            block_id: value.block_id.to_vec()?,
-            round: value.round,
-            voter: value.voter.to_vec()?,
-            signature: value.signature.to_vec()?,
-            prev_block_id: match value.prev_block_id.as_ref() {
-                Some(id) => Some(id.to_vec()?),
-                None => None,
-            },
-        };
-
-        Ok(ret)
-    }
-}
-
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
-#[cyfs_protobuf_type(crate::protos::HotstuffTimeoutVote)]
-pub(crate) struct HotstuffTimeoutVote {
-    pub high_qc: Option<HotstuffBlockQC>,
-    pub round: u64,
-    pub voter: ObjectId,
-    pub signature: Signature,
-}
-
-impl HotstuffTimeoutVote {
-    pub async fn new(
-        high_qc: Option<HotstuffBlockQC>,
-        round: u64,
-        local_device_id: ObjectId,
-        signer: &RsaCPUObjectSigner,
-    ) -> BuckyResult<Self> {
-        let signature = signer
-            .sign(
-                Self::hash_content(high_qc.as_ref().map_or(0, |qc| qc.round), round).as_slice(),
-                &SignatureSource::Object(ObjectLink {
-                    obj_id: local_device_id,
-                    obj_owner: None,
-                }),
-            )
-            .await?;
-
-        Ok(Self {
-            high_qc,
-            round,
-            voter: local_device_id,
-            signature,
-        })
-    }
-
-    pub fn hash(&self) -> HashValue {
-        Self::hash_content(self.high_qc.as_ref().map_or(0, |qc| qc.round), self.round)
-    }
-
-    pub fn hash_content(high_qc_round: u64, round: u64) -> HashValue {
-        let mut sha256 = sha2::Sha256::new();
-        sha256.input(high_qc_round.to_le_bytes());
-        sha256.input(round.to_le_bytes());
-        sha256.result().into()
-    }
-}
-
-impl ProtobufTransform<crate::protos::HotstuffTimeoutVote> for HotstuffTimeoutVote {
-    fn transform(value: crate::protos::HotstuffTimeoutVote) -> BuckyResult<Self> {
-        let high_qc = if value.high_qc().len() == 0 {
-            None
-        } else {
-            Some(HotstuffBlockQC::raw_decode(value.high_qc())?.0)
-        };
-        Ok(Self {
-            voter: ObjectId::raw_decode(value.voter.as_slice())?.0,
-            signature: Signature::raw_decode(value.signature.as_slice())?.0,
-            round: value.round,
-            high_qc,
-        })
-    }
-}
-
-impl ProtobufTransform<&HotstuffTimeoutVote> for crate::protos::HotstuffTimeoutVote {
-    fn transform(value: &HotstuffTimeoutVote) -> BuckyResult<Self> {
-        let ret = crate::protos::HotstuffTimeoutVote {
-            high_qc: match value.high_qc.as_ref() {
-                Some(qc) => Some(qc.to_vec()?),
-                None => None,
-            },
-            round: value.round,
-            voter: value.voter.to_vec()?,
-            signature: value.signature.to_vec()?,
-        };
-
-        Ok(ret)
     }
 }
 
