@@ -350,8 +350,8 @@ impl PublishLocalDirTask {
                                     .join(sub_path.strip_prefix("/").unwrap())
                                     .join(file_name);
                                 log::info!(
-                                    "publish file {}",
-                                    file_path.to_string_lossy().to_string()
+                                    "publish file {}, {}",
+                                    file_path.to_string_lossy().to_string(), object_id,
                                 );
                                 file_recorder
                                     .record_file_chunk_list(file_path.as_path(), &file, self.chunk_method)
