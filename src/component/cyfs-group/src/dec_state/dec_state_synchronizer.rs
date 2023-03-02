@@ -2,15 +2,12 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId,
-};
-use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectId};
+use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    helper::Timer,
     network::NONDriverHelper,
     storage::{DecStorage, DecStorageCache},
     Committee, CHANNEL_CAPACITY,
@@ -21,13 +18,9 @@ use super::{CallReplyNotifier, CallReplyWaiter};
 enum DecStateSynchronizerMessage {
     ProposalResult(
         ObjectId,
-        BuckyResult<(
-            Option<NONObjectInfo>,
-            GroupConsensusBlock,
-            GroupConsensusBlock,
-        )>,
+        BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
     ),
-    StateChange(GroupConsensusBlock, GroupConsensusBlock),
+    StateChange(GroupConsensusBlock, HotstuffBlockQC),
     DelaySync(Option<(ObjectId, Option<NONObjectInfo>)>), // (proposal-id, Ok(result))
 }
 
@@ -81,11 +74,7 @@ impl DecStateSynchronizer {
     pub async fn on_proposal_complete(
         &self,
         proposal_id: ObjectId,
-        result: BuckyResult<(
-            Option<NONObjectInfo>,
-            GroupConsensusBlock,
-            GroupConsensusBlock,
-        )>,
+        result: BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
         remote: ObjectId,
     ) {
         self.0
@@ -100,13 +89,13 @@ impl DecStateSynchronizer {
     pub async fn on_state_change(
         &self,
         header_block: GroupConsensusBlock,
-        qc_block: GroupConsensusBlock,
+        qc: HotstuffBlockQC,
         remote: ObjectId,
     ) {
         self.0
             .tx_dec_state_sync_message
             .send((
-                DecStateSynchronizerMessage::StateChange(header_block, qc_block),
+                DecStateSynchronizerMessage::StateChange(header_block, qc),
                 remote,
             ))
             .await;
@@ -121,7 +110,7 @@ struct DecStateSynchronizerCache {
 
 struct UpdateNotifyInfo {
     header_block: GroupConsensusBlock,
-    qc_block: GroupConsensusBlock,
+    qc: HotstuffBlockQC,
     remotes: HashSet<ObjectId>,
     group_chunk_id: ObjectId,
     group: Group,
@@ -178,15 +167,11 @@ impl DecStateSynchronizerRunner {
     async fn handle_proposal_complete(
         &mut self,
         proposal_id: ObjectId,
-        result: BuckyResult<(
-            Option<NONObjectInfo>,
-            GroupConsensusBlock,
-            GroupConsensusBlock,
-        )>,
+        result: BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
         remote: ObjectId,
     ) {
         match result {
-            Ok((result, header_block, qc_block)) => {
+            Ok((result, header_block, qc)) => {
                 if header_block
                     .proposals()
                     .iter()
@@ -200,7 +185,7 @@ impl DecStateSynchronizerRunner {
                 }
 
                 if self
-                    .push_update_notify(header_block, qc_block, remote)
+                    .push_update_notify(header_block, qc, remote)
                     .await
                     .is_err()
                 {
@@ -226,11 +211,11 @@ impl DecStateSynchronizerRunner {
     async fn handle_state_change(
         &mut self,
         header_block: GroupConsensusBlock,
-        qc_block: GroupConsensusBlock,
+        qc: HotstuffBlockQC,
         remote: ObjectId,
     ) {
         if self
-            .push_update_notify(header_block, qc_block, remote)
+            .push_update_notify(header_block, qc, remote)
             .await
             .is_ok()
         {
@@ -251,11 +236,7 @@ impl DecStateSynchronizerRunner {
                 for remote in notify_info.remotes.iter() {
                     match self
                         .store
-                        .sync(
-                            &notify_info.header_block,
-                            &notify_info.qc_block,
-                            remote.clone(),
-                        )
+                        .sync(&notify_info.header_block, &notify_info.qc, remote.clone())
                         .await
                     {
                         Ok(_) => {
@@ -264,7 +245,7 @@ impl DecStateSynchronizerRunner {
                                 state_cache: DecStorageCache {
                                     state: notify_info.header_block.result_state_id().clone(),
                                     header_block: notify_info.header_block.clone(),
-                                    qc_block: notify_info.qc_block.clone(),
+                                    qc: notify_info.qc.clone(),
                                 },
                                 group_chunk_id: notify_info.group_chunk_id,
                                 group: notify_info.group.clone(),
@@ -316,14 +297,9 @@ impl DecStateSynchronizerRunner {
     async fn push_update_notify(
         &mut self,
         header_block: GroupConsensusBlock,
-        qc_block: GroupConsensusBlock,
+        qc: HotstuffBlockQC,
         remote: ObjectId,
     ) -> BuckyResult<()> {
-        if qc_block.qc().is_none() {
-            log::warn!("the qc is none for qc-block({})", qc_block.block_id());
-            return Err(BuckyError::new(BuckyErrorCode::Unknown, "qc lost"));
-        }
-
         if let Some(notify) = self.update_notifies.as_mut() {
             match notify.header_block.height().cmp(&header_block.height()) {
                 std::cmp::Ordering::Less => {}
@@ -338,11 +314,7 @@ impl DecStateSynchronizerRunner {
         if header_block.check()
             && self
                 .committee
-                .verify_block_desc_with_qc(
-                    header_block.named_object().desc(),
-                    qc_block.qc().as_ref().unwrap(),
-                    remote,
-                )
+                .verify_block_desc_with_qc(header_block.named_object().desc(), &qc, remote)
                 .await
                 .is_ok()
         {
@@ -354,7 +326,7 @@ impl DecStateSynchronizerRunner {
 
             self.update_notifies = Some(UpdateNotifyInfo {
                 header_block: header_block,
-                qc_block: qc_block,
+                qc: qc,
                 remotes: HashSet::from([remote]),
                 group_chunk_id,
                 group,

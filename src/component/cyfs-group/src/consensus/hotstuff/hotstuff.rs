@@ -11,15 +11,16 @@ use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
     GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
-use cyfs_lib::{NONObjectInfo, GroupObjectMapProcessor, RPathDelegate, ExecuteResult};
+use cyfs_group_lib::{GroupObjectMapProcessor, HotstuffBlockQCVote, HotstuffTimeoutVote, ExecuteResult};
+use cyfs_lib::{NONObjectInfo};
 use futures::FutureExt;
 use itertools::Itertools;
 
 use crate::{
     consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
-    GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
+    GroupStorage, HotstuffMessage,
     PendingProposalConsumer, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT,
+    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT, RPathEventNotifier,
 };
 
 /**
@@ -51,7 +52,7 @@ impl Hotstuff {
         network_sender: crate::network::Sender,
         non_driver: crate::network::NONDriverHelper,
         proposal_consumer: PendingProposalConsumer,
-        delegate: Arc<Box<dyn RPathDelegate>>,
+        event_notifier: RPathEventNotifier,
         rpath: GroupRPath,
     ) -> Self {
         let (tx_message, rx_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
@@ -81,7 +82,7 @@ impl Hotstuff {
                     rx_message,
                     proposal_consumer,
                     state_pusher_runner,
-                    delegate,
+                    event_notifier,
                     rpath2,
                 )
                 .run()
@@ -224,7 +225,7 @@ struct HotstuffRunner {
     tx_block_gen: Sender<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     rx_block_gen: Receiver<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     proposal_consumer: PendingProposalConsumer,
-    delegate: Arc<Box<dyn RPathDelegate>>,
+    event_notifier: RPathEventNotifier,
     synchronizer: Synchronizer,
     rpath: GroupRPath,
     rx_proposal_waiter: Option<(Receiver<()>, u64)>,
@@ -251,7 +252,7 @@ impl HotstuffRunner {
         rx_message: Receiver<(HotstuffMessage, ObjectId)>,
         proposal_consumer: PendingProposalConsumer,
         state_pusher: StatePusher,
-        delegate: Arc<Box<dyn RPathDelegate>>,
+        event_notifier: RPathEventNotifier,
         rpath: GroupRPath,
     ) -> Self {
         let max_round_block = store.block_with_max_round();
@@ -307,7 +308,7 @@ impl HotstuffRunner {
             network_sender,
             tx_message,
             rx_message,
-            delegate,
+            event_notifier,
             synchronizer,
             non_driver,
             rpath,
@@ -511,37 +512,25 @@ impl HotstuffRunner {
                 context: proposal_exe_info.context.clone(),
             };
 
-            if self
-                .delegate
-                .on_verify(proposal, prev_state_id, self.store.get_object_map_processor(), &exe_result)
+            self
+                .event_notifier
+                .on_verify(proposal, prev_state_id, &exe_result)
                 .await.map_err(|err| {
                     log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} verify by app failed {:?}."
                         , self, proposal_exe_info.proposal, block.block_id(), err);
                     err
-                })?
-            {
-                log::debug!(
-                    "[hotstuff] local: {:?}, block verify ok by app, proposal: {}, prev_state: {:?}/{:?}, expect-result: {:?}/{:?}",
-                    self,
-                    proposal_exe_info.proposal,
-                    prev_state_id, prev_block.as_ref().map(|b| b.block_id()),
-                    proposal_exe_info.result_state,
-                    block.block_id()
-                );
+                })?;
 
-                prev_state_id = proposal_exe_info.result_state;
-            } else {
-                log::warn!(
-                    "[hotstuff] local: {:?}, block verify failed by app, proposal: {}, prev_state: {:?}/{:?}, expect-result: {:?}/{:?}",
-                    self,
-                    proposal_exe_info.proposal,
-                    prev_state_id, prev_block.as_ref().map(|b| b.block_id()),
-                    proposal_exe_info.result_state,
-                    block.block_id()
-                );
+            log::debug!(
+                "[hotstuff] local: {:?}, block verify ok by app, proposal: {}, prev_state: {:?}/{:?}, expect-result: {:?}/{:?}",
+                self,
+                proposal_exe_info.proposal,
+                prev_state_id, prev_block.as_ref().map(|b| b.block_id()),
+                proposal_exe_info.result_state,
+                block.block_id()
+            );
 
-                return Err(BuckyError::new(BuckyErrorCode::Reject, "verify failed"));
-            }
+            prev_state_id = proposal_exe_info.result_state;
         }
 
         assert_eq!(
@@ -840,11 +829,10 @@ impl HotstuffRunner {
                 None => None,
             };
 
-            self.delegate
+            self.event_notifier
                 .on_commited(
                     &proposal_obj,
                     pre_state_id,
-                    self.store.get_object_map_processor(), 
                     &ExecuteResult {
                         result_state_id: proposal.result_state.clone(),
                         receipt,
@@ -1625,7 +1613,7 @@ impl HotstuffRunner {
                 continue;
             }
 
-            match self.delegate.on_execute(&proposal, result_state_id, self.store.get_object_map_processor()).await {
+            match self.event_notifier.on_execute(&proposal, result_state_id).await {
                 Ok(exe_result) => {
                     result_state_id = exe_result.result_state_id;
                     executed_proposals.push((proposal, exe_result));
