@@ -21,7 +21,7 @@ impl RawEncode for GroupRPathStatus {
             status_list.push(obj.to_vec()?);
         }
 
-        let proto = crate::protos::GroupRPathStatus {
+        let proto = super::codec::protos::GroupRPathStatus {
             block_desc,
             certificate,
             status_list,
@@ -42,7 +42,7 @@ impl RawEncode for GroupRPathStatus {
             status_list.push(obj.to_vec()?);
         }
 
-        let proto = crate::protos::GroupRPathStatus {
+        let proto = super::codec::protos::GroupRPathStatus {
             block_desc,
             certificate,
             status_list,
@@ -56,7 +56,7 @@ impl RawEncode for GroupRPathStatus {
 
 impl<'de> RawDecode<'de> for GroupRPathStatus {
     fn raw_decode(mut buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
-        let proto = crate::protos::GroupRPathStatus::decode(&mut buf).map_err(|err| {
+        let proto = super::codec::protos::GroupRPathStatus::decode(&mut buf).map_err(|err| {
             let msg = format!("decode proto-buf for GroupRPathStatus failed {:?}", err);
             log::error!("{}", msg);
             BuckyError::new(BuckyErrorCode::Failed, msg)

@@ -14,9 +14,10 @@ use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
     GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout,
 };
+use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 use cyfs_lib::NONObjectInfo;
 
-use crate::{network::NONDriverHelper, GroupRPathStatus, HotstuffBlockQCVote, HotstuffTimeoutVote};
+use crate::network::NONDriverHelper;
 
 #[derive(Clone)]
 pub(crate) struct Committee {

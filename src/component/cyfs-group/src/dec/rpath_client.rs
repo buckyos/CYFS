@@ -224,10 +224,10 @@ impl RPathClient {
             HotstuffMessage::Timeout(tc) => unreachable!(),
             HotstuffMessage::SyncRequest(min_bound, max_bound) => unreachable!(),
             HotstuffMessage::LastStateRequest => unreachable!(),
-            HotstuffMessage::StateChangeNotify(header_block, qc_block) => {
+            HotstuffMessage::StateChangeNotify(header_block, qc) => {
                 self.0
                     .state_sync
-                    .on_state_change(header_block, qc_block, remote)
+                    .on_state_change(header_block, qc, remote)
                     .await
             }
             HotstuffMessage::ProposalResult(proposal_id, result) => {
