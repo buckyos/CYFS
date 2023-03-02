@@ -347,7 +347,7 @@ impl BuildFileTask {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: self.access,
         };
 
         match self.noc.put_object(&req).await {
@@ -633,6 +633,7 @@ mod build_file_task_test {
                 chunk_size: 4 * 1024 * 1024,
                 dec_id: dec_id.to_owned(),
                 access: None,
+                chunk_method: TransPublishChunkMethod::default(),
             };
             let task = task_manager
                 .create_task(
@@ -673,6 +674,7 @@ mod build_file_task_test {
                 chunk_size: 4 * 1024 * 1024,
                 dec_id: dec_id.to_owned(),
                 access: None,
+                chunk_method: TransPublishChunkMethod::default(),
             };
             let task = task_manager
                 .create_task(
