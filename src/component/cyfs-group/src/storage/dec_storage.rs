@@ -5,16 +5,17 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, ObjectId, ObjectMap, ObjectMapOpEnvMemoryCache,
     ObjectTypeCode, RawDecode,
 };
-use cyfs_core::GroupConsensusBlock;
+use cyfs_core::{GroupConsensusBlock, HotstuffBlockQC};
+use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::{GlobalStateRawProcessorRef, NONObjectInfo};
 
-use crate::{GroupRPathStatus, STATE_PATH_SEPARATOR};
+use crate::STATE_PATH_SEPARATOR;
 
 #[derive(Clone)]
 pub struct DecStorageCache {
     pub state: Option<ObjectId>,
     pub header_block: GroupConsensusBlock,
-    pub qc_block: GroupConsensusBlock,
+    pub qc: HotstuffBlockQC,
 }
 
 #[derive(Clone)]
@@ -42,7 +43,7 @@ impl DecStorage {
     pub async fn sync(
         &self,
         header_block: &GroupConsensusBlock,
-        qc_block: &GroupConsensusBlock,
+        qc: &HotstuffBlockQC,
         remote: ObjectId,
     ) -> BuckyResult<()> {
         unimplemented!()
