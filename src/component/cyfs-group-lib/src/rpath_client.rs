@@ -5,8 +5,7 @@ use cyfs_base::{
     RawConvertTo,
 };
 use cyfs_core::{GroupProposal, GroupRPath};
-
-use crate::NONObjectInfo;
+use cyfs_lib::NONObjectInfo;
 
 struct RPathClientRaw {}
 

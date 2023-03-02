@@ -194,7 +194,11 @@ impl StateChanggeRunner {
                 .post_message(
                     HotstuffMessage::ProposalResult(
                         exe_info.proposal,
-                        Ok((receipt, block.clone(), qc_block.clone())),
+                        Ok((
+                            receipt,
+                            block.clone(),
+                            qc_block.qc().as_ref().unwrap().clone(),
+                        )),
                     ),
                     rpath.clone(),
                     &proposer,
@@ -320,7 +324,7 @@ impl StateChanggeRunner {
 
             let msg = HotstuffMessage::StateChangeNotify(
                 progress.header_block.clone(),
-                progress.qc_block.clone(),
+                progress.qc_block.qc().as_ref().unwrap().clone(),
             );
 
             if notify_targets.len() > 0 {
