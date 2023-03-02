@@ -62,6 +62,7 @@ impl ChunkListCacheReader {
             let ret = chunk_manager.exist(cache.chunk()).await;
             if ret {
                 debug!("cache chunk to chunk manager but already exists! chunk={}", cache.chunk());
+                return;
             }
 
             let cache_wrapper = ChunkCacheWrapper::new(cache.clone());
