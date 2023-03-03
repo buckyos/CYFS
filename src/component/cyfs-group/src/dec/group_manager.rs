@@ -12,19 +12,19 @@ use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 
 use crate::{
     storage::GroupStorage, HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper,
-    RPathClient, RPathControl, RPathEventNotifier, NET_PROTOCOL_VPORT,
+    RPathClient, RPathEventNotifier, RPathService, NET_PROTOCOL_VPORT,
 };
 
-type ControlByRPath = HashMap<String, RPathControl>;
-type ControlByDec = HashMap<ObjectId, ControlByRPath>;
-type ControlByGroup = HashMap<ObjectId, ControlByDec>;
+type ServiceByRPath = HashMap<String, RPathService>;
+type ServiceByDec = HashMap<ObjectId, ServiceByRPath>;
+type ServiceByGroup = HashMap<ObjectId, ServiceByDec>;
 
 type ClientByRPath = HashMap<String, RPathClient>;
 type ClientByDec = HashMap<ObjectId, ClientByRPath>;
 type ClientByGroup = HashMap<ObjectId, ClientByDec>;
 
 struct GroupRPathMgrRaw {
-    control_by_group: ControlByGroup,
+    service_by_group: ServiceByGroup,
     client_by_group: ClientByGroup,
 }
 
@@ -58,7 +58,7 @@ impl GroupManager {
         };
 
         let raw = GroupRPathMgrRaw {
-            control_by_group: ControlByGroup::default(),
+            service_by_group: ServiceByGroup::default(),
             client_by_group: ClientByGroup::default(),
         };
 
@@ -69,14 +69,14 @@ impl GroupManager {
         Ok(mgr)
     }
 
-    pub async fn find_rpath_control(
+    pub async fn find_rpath_service(
         &self,
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
         is_auto_create: bool,
-    ) -> BuckyResult<RPathControl> {
-        self.find_rpath_control_inner(group_id, dec_id, rpath, is_auto_create, None, None)
+    ) -> BuckyResult<RPathService> {
+        self.find_rpath_service_inner(group_id, dec_id, rpath, is_auto_create, None, None)
             .await
     }
 
@@ -155,7 +155,7 @@ impl GroupManager {
     }
 
     // return <DecId, RPath>
-    pub async fn enum_rpath_control(
+    pub async fn enum_rpath_service(
         &self,
         group_id: &ObjectId,
     ) -> BuckyResult<Vec<(DecAppId, String)>> {
@@ -182,8 +182,8 @@ impl GroupManager {
         match msg {
             HotstuffPackage::Block(block) => {
                 let rpath = block.r_path();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -192,14 +192,14 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::Block(block), remote)
                     .await;
             }
             HotstuffPackage::BlockVote(target, vote) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -208,14 +208,14 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::BlockVote(vote), remote)
                     .await;
             }
             HotstuffPackage::TimeoutVote(target, vote) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -224,14 +224,14 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::TimeoutVote(vote), remote)
                     .await;
             }
             HotstuffPackage::Timeout(target, tc) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -240,14 +240,14 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::Timeout(tc), remote)
                     .await;
             }
             HotstuffPackage::SyncRequest(target, min_bound, max_bound) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -256,14 +256,14 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::SyncRequest(min_bound, max_bound), remote)
                     .await;
             }
             HotstuffPackage::LastStateRequest(target) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -272,7 +272,7 @@ impl GroupManager {
                         Some(&remote),
                     )
                     .await?;
-                control
+                service
                     .on_message(HotstuffMessage::LastStateRequest, remote)
                     .await;
             }
@@ -309,8 +309,8 @@ impl GroupManager {
             }
             HotstuffPackage::QueryState(target, sub_path) => {
                 let rpath = target.check_rpath();
-                let control = self
-                    .find_rpath_control_inner(
+                let service = self
+                    .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
@@ -320,9 +320,9 @@ impl GroupManager {
                     )
                     .await;
 
-                match control {
-                    Ok(control) => {
-                        control
+                match service {
+                    Ok(service) => {
+                        service
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
                             .await;
                     }
@@ -356,7 +356,7 @@ impl GroupManager {
         Ok(())
     }
 
-    async fn find_rpath_control_inner(
+    async fn find_rpath_service_inner(
         &self,
         group_id: &ObjectId,
         dec_id: &ObjectId,
@@ -364,12 +364,12 @@ impl GroupManager {
         is_auto_create: bool,
         block: Option<&GroupConsensusBlock>,
         remote: Option<&ObjectId>,
-    ) -> BuckyResult<RPathControl> {
+    ) -> BuckyResult<RPathService> {
         {
             // read
             let raw = self.read().await;
             let found = raw
-                .control_by_group
+                .service_by_group
                 .get(group_id)
                 .map_or(None, |by_dec| by_dec.get(dec_id))
                 .map_or(None, |by_rpath| by_rpath.get(rpath));
@@ -446,7 +446,7 @@ impl GroupManager {
             };
 
             let found = raw
-                .control_by_group
+                .service_by_group
                 .entry(group_id.clone())
                 .or_insert_with(HashMap::new)
                 .entry(dec_id.clone())
@@ -456,7 +456,7 @@ impl GroupManager {
             match found {
                 std::collections::hash_map::Entry::Occupied(found) => Ok(found.get().clone()),
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    let control = RPathControl::load(
+                    let service = RPathService::load(
                         local_id,
                         local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
@@ -467,8 +467,8 @@ impl GroupManager {
                         store,
                     )
                     .await?;
-                    entry.insert(control.clone());
-                    Ok(control)
+                    entry.insert(service.clone());
+                    Ok(service)
                 }
             }
         }
