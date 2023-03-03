@@ -1,6 +1,7 @@
+use super::data::BackupDataManager;
+use crate::archive::ObjectArchiveDecMeta;
 use cyfs_base::*;
 use cyfs_lib::*;
-use crate::archive::ObjectArchiveDecMeta;
 
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +11,7 @@ struct ObjectArchiveDecMetaHolder {
 }
 
 impl ObjectArchiveDecMetaHolder {
-    pub fn new(dec_id: ObjectId, dec_root: ObjectId,) -> Self {
+    pub fn new(dec_id: ObjectId, dec_root: ObjectId) -> Self {
         Self {
             meta: Arc::new(Mutex::new(ObjectArchiveDecMeta::new(dec_id, dec_root))),
         }
@@ -45,14 +46,14 @@ impl ObjectArchiveDecMetaHolder {
 
     fn on_object(&self, object: &NONObjectInfo) {
         let mut meta = self.meta.lock().unwrap();
-        
+
         meta.data.objects.count += 1;
         meta.data.objects.bytes += object.object_raw.len() as u64;
     }
 
     fn on_chunk(&self, chunk_id: &ChunkId) {
         let mut meta = self.meta.lock().unwrap();
-        
+
         meta.data.chunks.bytes += chunk_id.len() as u64;
         meta.data.chunks.count += 1;
     }
@@ -66,16 +67,24 @@ pub struct DecStateBackup {
     // archive: ObjectArchiveGenerator,
     backup_meta: ObjectArchiveDecMetaHolder,
 
+    data_manager: BackupDataManager,
     loader: ObjectTraverserLoaderRef,
     dec_meta: Option<GlobalStateMetaRawProcessorRef>,
 }
 
 impl DecStateBackup {
-    pub fn new(dec_id: ObjectId, dec_root: ObjectId, loader: ObjectTraverserLoaderRef, dec_meta: Option<GlobalStateMetaRawProcessorRef>,) -> Self {
+    pub fn new(
+        dec_id: ObjectId,
+        dec_root: ObjectId,
+        data_manager: BackupDataManager,
+        loader: ObjectTraverserLoaderRef,
+        dec_meta: Option<GlobalStateMetaRawProcessorRef>,
+    ) -> Self {
         Self {
             backup_meta: ObjectArchiveDecMetaHolder::new(dec_id.clone(), dec_root.clone()),
             dec_id,
             dec_root,
+            data_manager,
             loader,
             dec_meta,
         }
@@ -85,7 +94,10 @@ impl DecStateBackup {
         let handler = self.clone_handler();
         let traverser = ObjectTraverser::new(self.loader, handler);
         traverser.run(self.dec_id.clone()).await.map_err(|e| {
-            let msg = format!("backup dec failed! dec={}, root={}, {}", self.dec_id, self.dec_root, e);
+            let msg = format!(
+                "backup dec failed! dec={}, root={}, {}",
+                self.dec_id, self.dec_root, e
+            );
             error!("{}", msg);
             BuckyError::new(e.code(), msg)
         })?;
@@ -124,16 +136,18 @@ impl ObjectTraverserHandler for DecStateBackup {
         }
     }
 
-    async fn filter_object(&self, object: &NONObjectInfo, meta: Option<&NamedObjectMetaData>) -> ObjectTraverseFilterResult {
+    async fn filter_object(
+        &self,
+        object: &NONObjectInfo,
+        meta: Option<&NamedObjectMetaData>,
+    ) -> ObjectTraverseFilterResult {
         if self.dec_meta.is_none() {
             return ObjectTraverseFilterResult::Keep(None);
         }
 
         let provider = match meta {
             Some(meta) => meta as &dyn ObjectSelectorDataProvider,
-            None => {
-                object as &dyn ObjectSelectorDataProvider
-            }
+            None => object as &dyn ObjectSelectorDataProvider,
         };
 
         match self.dec_meta.as_ref().unwrap().query_object_meta(provider) {
@@ -152,11 +166,27 @@ impl ObjectTraverserHandler for DecStateBackup {
 
     async fn on_object(&self, object: &NONObjectInfo, meta: &Option<NamedObjectMetaData>) {
         self.backup_meta.on_object(object);
+
+        self.data_manager
+            .add_object(&object.object_id, &object.object_raw, meta.as_ref())
+            .await;
     }
 
     async fn on_chunk(&self, chunk_id: &ChunkId) {
         self.backup_meta.on_chunk(chunk_id);
 
-
+        match self.loader.get_chunk(chunk_id).await {
+            Ok(Some(data)) => {
+                self.data_manager
+                    .add_data(chunk_id.object_id(), data, None)
+                    .await;
+            }
+            Ok(None) => {
+                self.on_missing(chunk_id.as_object_id()).await;
+            }
+            Err(e) => {
+                self.on_error(chunk_id.as_object_id(), e).await;
+            }
+        }
     }
 }

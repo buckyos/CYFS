@@ -224,10 +224,20 @@ impl ObjectPackWriter for ZipObjectPackWriter {
     async fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<u64> {
         let mut data = cyfs_util::async_read_to_sync(data);
+        self.add_data(object_id, &mut data, meta)
+    }
+
+    async fn add_data_buf(
+        &mut self,
+        object_id: &ObjectId,
+        data: &[u8],
+        meta: Option<Vec<u8>>,
+    ) -> BuckyResult<u64> {
+        let mut data = std::io::Cursor::new(data);
         self.add_data(object_id, &mut data, meta)
     }
 

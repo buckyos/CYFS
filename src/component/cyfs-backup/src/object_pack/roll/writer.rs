@@ -54,7 +54,7 @@ impl ObjectPackRollWriter {
     pub async fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<u64> {
         if self.current.is_none() {
@@ -63,9 +63,37 @@ impl ObjectPackRollWriter {
 
         let writer = self.current.as_mut().unwrap();
         let bytes = writer.add_data(object_id, data, meta).await?;
+        drop(writer);
+
+        self.on_add_bytes(bytes).await?;
+
+        Ok(bytes)
+    }
+
+    pub async fn add_data_buf(
+        &mut self,
+        object_id: &ObjectId,
+        data: &[u8],
+        meta: Option<Vec<u8>>,
+    ) -> BuckyResult<u64> {
+        if self.current.is_none() {
+            self.open().await?;
+        }
+
+        let writer = self.current.as_mut().unwrap();
+        let bytes = writer.add_data_buf(object_id, data, meta).await?;
+        drop(writer);
+
+        self.on_add_bytes(bytes).await?;
+
+        Ok(bytes)
+    }
+
+    async fn on_add_bytes(&mut self, bytes: u64) -> BuckyResult<()> {
         self.total_bytes_before_flush += bytes;
 
         if self.total_bytes_before_flush > 1024 * 1024 {
+            let writer = self.current.as_mut().unwrap();
             let file_size = writer.flush().await?;
             self.total_bytes_before_flush = 0;
 
@@ -77,7 +105,8 @@ impl ObjectPackRollWriter {
             }
         }
 
-        Ok(bytes)
+
+        Ok(())
     }
 
     pub async fn finish(&mut self) -> BuckyResult<()> {

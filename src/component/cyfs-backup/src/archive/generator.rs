@@ -42,9 +42,40 @@ impl ObjectArchiveGenerator {
     pub async fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<u64> {
+        let meta_data = Self::encode_meta(object_id, meta)?;
+
+        match object_id.obj_type_code() {
+            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data, meta_data).await,
+            _ => {
+                self.object_writer
+                    .add_data(object_id, data, meta_data)
+                    .await
+            }
+        }
+    }
+
+    pub async fn add_data_buf(
+        &mut self,
+        object_id: &ObjectId,
+        data: &[u8],
+        meta: Option<ArchiveInnerFileMeta>,
+    ) -> BuckyResult<u64> {
+        let meta_data = Self::encode_meta(object_id, meta)?;
+
+        match object_id.obj_type_code() {
+            ObjectTypeCode::Chunk => self.chunk_writer.add_data_buf(object_id, data, meta_data).await,
+            _ => {
+                self.object_writer
+                    .add_data_buf(object_id, data, meta_data)
+                    .await
+            }
+        }
+    }
+
+    fn encode_meta(object_id: &ObjectId, meta: Option<ArchiveInnerFileMeta>,) -> BuckyResult<Option<Vec<u8>>> {
         let meta_data = match meta {
             Some(meta) => Some(meta.to_vec().map_err(|e| {
                 let msg = format!(
@@ -57,14 +88,7 @@ impl ObjectArchiveGenerator {
             None => None,
         };
 
-        match object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data, meta_data).await,
-            _ => {
-                self.object_writer
-                    .add_data(object_id, data, meta_data)
-                    .await
-            }
-        }
+        Ok(meta_data)
     }
 
     pub async fn finish(mut self) -> BuckyResult<ObjectArchiveMeta> {

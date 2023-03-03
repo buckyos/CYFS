@@ -23,9 +23,13 @@ async fn test_pack() {
         let obj = Text::create(&format!("test{}", i), "", "");
         let id = obj.desc().calculate_id();
 
-        let data = async_std::io::Cursor::new(file_buffer.clone());
-        pack.add_data(&id, Box::new(data), Some(id.to_vec().unwrap())).await.unwrap();
-
+        if i % 2 == 0 {
+            let data = async_std::io::Cursor::new(file_buffer.clone());
+            pack.add_data(&id, Box::new(data), Some(id.to_vec().unwrap())).await.unwrap();
+        } else {
+            pack.add_data_buf(&id, &file_buffer, Some(id.to_vec().unwrap())).await.unwrap();
+        }
+        
         if i % 1024 == 0 {
             info!("gen dir index: {}", i);
             // async_std::task::sleep(std::time::Duration::from_secs(5)).await;

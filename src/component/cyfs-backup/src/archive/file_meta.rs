@@ -64,3 +64,16 @@ impl TryFrom<&ArchiveInnerFileMeta> for protos::ArchiveInnerFileMeta {
 }
 
 impl_default_protobuf_raw_codec!(ArchiveInnerFileMeta);
+
+impl From<&NamedObjectMetaData> for ArchiveInnerFileMeta {
+    fn from(value: &NamedObjectMetaData) -> Self {
+        Self {
+            access: value.access_string,
+            insert_time: value.insert_time,
+            update_time: value.update_time,
+            create_dec_id: value.create_dec_id.clone(),
+            storage_category: value.storage_category,
+            context: value.context.clone(),
+        }
+    }
+}

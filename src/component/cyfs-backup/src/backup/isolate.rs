@@ -1,6 +1,7 @@
 use crate::archive::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use super::data::BackupDataManager;
 
 use super::dec::DecStateBackup;
 
@@ -9,6 +10,7 @@ pub struct IsolateStateBackup {
     isolate_id: ObjectId,
     state_manager: GlobalStateRawProcessorRef,
 
+    data_manager: BackupDataManager,
     loader: ObjectTraverserLoaderRef,
     meta_manager: GlobalStateMetaManagerRawProcessorRef,
 }
@@ -17,6 +19,7 @@ impl IsolateStateBackup {
     pub fn new(
         category: GlobalStateCategory,
         isolate_id: ObjectId,
+        data_manager: BackupDataManager,
         loader: ObjectTraverserLoaderRef,
         state_manager: GlobalStateRawProcessorRef,
         meta_manager: GlobalStateMetaManagerRawProcessorRef,
@@ -25,6 +28,7 @@ impl IsolateStateBackup {
             category,
             isolate_id,
             state_manager,
+            data_manager,
             loader,
             meta_manager,
         }
@@ -44,6 +48,7 @@ impl IsolateStateBackup {
             let dec_backup = DecStateBackup::new(
                 dec_info.dec_id,
                 dec_info.dec_root,
+                self.data_manager.clone(),
                 self.loader.clone(),
                 meta,
             );

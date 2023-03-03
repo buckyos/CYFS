@@ -30,7 +30,14 @@ pub trait ObjectPackWriter: Send {
     async fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
+        meta: Option<Vec<u8>>,
+    ) -> BuckyResult<u64>;
+
+    async fn add_data_buf(
+        &mut self,
+        object_id: &ObjectId,
+        data: &[u8],
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<u64>;
 
