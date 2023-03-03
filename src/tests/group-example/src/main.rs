@@ -505,7 +505,7 @@ mod GroupDecService {
         DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
-    use cyfs_group::RPathControl;
+    use cyfs_group::RPathService;
     use cyfs_lib::{
         DelegateFactory, ExecuteResult, GroupObjectMapProcessor, NONPostObjectInputRequest,
         NONPostObjectInputResponse, RPathDelegate, RequestSourceInfo, RouterHandlerChain,
@@ -545,7 +545,7 @@ mod GroupDecService {
     }
 
     // pub struct PostProposalRoutine {
-    //     controller: RPathControl,
+    //     service: RPathService,
     // }
 
     // #[async_trait::async_trait]
@@ -558,7 +558,7 @@ mod GroupDecService {
     //     ) -> BuckyResult<NONPostObjectInputResponse> {
     //         let (proposal, remain) = GroupProposal::raw_decode(param.object.object_raw.as_slice())?;
     //         assert_eq!(remain.len(), 0);
-    //         self.controller.push_proposal(proposal).await?;
+    //         self.service.push_proposal(proposal).await?;
     //         Ok(NONPostObjectInputResponse { object: None })
     //     }
     // }
@@ -1037,9 +1037,9 @@ async fn main_run() {
         )
         .await;
 
-        let control = stack
+        let service = stack
             .group_mgr()
-            .find_rpath_control(
+            .find_rpath_service(
                 &group.desc().object_id(),
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
@@ -1066,9 +1066,9 @@ async fn main_run() {
             dec_app_id.object_id().clone(),
         );
 
-        let control = stack
+        let service = stack
             .group_mgr()
-            .find_rpath_control(
+            .find_rpath_service(
                 &group_id,
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
@@ -1113,9 +1113,9 @@ async fn main_run() {
         let proposal = proposals.get(i - 1).unwrap().clone();
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
 
-        let control = stack
+        let service = stack
             .group_mgr()
-            .find_rpath_control(
+            .find_rpath_service(
                 &group_id,
                 dec_app_id.object_id(),
                 &EXAMPLE_RPATH,
@@ -1125,7 +1125,7 @@ async fn main_run() {
             .unwrap();
 
         async_std::task::spawn(async move {
-            control.push_proposal(proposal).await.unwrap();
+            service.push_proposal(proposal).await.unwrap();
         });
 
         if i % 10 == 0 {

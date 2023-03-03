@@ -9,7 +9,7 @@ use crate::{
     PendingProposalHandler, PendingProposalMgr, RPathEventNotifier,
 };
 
-struct RPathControlRaw {
+struct RPathServiceRaw {
     local_id: ObjectId,
     rpath: GroupRPath,
     network_sender: crate::network::Sender,
@@ -18,9 +18,9 @@ struct RPathControlRaw {
 }
 
 #[derive(Clone)]
-pub struct RPathControl(Arc<RPathControlRaw>);
+pub struct RPathService(Arc<RPathServiceRaw>);
 
-impl RPathControl {
+impl RPathService {
     pub(crate) async fn load(
         local_id: ObjectId,
         local_device_id: ObjectId,
@@ -50,7 +50,7 @@ impl RPathControl {
             rpath.clone(),
         );
 
-        let raw = RPathControlRaw {
+        let raw = RPathServiceRaw {
             network_sender,
             pending_proposal_handle,
             local_id,
