@@ -197,7 +197,7 @@ impl ObjectTraverserHandler for DecStateBackup {
         match self.loader.get_chunk(chunk_id).await {
             Ok(Some(data)) => {
                 self.data_writer
-                    .add_data(chunk_id.object_id(), data, None)
+                    .add_chunk(chunk_id.to_owned(), data, None)
                     .await
             }
             Ok(None) => self.on_missing(chunk_id.as_object_id()).await,

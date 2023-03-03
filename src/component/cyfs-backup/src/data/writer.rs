@@ -17,9 +17,9 @@ pub trait BackupDataWriter: Send + Sync {
         meta: Option<&NamedObjectMetaData>,
     ) -> BuckyResult<()>;
 
-    async fn add_data(
+    async fn add_chunk(
         &self,
-        object_id: ObjectId,
+        chunk_id: ChunkId,
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()>;

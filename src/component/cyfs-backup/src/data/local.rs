@@ -83,15 +83,15 @@ impl BackupDataLocalFileWriter {
         Ok(())
     }
 
-    pub async fn add_data(
+    pub async fn add_chunk(
         &self,
-        object_id: ObjectId,
+        chunk_id: ChunkId,
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
         let reader = AsyncReadWithSeekAdapter::new(data).into_reader();
         let mut archive = self.archive.lock().await;
-        archive.add_data(&object_id, reader, meta).await?;
+        archive.add_data(chunk_id.as_object_id(), reader, meta).await?;
 
         Ok(())
     }
@@ -134,13 +134,13 @@ impl BackupDataWriter for BackupDataLocalFileWriter {
         Self::add_object(&self, object_id, object_raw, meta).await
     }
 
-    async fn add_data(
+    async fn add_chunk(
         &self,
-        object_id: ObjectId,
+        chunk_id: ChunkId,
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
-        Self::add_data(&self, object_id, data, meta).await
+        Self::add_chunk(&self, chunk_id, data, meta).await
     }
 
     fn logger(&self) -> Option<&BackupLogManager> {

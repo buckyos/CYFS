@@ -1,6 +1,6 @@
 use super::isolate::*;
 use crate::archive::*;
-use crate::data::BackupDataLocalFileWriter;
+use crate::data::{BackupDataLocalFileWriter, BackupDataStatWriter, BackupDataWriterRef};
 use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -8,6 +8,7 @@ use cyfs_lib::*;
 use std::path::PathBuf;
 
 pub struct GlobalStateBackup {
+    id: u64,
     category: GlobalStateCategory,
     format: ObjectPackFormat,
 
@@ -37,6 +38,7 @@ pub struct GlobalStateBackupParams {
 
 impl GlobalStateBackup {
     pub fn new(
+        id: u64,
         root: PathBuf,
         default_isolate: ObjectId,
         state_manager: GlobalStateManagerRawProcessorRef,
@@ -44,6 +46,7 @@ impl GlobalStateBackup {
         meta_manager: GlobalStateMetaManagerRawProcessorRef,
     ) -> Self {
         Self {
+            id,
             category: GlobalStateCategory::RootState,
             format: ObjectPackFormat::Zip,
             default_isolate,
@@ -54,6 +57,10 @@ impl GlobalStateBackup {
         }
     }
 
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     pub async fn backup(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveMeta> {
         self.backup_with_filter(params.filter).await
     }
@@ -62,11 +69,10 @@ impl GlobalStateBackup {
         &self,
         filters: GlobalStateBackupFilter,
     ) -> BuckyResult<ObjectArchiveMeta> {
-        let backup_id = bucky_time_now();
-        let backup_dir = self.root.join(format!("{}", backup_id));
+        let backup_dir = self.root.join(format!("{}", self.id));
 
         let data_writer = BackupDataLocalFileWriter::new(
-            backup_id,
+            self.id,
             self.default_isolate.clone(),
             backup_dir,
             self.format,
@@ -74,6 +80,20 @@ impl GlobalStateBackup {
         )?
         .into_writer();
 
+        self.backup_impl(data_writer, filters).await
+    }
+
+    pub async fn stat(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveMeta> {
+        let data_writer = BackupDataStatWriter::new(self.id, self.format).into_writer();
+
+        self.backup_impl(data_writer, params.filter).await
+    }
+
+    async fn backup_impl(
+        &self,
+        data_writer: BackupDataWriterRef,
+        filters: GlobalStateBackupFilter,
+    ) -> BuckyResult<ObjectArchiveMeta> {
         for isolate_filter in filters.isolate_list {
             if isolate_filter.dec_list.is_empty() {
                 warn!(
