@@ -181,12 +181,12 @@ impl GroupManager {
     ) -> BuckyResult<()> {
         match msg {
             HotstuffPackage::Block(block) => {
-                let rpath = block.r_path();
+                let rpath = block.rpath();
                 let service = self
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         Some(&block),
                         Some(&remote),
@@ -202,7 +202,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -218,7 +218,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -234,7 +234,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -250,7 +250,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -266,7 +266,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -278,9 +278,9 @@ impl GroupManager {
             }
             HotstuffPackage::StateChangeNotify(header_block, qc_block) => {
                 // TODO: unimplemented
-                // let rpath = header_block.r_path();
+                // let rpath = header_block.rpath();
                 // let client = self
-                //     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                //     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
                 //     .await?;
                 // client
                 //     .on_message(
@@ -292,10 +292,10 @@ impl GroupManager {
             HotstuffPackage::ProposalResult(proposal_id, result) => {
                 let rpath = result.as_ref().map_or_else(
                     |(_, target)| target.check_rpath(),
-                    |(_, block, _)| block.r_path(),
+                    |(_, block, _)| block.rpath(),
                 );
                 let client = self
-                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
                     .await?;
                 client
                     .on_message(
@@ -313,7 +313,7 @@ impl GroupManager {
                     .find_rpath_service_inner(
                         rpath.group_id(),
                         rpath.dec_id(),
-                        rpath.r_path(),
+                        rpath.rpath(),
                         false,
                         None,
                         Some(&remote),
@@ -328,7 +328,7 @@ impl GroupManager {
                     }
                     _ => {
                         let client = self
-                            .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                            .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
                             .await?;
                         client
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
@@ -342,7 +342,7 @@ impl GroupManager {
                     |status| status.block_desc.content().rpath(),
                 );
                 let client = self
-                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
+                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
                     .await?;
                 client
                     .on_message(
