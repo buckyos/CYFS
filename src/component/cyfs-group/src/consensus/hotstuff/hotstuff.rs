@@ -11,7 +11,7 @@ use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
     GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
-use cyfs_group_lib::{GroupObjectMapProcessor, HotstuffBlockQCVote, HotstuffTimeoutVote, ExecuteResult};
+use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote, ExecuteResult};
 use cyfs_lib::{NONObjectInfo};
 use futures::FutureExt;
 use itertools::Itertools;
@@ -20,7 +20,7 @@ use crate::{
     consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
     GroupStorage, HotstuffMessage,
     PendingProposalConsumer, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT, RPathEventNotifier,
+    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT, RPathEventNotifier, GroupObjectMapProcessor,
 };
 
 /**

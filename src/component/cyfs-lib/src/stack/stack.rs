@@ -3,6 +3,7 @@ use crate::crypto::*;
 use crate::events::*;
 use crate::ndn::*;
 use crate::non::*;
+use crate::requestor::*;
 use crate::rmeta::*;
 use crate::root_state::*;
 use crate::router_handler::*;
@@ -10,7 +11,6 @@ use crate::storage::StateStorage;
 use crate::sync::*;
 use crate::trans::*;
 use crate::util::*;
-use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::Url;
@@ -94,7 +94,7 @@ pub struct SharedCyfsStack {
     // uni_stack
     uni_stack: Arc<OnceCell<UniCyfsStackRef>>,
 
-    requestor_holder: RequestorHolder,
+    requestor_holder: Arc<RwLock<RequestorHolder>>,
 }
 
 #[derive(Debug, Clone)]
@@ -110,8 +110,7 @@ pub enum CyfsStackRequestorType {
 
 #[derive(Debug, Clone)]
 pub struct CyfsStackRequestorConfig {
-
-    // default is None, use the traditional http-tcp requestor without connection pool; 
+    // default is None, use the traditional http-tcp requestor without connection pool;
     // use Some(0) will use the default connection pool size 50
     pub http_max_connections_per_host: Option<usize>,
 
@@ -291,8 +290,13 @@ impl RequestorHolder {
                             param.service_url.port().unwrap()
                         );
 
-                        if let Some(http_max_connections_per_host) = self.requestor_config.http_max_connections_per_host {
-                            Arc::new(Box::new(SurfHttpRequestor::new(&addr, http_max_connections_per_host)))
+                        if let Some(http_max_connections_per_host) =
+                            self.requestor_config.http_max_connections_per_host
+                        {
+                            Arc::new(Box::new(SurfHttpRequestor::new(
+                                &addr,
+                                http_max_connections_per_host,
+                            )))
                         } else {
                             Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
                         }
@@ -378,7 +382,8 @@ impl SharedCyfsStack {
         // ndn
         let requestor =
             requestor_holder.select_requestor(&param, &param.requestor_config.ndn_service);
-        let data_requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
+        let data_requestor =
+            requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
         let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor, Some(data_requestor));
 
         // sync
@@ -471,20 +476,21 @@ impl SharedCyfsStack {
             device_info: Arc::new(RwLock::new(None)),
             uni_stack: Arc::new(OnceCell::new()),
 
-            requestor_holder,
+            requestor_holder: Arc::new(RwLock::new(requestor_holder)),
         };
 
         Ok(ret)
     }
 
     pub async fn stop(&self) {
-        self.requestor_holder.stop().await;
+        let requestor_holder = self.requestor_holder.read().unwrap();
+        requestor_holder.stop().await;
 
         self.router_handlers.stop().await;
 
         self.router_events.stop().await;
     }
-    
+
     pub fn param(&self) -> &SharedCyfsStackParam {
         &self.param
     }
@@ -721,6 +727,11 @@ impl SharedCyfsStack {
 
     pub fn uni_stack(&self) -> &UniCyfsStackRef {
         self.uni_stack.get_or_init(|| self.create_uni_stack())
+    }
+
+    pub fn select_requestor(&self, requestor_type: &CyfsStackRequestorType) -> HttpRequestorRef {
+        let mut requestor_holder = self.requestor_holder.write().unwrap();
+        requestor_holder.select_requestor(&self.param, requestor_type)
     }
 }
 
