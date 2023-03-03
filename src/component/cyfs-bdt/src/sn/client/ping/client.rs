@@ -502,7 +502,8 @@ impl PingClient {
                                         stack.keystore().reset_peer(&self.sn());
                                         let session = session.reset(None, None);
                                         info!("{} start second try", self);
-                                        *active = ActiveState::SecondTry(session);
+                                        *active = ActiveState::SecondTry(session.clone_as_ping_session());
+                                        next.to_start = Some(session);
                                     }, 
                                     ActiveState::SecondTry(_) => {
                                         next.waiter = Some(waiter.transfer());
