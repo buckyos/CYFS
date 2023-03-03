@@ -1,6 +1,4 @@
-use cyfs_base::{
-    BuckyResult, Group, ObjectId, ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef,
-};
+use cyfs_base::{BuckyResult, ObjectId, ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef};
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
@@ -11,7 +9,7 @@ pub trait DelegateFactory: Send + Sync {
         group_id: &ObjectId,
         rpath: &str,
         with_block: Option<&GroupConsensusBlock>,
-    ) -> BuckyResult<()>;
+    ) -> BuckyResult<Box<dyn RPathDelegate>>;
 }
 
 pub struct ExecuteResult {
