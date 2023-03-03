@@ -2,11 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_std::sync::RwLock;
 use cyfs_base::{
-    BuckyErrorCode, BuckyResult, GroupId, ObjectId, OwnerObjectDesc, RsaCPUObjectSigner,
+    BuckyErrorCode, BuckyResult, GroupId, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
+    RawConvertTo, RsaCPUObjectSigner,
 };
 use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
-use cyfs_lib::GlobalStateManagerRawProcessorRef;
+use cyfs_group_lib::{GroupCommand, GroupCommandNewRPath};
+use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 
 use crate::{
     storage::GroupStorage, HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper,
@@ -32,7 +34,6 @@ struct LocalInfo {
     datagram: DatagramTunnelGuard,
     bdt_stack: StackGuard,
     global_state_mgr: GlobalStateManagerRawProcessorRef,
-    event_notifier: RPathEventNotifier,
 }
 
 #[derive(Clone)]
@@ -54,7 +55,6 @@ impl GroupManager {
             datagram: datagram.clone(),
             bdt_stack,
             global_state_mgr,
-            event_notifier: RPathEventNotifier::new(),
         };
 
         let raw = GroupRPathMgrRaw {
@@ -393,7 +393,6 @@ impl GroupManager {
                 local_device_id.object_id().clone(),
             );
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
-            let event_notifier = local_info.event_notifier.clone();
 
             let store = GroupStorage::load(
                 group_id,
@@ -410,8 +409,13 @@ impl GroupManager {
                     if let BuckyErrorCode::NotFound = e.code() {
                         log::warn!("{}/{}/{} not found in storage", group_id, dec_id, rpath);
 
-                        self.on_new_rpath_request(group_id, dec_id, rpath, block)
-                            .await?;
+                        self.on_new_rpath_request(
+                            group_id.clone(),
+                            dec_id,
+                            rpath.to_string(),
+                            block.cloned(),
+                        )
+                        .await?;
 
                         if !is_auto_create {
                             return Err(e);
@@ -457,7 +461,7 @@ impl GroupManager {
                         local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
                         signer,
-                        event_notifier,
+                        RPathEventNotifier::new(non_driver.clone()),
                         network_sender,
                         non_driver,
                         store,
@@ -472,11 +476,33 @@ impl GroupManager {
 
     async fn on_new_rpath_request(
         &self,
-        group_id: &ObjectId,
+        group_id: ObjectId,
         dec_id: &ObjectId,
-        rpath: &str,
-        with_block: Option<&GroupConsensusBlock>,
+        rpath: String,
+        with_block: Option<GroupConsensusBlock>,
     ) -> BuckyResult<()> {
-        unimplemented!()
+        let cmd = GroupCommandNewRPath {
+            group_id,
+            rpath,
+            with_block,
+        };
+
+        let cmd = GroupCommand::from(cmd);
+        let result = self
+            .local_info()
+            .non_driver
+            .post_object(
+                dec_id,
+                NONObjectInfo {
+                    object_id: cmd.desc().object_id(),
+                    object_raw: cmd.to_vec()?,
+                    object: None,
+                },
+                None,
+            )
+            .await?;
+
+        assert!(result.is_none());
+        Ok(())
     }
 }
