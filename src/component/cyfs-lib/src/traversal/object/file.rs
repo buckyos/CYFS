@@ -15,7 +15,7 @@ impl FileObjectTraverser {
         self.current
     }
 
-    pub async fn tranverse(&self) {
+    pub async fn tranverse(&self)-> BuckyResult<()> {
         let object = self.current.object.object.as_ref().unwrap();
         let file = object.as_file();
 
@@ -23,20 +23,22 @@ impl FileObjectTraverser {
             Some(body) => match body.content().inner_chunk_list() {
                 Some(list) => {
                     for chunk_id in list.iter() {
-                        self.append_chunk(chunk_id).await;
+                        self.append_chunk(chunk_id).await?;
                     }
                 }
                 None => {}
             },
             None => {}
         }
+
+        Ok(())
     }
 
-    async fn append_chunk(&self, chunk_id: &ChunkId) {
+    async fn append_chunk(&self, chunk_id: &ChunkId)-> BuckyResult<()> {
         let item = TraverseChunkItem {
             chunk_id: chunk_id.to_owned(),
         };
 
-        self.cb.on_chunk(item).await;
+        self.cb.on_chunk(item).await
     }
 }

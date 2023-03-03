@@ -32,9 +32,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
             object_id: item.to_owned(),
         };
         let item = TraverseObjectItem::Sub(obj);
-        self.cb.on_object(item).await;
-
-        Ok(())
+        self.cb.on_object(item).await
     }
 
     async fn visit_map_item(&mut self, key: &str, item: &ObjectId) -> BuckyResult<()> {
@@ -49,9 +47,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
             .current
             .derive_normal(item.to_owned(), Some(key), false);
         let item = TraverseObjectItem::Normal(obj);
-        self.cb.on_object(item).await;
-
-        Ok(())
+        self.cb.on_object(item).await
     }
 
     async fn visit_set_item(&mut self, item: &ObjectId) -> BuckyResult<()> {
@@ -59,9 +55,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
 
         let obj = self.current.derive_normal(item.to_owned(), None, false);
         let item = TraverseObjectItem::Normal(obj);
-        self.cb.on_object(item).await;
-
-        Ok(())
+        self.cb.on_object(item).await
     }
 
     async fn visit_diff_map_item(
@@ -76,7 +70,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
         if let Some(id) = &item.diff {
             let obj = self.current.derive_normal(id.to_owned(), Some(key), false);
             let item = TraverseObjectItem::Normal(obj);
-            self.cb.on_object(item).await;
+            self.cb.on_object(item).await?;
         }
 
         if let Some(altered) = &item.altered {
@@ -84,7 +78,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
                 .current
                 .derive_normal(altered.to_owned(), Some(key), false);
             let item = TraverseObjectItem::Normal(obj);
-            self.cb.on_object(item).await;
+            self.cb.on_object(item).await?;
         }
 
         Ok(())
@@ -96,7 +90,7 @@ impl ObjectMapVisitor for ObjectMapTraverser {
         if let Some(altered) = &item.altered {
             let obj = self.current.derive_normal(altered.to_owned(), None, false);
             let item = TraverseObjectItem::Normal(obj);
-            self.cb.on_object(item).await;
+            self.cb.on_object(item).await?;
         }
 
         Ok(())

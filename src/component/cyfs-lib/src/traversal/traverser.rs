@@ -22,13 +22,21 @@ pub enum ObjectTraverseFilterResult {
 #[async_trait::async_trait]
 pub trait ObjectTraverserHandler: Send + Sync {
     async fn filter_path(&self, path: &str) -> ObjectTraverseFilterResult;
-    async fn filter_object(&self, object: &NONObjectInfo, meta: Option<&NamedObjectMetaData>) -> ObjectTraverseFilterResult;
+    async fn filter_object(
+        &self,
+        object: &NONObjectInfo,
+        meta: Option<&NamedObjectMetaData>,
+    ) -> ObjectTraverseFilterResult;
 
-    async fn on_error(&self, id: &ObjectId, e: BuckyError);
-    async fn on_missing(&self, id: &ObjectId);
+    async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()>;
+    async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()>;
 
-    async fn on_object(&self, object: &NONObjectInfo, meta: &Option<NamedObjectMetaData>);
-    async fn on_chunk(&self, chunk_id: &ChunkId);
+    async fn on_object(
+        &self,
+        object: &NONObjectInfo,
+        meta: &Option<NamedObjectMetaData>,
+    ) -> BuckyResult<()>;
+    async fn on_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()>;
 }
 
 pub type ObjectTraverserHandlerRef = Arc<Box<dyn ObjectTraverserHandler>>;
@@ -95,12 +103,13 @@ impl ObjectTraverser {
         let ret = self.loader.get_object(&root).await?;
         if ret.is_none() {
             warn!("root object missing! root={}", root);
-            self.handler.on_missing(&root).await;
+            self.handler.on_missing(&root).await?;
+
             return Ok(());
         }
 
         let data = ret.unwrap();
-        self.handler.on_object(&data.object, &data.meta).await;
+        self.handler.on_object(&data.object, &data.meta).await?;
 
         let filter_ret = self.handler.filter_path("/").await;
         let config_ref_depth = match filter_ret {
@@ -153,18 +162,19 @@ impl ObjectTraverser {
                     */
 
                     let traverser = CommonObjectTraverser::new(item, cb.clone());
-                    traverser.tranverse().await;
+                    traverser.tranverse().await?;
 
                     let item = traverser.finish();
 
                     match item.object.object_id.obj_type_code() {
                         ObjectTypeCode::File => {
                             let traverser = FileObjectTraverser::new(item, cb.clone());
-                            traverser.tranverse().await;
+                            traverser.tranverse().await?;
                         }
                         ObjectTypeCode::Dir => {
-                            let mut traverser = DirObjectTraverser::new(self.loader.clone(), item, cb.clone());
-                            traverser.tranverse().await;
+                            let mut traverser =
+                                DirObjectTraverser::new(self.loader.clone(), item, cb.clone());
+                            traverser.tranverse().await?;
                         }
                         _ => {}
                     }
@@ -207,15 +217,15 @@ impl ObjectTraverser {
 
 #[async_trait::async_trait]
 impl ObjectTraverserCallBack for ObjectTraverser {
-    async fn on_object(&self, item: TraverseObjectItem) {
+    async fn on_object(&self, item: TraverseObjectItem) -> BuckyResult<()> {
         let id = item.object_id();
         if !self.dedup(id) {
-            return;
+            return Ok(());
         }
 
         match self.loader.get_object(id).await {
             Ok(Some(data)) => {
-                self.handler.on_object(&data.object, &data.meta).await;
+                self.handler.on_object(&data.object, &data.meta).await?;
 
                 match item {
                     TraverseObjectItem::Normal(mut item) => {
@@ -231,10 +241,12 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                         "will skip object on ref_depth > config_ref_depth: {:?}",
                                         item
                                     );
-                                    return;
+                                    return Ok(());
                                 }
 
-                                self.handler.filter_object(&data.object, data.meta.as_ref()).await
+                                self.handler
+                                    .filter_object(&data.object, data.meta.as_ref())
+                                    .await
                             }
                         };
 
@@ -243,13 +255,13 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                                 if let Some(config_ref_depth) = config_ref_depth {
                                     if config_ref_depth == 0 {
                                         info!("will skip object on filter's config_ref_depth is 0: {:?}", item);
-                                        return;
+                                        return Ok(());
                                     }
 
                                     item.config_ref_depth = config_ref_depth;
                                     if item.ref_depth >= item.config_ref_depth {
                                         info!("will skip object on ref_depth >= config_ref_depth: {:?}", item);
-                                        return;
+                                        return Ok(());
                                     }
                                 }
 
@@ -267,23 +279,25 @@ impl ObjectTraverserCallBack for ObjectTraverser {
                 }
             }
             Ok(None) => {
-                self.handler.on_missing(id).await;
+                self.handler.on_missing(id).await?;
             }
             Err(e) => {
-                self.handler.on_error(id, e).await;
+                self.handler.on_error(id, e).await?;
             }
         }
+
+        Ok(())
     }
 
-    async fn on_chunk(&self, item: TraverseChunkItem) {
-        self.handler.on_chunk(&item.chunk_id).await;
+    async fn on_chunk(&self, item: TraverseChunkItem) -> BuckyResult<()> {
+        self.handler.on_chunk(&item.chunk_id).await
     }
 
-    async fn on_error(&self, id: &ObjectId, e: BuckyError) {
-        self.handler.on_error(id, e).await;
+    async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
+        self.handler.on_error(id, e).await
     }
 
-    async fn on_missing(&self, id: &ObjectId) {
+    async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.handler.on_missing(id).await
     }
 }

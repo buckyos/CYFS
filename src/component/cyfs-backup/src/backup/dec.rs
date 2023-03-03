@@ -156,36 +156,44 @@ impl ObjectTraverserHandler for DecStateBackup {
         }
     }
 
-    async fn on_error(&self, id: &ObjectId, e: BuckyError) {
+    async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
         self.backup_meta.on_error(id, e);
+
+        Ok(())
     }
 
-    async fn on_missing(&self, id: &ObjectId) {
+    async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
+
+        Ok(())
     }
 
-    async fn on_object(&self, object: &NONObjectInfo, meta: &Option<NamedObjectMetaData>) {
+    async fn on_object(
+        &self,
+        object: &NONObjectInfo,
+        meta: &Option<NamedObjectMetaData>,
+    ) -> BuckyResult<()> {
         self.backup_meta.on_object(object);
 
         self.data_manager
             .add_object(&object.object_id, &object.object_raw, meta.as_ref())
-            .await;
+            .await
     }
 
-    async fn on_chunk(&self, chunk_id: &ChunkId) {
+    async fn on_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
         self.backup_meta.on_chunk(chunk_id);
 
         match self.loader.get_chunk(chunk_id).await {
             Ok(Some(data)) => {
                 self.data_manager
                     .add_data(chunk_id.object_id(), data, None)
-                    .await;
+                    .await
             }
             Ok(None) => {
-                self.on_missing(chunk_id.as_object_id()).await;
+                self.on_missing(chunk_id.as_object_id()).await
             }
             Err(e) => {
-                self.on_error(chunk_id.as_object_id(), e).await;
+                self.on_error(chunk_id.as_object_id(), e).await
             }
         }
     }

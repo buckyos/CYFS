@@ -36,11 +36,11 @@ impl DirObjectTraverser {
         object.as_dir()
     }
 
-    pub async fn tranverse(&mut self) {
+    pub async fn tranverse(&mut self) -> BuckyResult<()> {
         // First init body chunk
         if let Err(e) = self.load_body_chunk().await {
-            self.cb.on_error(self.dir_id(), e).await;
-            return;
+            self.cb.on_error(self.dir_id(), e).await?;
+            return Ok(());
         }
 
         // Init desc obj list
@@ -54,7 +54,7 @@ impl DirObjectTraverser {
                                 let item = TraverseChunkItem {
                                     chunk_id: chunk_id.to_owned(),
                                 };
-                                self.cb.on_chunk(item).await;
+                                self.cb.on_chunk(item).await?;
                             }
                             Cow::Borrowed(_) => {}
                         }
@@ -65,21 +65,21 @@ impl DirObjectTraverser {
                                 let msg = format!("decode dir desc chunk to obj list failed! dir={}, chunk={}, {}", self.current.object.object_id, chunk_id, e);
                                 error!("{}", msg);
                                 let e = BuckyError::new(BuckyErrorCode::InvalidData, msg);
-                                self.cb.on_error(self.dir_id(), e).await;
-                                return;
+                                self.cb.on_error(self.dir_id(), e).await?;
+                                return Ok(());
                             }
                         }
                     }
                     Err(e) => {
-                        self.cb.on_error(self.dir_id(), e).await;
-                        return;
+                        self.cb.on_error(self.dir_id(), e).await?;
+                        return Ok(());
                     }
                 }
             }
             NDNObjectInfo::ObjList(list) => Cow::Borrowed(list),
         };
 
-        self.append_desc_obj_list(&desc_obj_list).await;
+        self.append_desc_obj_list(&desc_obj_list).await
     }
 
     async fn load_body_chunk(&mut self) -> BuckyResult<()> {
@@ -91,7 +91,7 @@ impl DirObjectTraverser {
                     let item = TraverseChunkItem {
                         chunk_id: chunk_id.to_owned(),
                     };
-                    self.cb.on_chunk(item).await;
+                    self.cb.on_chunk(item).await?;
 
                     match self.loader.get_chunk(chunk_id).await {
                         Ok(Some(mut reader)) => {
@@ -130,7 +130,7 @@ impl DirObjectTraverser {
                                 chunk_id
                             );
                             error!("{}", msg);
-                            self.cb.on_missing(chunk_id.as_object_id()).await;
+                            self.cb.on_missing(chunk_id.as_object_id()).await?;
 
                             Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
                         }
@@ -200,7 +200,7 @@ impl DirObjectTraverser {
                     chunk_id
                 );
                 error!("{}", msg);
-                self.cb.on_missing(chunk_id.as_object_id()).await;
+                self.cb.on_missing(chunk_id.as_object_id()).await?;
 
                 Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
             }
@@ -217,30 +217,36 @@ impl DirObjectTraverser {
         }
     }
 
-    async fn append_desc_obj_list(&self, list: &NDNObjectList) {
+    async fn append_desc_obj_list(&self, list: &NDNObjectList) -> BuckyResult<()> {
         let body_map = self.body_map();
 
         if let Some(ref parent) = list.parent_chunk {
-            self.append_object(parent.as_object_id(), &body_map).await;
+            self.append_object(parent.as_object_id(), &body_map).await?;
         }
 
         for (_k, v) in &list.object_map {
             match v.node() {
                 InnerNode::ObjId(id) => {
-                    self.append_object(id, &body_map).await;
+                    self.append_object(id, &body_map).await?;
                 }
                 InnerNode::Chunk(id) => {
-                    self.append_object(id.as_object_id(), &body_map).await;
+                    self.append_object(id.as_object_id(), &body_map).await?;
                 }
                 InnerNode::IndexInParentChunk(_, _) => {}
             }
         }
+
+        Ok(())
     }
 
-    async fn append_object(&self, id: &ObjectId, body_map: &Option<&DirBodyContentObjectList>) {
+    async fn append_object(
+        &self,
+        id: &ObjectId,
+        body_map: &Option<&DirBodyContentObjectList>,
+    ) -> BuckyResult<()> {
         if let Some(body_map) = body_map {
             if body_map.contains_key(id) {
-                return;
+                return Ok(());
             }
         }
 
@@ -256,14 +262,14 @@ impl DirObjectTraverser {
                     chunk_id: id.as_chunk_id().to_owned(),
                 };
 
-                self.cb.on_chunk(item).await;
+                self.cb.on_chunk(item).await
             }
             _ => {
                 let item = self
                     .current
                     .derive_normal(self.dir_id().to_owned(), None, true);
                 let item = TraverseObjectItem::Normal(item);
-                self.cb.on_object(item).await;
+                self.cb.on_object(item).await
             }
         }
     }
