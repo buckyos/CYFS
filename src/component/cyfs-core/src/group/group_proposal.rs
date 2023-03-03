@@ -6,7 +6,7 @@ use sha2::Digest;
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupProposalDescContent)]
 pub struct GroupProposalDescContent {
-    r_path: GroupRPath,
+    rpath: GroupRPath,
     method: String,
     params: Option<Vec<u8>>,
 
@@ -123,7 +123,7 @@ pub type GroupProposal = NamedObjectBase<GroupProposalType>;
 
 impl GroupProposalDescContent {
     pub fn new(
-        r_path: GroupRPath,
+        rpath: GroupRPath,
         method: String,
         params: Option<Vec<u8>>,
         meta_block_id: Option<ObjectId>,
@@ -131,7 +131,7 @@ impl GroupProposalDescContent {
         effective_ending: Option<u64>,
     ) -> GroupProposalDescContent {
         Self {
-            r_path,
+            rpath,
             method,
             params,
             meta_block_id,
@@ -158,7 +158,7 @@ impl GroupProposalBodyContent {
 #[async_trait]
 pub trait GroupProposalObject {
     fn create(
-        r_path: GroupRPath,
+        rpath: GroupRPath,
         method: String,
         params: Option<Vec<u8>>,
         payload: Option<Vec<u8>>,
@@ -169,7 +169,7 @@ pub trait GroupProposalObject {
         effective_ending: Option<u64>,
     ) -> GroupProposalBuilder;
 
-    fn r_path(&self) -> &GroupRPath;
+    fn rpath(&self) -> &GroupRPath;
     fn method(&self) -> &str;
     fn params(&self) -> &Option<Vec<u8>>;
     fn params_hash(&self) -> BuckyResult<Option<HashValue>>;
@@ -207,7 +207,7 @@ pub trait GroupProposalObject {
 #[async_trait]
 impl GroupProposalObject for GroupProposal {
     fn create(
-        r_path: GroupRPath,
+        rpath: GroupRPath,
         method: String,
         params: Option<Vec<u8>>,
         payload: Option<Vec<u8>>,
@@ -218,7 +218,7 @@ impl GroupProposalObject for GroupProposal {
         effective_ending: Option<u64>,
     ) -> GroupProposalBuilder {
         let desc = GroupProposalDescContent {
-            r_path,
+            rpath,
             method,
             params,
             meta_block_id,
@@ -237,8 +237,8 @@ impl GroupProposalObject for GroupProposal {
         .owner(owner)
     }
 
-    fn r_path(&self) -> &GroupRPath {
-        &self.desc().content().r_path
+    fn rpath(&self) -> &GroupRPath {
+        &self.desc().content().rpath
     }
 
     fn method(&self) -> &str {

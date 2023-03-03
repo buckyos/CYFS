@@ -222,7 +222,7 @@ impl StateChanggeRunner {
                     let group = self
                         .non_driver
                         .get_group(
-                            block.r_path().group_id(),
+                            block.rpath().group_id(),
                             Some(block.group_chunk_id()),
                             None,
                         )
@@ -248,7 +248,7 @@ impl StateChanggeRunner {
                 let group = self
                     .non_driver
                     .get_group(
-                        block.r_path().group_id(),
+                        block.rpath().group_id(),
                         Some(block.group_chunk_id()),
                         None,
                     )
