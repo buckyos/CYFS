@@ -1,5 +1,4 @@
-use super::data::BackupDataWriter;
-use crate::archive::*;
+use crate::{archive::*, data::BackupDataWriterRef};
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -10,7 +9,7 @@ pub struct IsolateStateBackup {
     isolate_id: ObjectId,
     state_manager: GlobalStateRawProcessorRef,
 
-    data_manager: BackupDataWriter,
+    data_writer: BackupDataWriterRef,
     loader: ObjectTraverserLoaderRef,
     meta_manager: GlobalStateMetaManagerRawProcessorRef,
 }
@@ -19,7 +18,7 @@ impl IsolateStateBackup {
     pub fn new(
         category: GlobalStateCategory,
         isolate_id: ObjectId,
-        data_manager: BackupDataWriter,
+        data_writer: BackupDataWriterRef,
         loader: ObjectTraverserLoaderRef,
         state_manager: GlobalStateRawProcessorRef,
         meta_manager: GlobalStateMetaManagerRawProcessorRef,
@@ -28,7 +27,7 @@ impl IsolateStateBackup {
             category,
             isolate_id,
             state_manager,
-            data_manager,
+            data_writer,
             loader,
             meta_manager,
         }
@@ -74,7 +73,7 @@ impl IsolateStateBackup {
                 self.isolate_id.clone(),
                 dec_info.dec_id.clone(),
                 dec_info.dec_root.clone(),
-                self.data_manager.clone(),
+                self.data_writer.clone(),
                 self.loader.clone(),
                 meta,
             );

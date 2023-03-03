@@ -1,5 +1,5 @@
-use super::data::BackupDataWriter;
 use crate::archive::ObjectArchiveDecMeta;
+use crate::data::BackupDataWriterRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -68,7 +68,7 @@ pub struct DecStateBackup {
     // archive: ObjectArchiveGenerator,
     backup_meta: ObjectArchiveDecMetaHolder,
 
-    data_manager: BackupDataWriter,
+    data_writer: BackupDataWriterRef,
     loader: ObjectTraverserLoaderRef,
     dec_meta: Option<GlobalStateMetaRawProcessorRef>,
 }
@@ -78,7 +78,7 @@ impl DecStateBackup {
         isolate_id: ObjectId,
         dec_id: ObjectId,
         dec_root: ObjectId,
-        data_manager: BackupDataWriter,
+        data_writer: BackupDataWriterRef,
         loader: ObjectTraverserLoaderRef,
         dec_meta: Option<GlobalStateMetaRawProcessorRef>,
     ) -> Self {
@@ -87,7 +87,7 @@ impl DecStateBackup {
             isolate_id,
             dec_id,
             dec_root,
-            data_manager,
+            data_writer,
             loader,
             dec_meta,
         }
@@ -162,9 +162,9 @@ impl ObjectTraverserHandler for DecStateBackup {
     async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
         self.backup_meta.on_error(id);
 
-        self.data_manager
-            .logger()
-            .on_error(&self.isolate_id, &self.dec_id, id, e);
+        if let Some(logger) = self.data_writer.logger() {
+            logger.on_error(&self.isolate_id, &self.dec_id, id, e);
+        }
 
         Ok(())
     }
@@ -172,9 +172,9 @@ impl ObjectTraverserHandler for DecStateBackup {
     async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
 
-        self.data_manager
-            .logger()
-            .on_missing(&self.isolate_id, &self.dec_id, id);
+        if let Some(logger) = self.data_writer.logger() {
+            logger.on_missing(&self.isolate_id, &self.dec_id, id);
+        }
 
         Ok(())
     }
@@ -186,7 +186,7 @@ impl ObjectTraverserHandler for DecStateBackup {
     ) -> BuckyResult<()> {
         self.backup_meta.on_object(object);
 
-        self.data_manager
+        self.data_writer
             .add_object(&object.object_id, &object.object_raw, meta.as_ref())
             .await
     }
@@ -196,7 +196,7 @@ impl ObjectTraverserHandler for DecStateBackup {
 
         match self.loader.get_chunk(chunk_id).await {
             Ok(Some(data)) => {
-                self.data_manager
+                self.data_writer
                     .add_data(chunk_id.object_id(), data, None)
                     .await
             }

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 pub struct ObjectArchiveGenerator {
     root: PathBuf,
     meta: ObjectArchiveMeta,
+    size_limit: u64,
 
     object_writer: ObjectPackRollWriter,
     chunk_writer: ObjectPackRollWriter,
@@ -33,12 +34,17 @@ impl ObjectArchiveGenerator {
         Self {
             root,
             meta: ObjectArchiveMeta::new(id, format),
+            size_limit,
 
             object_writer,
             chunk_writer,
         }
     }
 
+    pub fn clone_empty(&self) -> Self {
+        Self::new(self.meta.id, self.meta.format, self.root.clone(), self.size_limit)
+    }
+    
     pub fn add_isolate_meta(&mut self, isolate_meta: ObjectArchiveIsolateMeta) {
         self.meta.add_isolate(isolate_meta);
     }

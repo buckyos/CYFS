@@ -4,17 +4,19 @@ use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::{AsyncReadWithSeek, AsyncReadWithSeekAdapter};
+use super::writer::*;
 
 use async_std::sync::{Arc, Mutex as AsyncMutex};
+use std::ops::DerefMut;
 use std::path::PathBuf;
 
 #[derive(Clone)]
-pub struct BackupDataWriter {
+pub struct BackupDataLocalFileWriter {
     archive: Arc<AsyncMutex<ObjectArchiveGenerator>>,
     log: Arc<BackupLogManager>,
 }
 
-impl BackupDataWriter {
+impl BackupDataLocalFileWriter {
     pub fn new(
         id: u64,
         default_isolate: ObjectId,
@@ -58,6 +60,10 @@ impl BackupDataWriter {
         })
     }
 
+    pub fn into_writer(self) -> BackupDataWriterRef {
+        Arc::new(Box::new(self))
+    }
+
     pub async fn add_isolate_meta(&self, isolate_meta: ObjectArchiveIsolateMeta) {
         let mut archive = self.archive.lock().await;
         archive.add_isolate_meta(isolate_meta);
@@ -90,18 +96,58 @@ impl BackupDataWriter {
         Ok(())
     }
 
-    pub fn logger(&self) -> &BackupLogManager {
-        &self.log
-    }
+    pub async fn finish(&self) -> BuckyResult<ObjectArchiveMeta> {
+        let archive = {
+            let mut archive = self.archive.lock().await;
+            let mut empty_archive = archive.clone_empty();
+            std::mem::swap(archive.deref_mut(), &mut empty_archive);
 
-    pub async fn finish(self) -> BuckyResult<ObjectArchiveMeta> {
+            empty_archive
+        };
+
+        /*
         let archive = match Arc::try_unwrap(self.archive) {
             Ok(ret) => ret,
             Err(_) => unreachable!(),
         };
 
         let archive = archive.into_inner();
+        */
 
         archive.finish().await
+    }
+}
+
+
+#[async_trait::async_trait]
+impl BackupDataWriter for BackupDataLocalFileWriter {
+    async fn add_isolate_meta(&self, isolate_meta: ObjectArchiveIsolateMeta) {
+        Self::add_isolate_meta(&self, isolate_meta).await
+    }
+
+    async fn add_object(
+        &self,
+        object_id: &ObjectId,
+        object_raw: &[u8],
+        meta: Option<&NamedObjectMetaData>,
+    ) -> BuckyResult<()> {
+        Self::add_object(&self, object_id, object_raw, meta).await
+    }
+
+    async fn add_data(
+        &self,
+        object_id: ObjectId,
+        data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        meta: Option<ArchiveInnerFileMeta>,
+    ) -> BuckyResult<()> {
+        Self::add_data(&self, object_id, data, meta).await
+    }
+
+    fn logger(&self) -> Option<&BackupLogManager> {
+        Some(&self.log)
+    }
+
+    async fn finish(&self) -> BuckyResult<ObjectArchiveMeta> {
+        Self::finish(&self).await
     }
 }
