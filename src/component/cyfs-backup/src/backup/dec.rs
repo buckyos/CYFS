@@ -22,7 +22,7 @@ impl ObjectArchiveDecMetaHolder {
         item.into_inner().unwrap()
     }
 
-    fn on_error(&self, id: &ObjectId, _e: BuckyError) {
+    fn on_error(&self, id: &ObjectId) {
         let mut meta = self.meta.lock().unwrap();
         if id.is_chunk_id() {
             let chunk_id = id.as_chunk_id();
@@ -61,6 +61,7 @@ impl ObjectArchiveDecMetaHolder {
 
 #[derive(Clone)]
 pub struct DecStateBackup {
+    isolate_id: ObjectId,
     dec_id: ObjectId,
     dec_root: ObjectId,
 
@@ -74,6 +75,7 @@ pub struct DecStateBackup {
 
 impl DecStateBackup {
     pub fn new(
+        isolate_id: ObjectId,
         dec_id: ObjectId,
         dec_root: ObjectId,
         data_manager: BackupDataManager,
@@ -82,6 +84,7 @@ impl DecStateBackup {
     ) -> Self {
         Self {
             backup_meta: ObjectArchiveDecMetaHolder::new(dec_id.clone(), dec_root.clone()),
+            isolate_id,
             dec_id,
             dec_root,
             data_manager,
@@ -157,13 +160,17 @@ impl ObjectTraverserHandler for DecStateBackup {
     }
 
     async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
-        self.backup_meta.on_error(id, e);
+        self.backup_meta.on_error(id);
+
+        self.data_manager.logger().on_error(&self.isolate_id, &self.dec_id, id, e);
 
         Ok(())
     }
 
     async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
+
+        self.data_manager.logger().on_missing(&self.isolate_id, &self.dec_id, id);
 
         Ok(())
     }

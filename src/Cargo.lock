@@ -1487,6 +1487,7 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-util",
+ "file-rotate",
  "log 0.4.17",
  "prost 0.9.0",
  "prost-build 0.9.0",
@@ -2861,6 +2862,16 @@ dependencies = [
  "log 0.4.17",
  "rusqlite",
  "tide",
+]
+
+[[package]]
+name = "file-rotate"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ff9cc595c02801d7e61675928f8c4698cab40b68b837884936a6b24fcf711e1"
+dependencies = [
+ "chrono",
+ "flate2",
 ]
 
 [[package]]

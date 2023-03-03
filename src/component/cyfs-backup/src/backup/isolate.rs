@@ -46,6 +46,7 @@ impl IsolateStateBackup {
                 .await?;
 
             let dec_backup = DecStateBackup::new(
+                self.isolate_id.clone(),
                 dec_info.dec_id,
                 dec_info.dec_root,
                 self.data_manager.clone(),

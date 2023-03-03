@@ -29,6 +29,7 @@ async-trait = "0.1.53"
 byteorder = "1.4"
 prost = { version = '0.9.0' }
 protobuf = { version = '2', features = ['with-bytes'] }
+file-rotate = "0.7"
 
 [dev-dependencies]
 rand = "0.8"
