@@ -10,7 +10,7 @@ use sha2::Digest;
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupConsensusBlockDescContent)]
 pub struct GroupConsensusBlockDescContent {
-    r_path: GroupRPath,
+    rpath: GroupRPath,
     body_hash: HashValue,
     result_state_id: Option<ObjectId>,
     height: u64,
@@ -40,7 +40,7 @@ impl DescContent for GroupConsensusBlockDescContent {
 
 impl GroupConsensusBlockDescContent {
     pub fn rpath(&self) -> &GroupRPath {
-        &self.r_path
+        &self.rpath
     }
 
     pub fn result_state_id(&self) -> &Option<ObjectId> {
@@ -236,7 +236,7 @@ impl GroupConsensusBlockBodyContent {
 
 pub trait GroupConsensusBlockObject {
     fn create(
-        r_path: GroupRPath,
+        rpath: GroupRPath,
         proposals: Vec<GroupConsensusBlockProposal>,
         result_state_id: Option<ObjectId>,
         height: u64,
@@ -248,7 +248,7 @@ pub trait GroupConsensusBlockObject {
         owner: ObjectId,
     ) -> Self;
     fn check(&self) -> bool;
-    fn r_path(&self) -> &GroupRPath;
+    fn rpath(&self) -> &GroupRPath;
     fn proposals(&self) -> &Vec<GroupConsensusBlockProposal>;
     fn result_state_id(&self) -> &Option<ObjectId>;
     fn height(&self) -> u64;
@@ -266,7 +266,7 @@ pub trait GroupConsensusBlockObject {
 
 impl GroupConsensusBlockObject for GroupConsensusBlock {
     fn create(
-        r_path: GroupRPath,
+        rpath: GroupRPath,
         proposals: Vec<GroupConsensusBlockProposal>,
         result_state_id: Option<ObjectId>,
         height: u64,
@@ -280,7 +280,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         let body = GroupConsensusBlockBodyContent { proposals, qc, tc };
 
         let desc = GroupConsensusBlockDescContent {
-            r_path,
+            rpath,
             result_state_id,
 
             height,
@@ -319,9 +319,9 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         }
     }
 
-    fn r_path(&self) -> &GroupRPath {
+    fn rpath(&self) -> &GroupRPath {
         let desc = self.0.desc().content();
-        &desc.r_path
+        &desc.rpath
     }
 
     fn proposals(&self) -> &Vec<GroupConsensusBlockProposal> {

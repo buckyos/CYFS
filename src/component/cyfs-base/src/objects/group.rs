@@ -436,7 +436,7 @@ impl TryFrom<&GroupMember> for protos::GroupMember {
 pub struct GroupMethodACL {
     pub name: String,
     pub target_dec_id: Option<ObjectId>,
-    pub r_path: Option<String>,
+    pub rpath: Option<String>,
     pub min_support_percent: f64,
     pub permissions: String, // ACL-String
 }
@@ -452,8 +452,8 @@ impl TryFrom<protos::GroupMethodACL> for GroupMethodACL {
             } else {
                 None
             },
-            r_path: if value.has_r_path() {
-                Some(value.take_r_path())
+            rpath: if value.has_rpath() {
+                Some(value.take_rpath())
             } else {
                 None
             },
@@ -475,8 +475,8 @@ impl TryFrom<&GroupMethodACL> for protos::GroupMethodACL {
         if let Some(dec_id) = &value.target_dec_id {
             ret.set_target_dec_id(dec_id.to_vec()?);
         }
-        if let Some(r_path) = &value.r_path {
-            ret.set_r_path(r_path.clone());
+        if let Some(rpath) = &value.rpath {
+            ret.set_rpath(rpath.clone());
         }
         ret.min_support_percent = value.min_support_percent;
         ret.permissions = value.permissions.clone();
@@ -489,7 +489,7 @@ impl TryFrom<&GroupMethodACL> for protos::GroupMethodACL {
 pub struct GroupRoleACL {
     pub name: String,
     pub target_dec_id: Option<ObjectId>,
-    pub r_path: Option<String>,
+    pub rpath: Option<String>,
     pub method: String,
 
     pub right_percent: f64,
@@ -508,8 +508,8 @@ impl TryFrom<protos::GroupRoleACL> for GroupRoleACL {
             } else {
                 None
             },
-            r_path: if value.has_r_path() {
-                Some(value.take_r_path())
+            rpath: if value.has_rpath() {
+                Some(value.take_rpath())
             } else {
                 None
             },
@@ -533,8 +533,8 @@ impl TryFrom<&GroupRoleACL> for protos::GroupRoleACL {
         if let Some(dec_id) = &value.target_dec_id {
             ret.set_target_dec_id(dec_id.to_vec()?);
         }
-        if let Some(r_path) = &value.r_path {
-            ret.set_r_path(r_path.clone());
+        if let Some(rpath) = &value.rpath {
+            ret.set_rpath(rpath.clone());
         }
         ret.method = value.method.clone();
         ret.right_percent = value.right_percent;

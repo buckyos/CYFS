@@ -1,6 +1,6 @@
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, RawConvertTo,
-    RawDecode,
+    BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId,
+    ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef, RawConvertTo, RawDecode,
 };
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_group_lib::{
@@ -129,4 +129,10 @@ impl RPathEventNotifier {
 
         assert!(result.is_err() || result.unwrap().is_none());
     }
+}
+
+#[async_trait::async_trait]
+pub trait GroupObjectMapProcessor: Send + Sync {
+    async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef>;
+    async fn create_sub_tree_op_env(&self) -> BuckyResult<ObjectMapIsolatePathOpEnvRef>;
 }

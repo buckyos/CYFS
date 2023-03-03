@@ -78,13 +78,13 @@ impl RPathClient {
         &self,
         proposal: &GroupProposal,
     ) -> BuckyResult<Option<NONObjectInfo>> {
-        assert_eq!(proposal.r_path(), &self.0.rpath);
+        assert_eq!(proposal.rpath(), &self.0.rpath);
 
         // TODO: signature
         let group = self
             .0
             .non_driver
-            .get_group(proposal.r_path().group_id(), None, None)
+            .get_group(proposal.rpath().group_id(), None, None)
             .await?;
         let oods = group.ood_list_with_distance(&self.0.local_device_id);
         let proposal_id = proposal.desc().object_id();
