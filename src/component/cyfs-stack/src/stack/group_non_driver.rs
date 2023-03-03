@@ -88,8 +88,8 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         &self,
         dec_id: &ObjectId,
         obj: NONObjectInfo,
-        to: &ObjectId,
-    ) -> BuckyResult<()> {
+        to: Option<&ObjectId>,
+    ) -> BuckyResult<Option<NONObjectInfo>> {
         self.non_service
             .post_object(NONPostObjectInputRequest {
                 common: NONInputRequestCommon {
@@ -107,12 +107,12 @@ impl cyfs_group::NONDriver for GroupNONDriver {
 
                     level: NONAPILevel::Router,
 
-                    target: Some(to.clone()),
+                    target: to.cloned(),
                     flags: 0,
                 },
                 object: obj,
             })
             .await
-            .map(|_| ())
+            .map(|resp| resp.object)
     }
 }

@@ -100,7 +100,7 @@ impl RPathClient {
             match self
                 .0
                 .non_driver
-                .post_object(non_proposal.clone(), ood)
+                .post_object(non_proposal.clone(), Some(ood))
                 .await
             {
                 Ok(r) => post_result = Some(Ok(())),
