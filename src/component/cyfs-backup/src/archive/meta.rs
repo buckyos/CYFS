@@ -94,6 +94,8 @@ impl ObjectArchiveIsolateMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta {
+    pub id: u64,
+    pub time: String,
     pub format: ObjectPackFormat,
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
     pub object_files: Vec<ObjectPackFileInfo>,
@@ -101,8 +103,14 @@ pub struct ObjectArchiveMeta {
 }
 
 impl ObjectArchiveMeta {
-    pub fn new(format: ObjectPackFormat) -> Self {
+    pub fn new(id: u64, format: ObjectPackFormat) -> Self {
+        let datetime = chrono::offset::Local::now();
+        // let time = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
+        let time = format!("{:?}", datetime);
+
         Self {
+            id,
+            time,
             format,
             isolates: vec![],
             object_files: vec![],
@@ -110,18 +118,8 @@ impl ObjectArchiveMeta {
         }
     }
 
-    pub fn add_isolate(&mut self, isolate_id: &ObjectId, root: ObjectId, revision: u64) {
-        let ret = self
-            .isolates
-            .iter()
-            .find(|item| item.isolate_id == *isolate_id);
-        if ret.is_none() {
-            self.isolates.push(ObjectArchiveIsolateMeta::new(
-                isolate_id.to_owned(),
-                root,
-                revision,
-            ));
-        }
+    pub fn add_isolate(&mut self, isolate_meta: ObjectArchiveIsolateMeta) {
+        self.isolates.push(isolate_meta);
     }
 
     pub fn add_isolate_dec(&mut self, isolate_id: &ObjectId, dec_meta: ObjectArchiveDecMeta) {

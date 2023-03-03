@@ -34,6 +34,7 @@ async fn test_archive() {
 
     let mut objects = HashMap::new();
     let mut generator = ObjectArchiveGenerator::new(
+        bucky_time_now(),
         crate::object_pack::ObjectPackFormat::Zip,
         path.clone(),
         1024 * 1024 * 10,

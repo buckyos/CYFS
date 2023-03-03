@@ -15,7 +15,7 @@ pub struct ObjectArchiveGenerator {
 }
 
 impl ObjectArchiveGenerator {
-    pub fn new(format: ObjectPackFormat, root: PathBuf, size_limit: u64) -> Self {
+    pub fn new(id: u64, format: ObjectPackFormat, root: PathBuf, size_limit: u64) -> Self {
         let object_writer = ObjectPackRollWriter::new(
             format,
             root.clone(),
@@ -32,13 +32,17 @@ impl ObjectArchiveGenerator {
 
         Self {
             root,
-            meta: ObjectArchiveMeta::new(format),
+            meta: ObjectArchiveMeta::new(id, format),
 
             object_writer,
             chunk_writer,
         }
     }
 
+    pub fn add_isolate_meta(&mut self, isolate_meta: ObjectArchiveIsolateMeta) {
+        self.meta.add_isolate(isolate_meta);
+    }
+    
     pub async fn add_data(
         &mut self,
         object_id: &ObjectId,

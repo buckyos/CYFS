@@ -1,4 +1,4 @@
-use super::data::BackupDataManager;
+use super::data::BackupDataWriter;
 use crate::archive::ObjectArchiveDecMeta;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -68,7 +68,7 @@ pub struct DecStateBackup {
     // archive: ObjectArchiveGenerator,
     backup_meta: ObjectArchiveDecMetaHolder,
 
-    data_manager: BackupDataManager,
+    data_manager: BackupDataWriter,
     loader: ObjectTraverserLoaderRef,
     dec_meta: Option<GlobalStateMetaRawProcessorRef>,
 }
@@ -78,7 +78,7 @@ impl DecStateBackup {
         isolate_id: ObjectId,
         dec_id: ObjectId,
         dec_root: ObjectId,
-        data_manager: BackupDataManager,
+        data_manager: BackupDataWriter,
         loader: ObjectTraverserLoaderRef,
         dec_meta: Option<GlobalStateMetaRawProcessorRef>,
     ) -> Self {
@@ -162,7 +162,9 @@ impl ObjectTraverserHandler for DecStateBackup {
     async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
         self.backup_meta.on_error(id);
 
-        self.data_manager.logger().on_error(&self.isolate_id, &self.dec_id, id, e);
+        self.data_manager
+            .logger()
+            .on_error(&self.isolate_id, &self.dec_id, id, e);
 
         Ok(())
     }
@@ -170,7 +172,9 @@ impl ObjectTraverserHandler for DecStateBackup {
     async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
 
-        self.data_manager.logger().on_missing(&self.isolate_id, &self.dec_id, id);
+        self.data_manager
+            .logger()
+            .on_missing(&self.isolate_id, &self.dec_id, id);
 
         Ok(())
     }
@@ -196,12 +200,8 @@ impl ObjectTraverserHandler for DecStateBackup {
                     .add_data(chunk_id.object_id(), data, None)
                     .await
             }
-            Ok(None) => {
-                self.on_missing(chunk_id.as_object_id()).await
-            }
-            Err(e) => {
-                self.on_error(chunk_id.as_object_id(), e).await
-            }
+            Ok(None) => self.on_missing(chunk_id.as_object_id()).await,
+            Err(e) => self.on_error(chunk_id.as_object_id(), e).await,
         }
     }
 }

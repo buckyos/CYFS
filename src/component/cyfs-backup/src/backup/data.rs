@@ -1,5 +1,6 @@
 use super::log::BackupLogManager;
 use crate::archive::*;
+use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::{AsyncReadWithSeek, AsyncReadWithSeekAdapter};
@@ -8,15 +9,17 @@ use async_std::sync::{Arc, Mutex as AsyncMutex};
 use std::path::PathBuf;
 
 #[derive(Clone)]
-pub struct BackupDataManager {
+pub struct BackupDataWriter {
     archive: Arc<AsyncMutex<ObjectArchiveGenerator>>,
     log: Arc<BackupLogManager>,
 }
 
-impl BackupDataManager {
+impl BackupDataWriter {
     pub fn new(
+        id: u64,
         default_isolate: ObjectId,
         root: PathBuf,
+        format: ObjectPackFormat,
         archive_file_max_size: u64,
     ) -> BuckyResult<Self> {
         let data_dir = root.join("data");
@@ -42,7 +45,8 @@ impl BackupDataManager {
         }
 
         let archive = ObjectArchiveGenerator::new(
-            crate::object_pack::ObjectPackFormat::Zip,
+            id,
+            format,
             data_dir,
             archive_file_max_size,
         );
@@ -52,6 +56,11 @@ impl BackupDataManager {
             archive: Arc::new(AsyncMutex::new(archive)),
             log: Arc::new(log),
         })
+    }
+
+    pub async fn add_isolate_meta(&self, isolate_meta: ObjectArchiveIsolateMeta) {
+        let mut archive = self.archive.lock().await;
+        archive.add_isolate_meta(isolate_meta);
     }
 
     pub async fn add_object(
@@ -74,10 +83,6 @@ impl BackupDataManager {
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
-        //let meta = meta.map(|item| {
-        //    item.into()
-        //});
-
         let reader = AsyncReadWithSeekAdapter::new(data).into_reader();
         let mut archive = self.archive.lock().await;
         archive.add_data(&object_id, reader, meta).await?;
@@ -87,5 +92,16 @@ impl BackupDataManager {
 
     pub fn logger(&self) -> &BackupLogManager {
         &self.log
+    }
+
+    pub async fn finish(self) -> BuckyResult<ObjectArchiveMeta> {
+        let archive = match Arc::try_unwrap(self.archive) {
+            Ok(ret) => ret,
+            Err(_) => unreachable!(),
+        };
+
+        let archive = archive.into_inner();
+
+        archive.finish().await
     }
 }

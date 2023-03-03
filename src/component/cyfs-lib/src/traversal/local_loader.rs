@@ -9,6 +9,12 @@ pub struct ObjectTraverserLocalLoader {
     chunk_store: ChunkReaderRef,
 }
 
+impl ObjectTraverserLocalLoader {
+    pub fn new(noc: NamedObjectCacheRef, chunk_store: ChunkReaderRef) -> Self {
+        Self { noc, chunk_store }
+    }
+}
+
 #[async_trait::async_trait]
 impl ObjectTraverserLoader for ObjectTraverserLocalLoader {
     async fn get_object(
