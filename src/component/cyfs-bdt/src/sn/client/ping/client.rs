@@ -415,6 +415,7 @@ impl PingClient {
         struct NextStep {
             waiter: Option<StateWaiter>, 
             update: Option<(Endpoint, Endpoint)>, 
+            to_start: Option<Box<dyn PingSession>>, 
             ping_once: bool, 
             update_cache: Option<Option<Endpoint>>
         }
@@ -424,6 +425,7 @@ impl PingClient {
                 Self {
                     waiter: None, 
                     update: None, 
+                    to_start: None, 
                     ping_once: false, 
                     update_cache: None
                 }
@@ -529,6 +531,13 @@ impl PingClient {
             } else {
                 stack.sn_client().cache().remove_active(session.sn());
             }
+        }
+
+        if let Some(session) = next.to_start {
+            let client = self.clone();
+            task::spawn(async move {
+                client.sync_session_resp(session.as_ref(), session.wait().await);
+            });
         }
 
         if let Some(waiter) = next.waiter {
