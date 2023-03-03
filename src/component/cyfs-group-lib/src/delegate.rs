@@ -1,6 +1,6 @@
-use cyfs_base::{BuckyResult, ObjectId, ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef};
+use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
-use cyfs_lib::NONObjectInfo;
+use cyfs_lib::{IsolatePathOpEnvStub, NONObjectInfo, RootStateOpEnvAccess, SingleOpEnvStub};
 
 #[async_trait::async_trait]
 pub trait DelegateFactory: Send + Sync {
@@ -23,30 +23,36 @@ pub trait RPathDelegate: Sync + Send {
     async fn on_execute(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: Option<ObjectId>,
+        prev_state_id: &Option<ObjectId>,
         object_map_processor: &dyn GroupObjectMapProcessor,
     ) -> BuckyResult<ExecuteResult>;
 
     async fn on_verify(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: Option<ObjectId>,
-        object_map_processor: &dyn GroupObjectMapProcessor,
+        prev_state_id: &Option<ObjectId>,
         execute_result: &ExecuteResult,
+        object_map_processor: &dyn GroupObjectMapProcessor,
     ) -> BuckyResult<()>;
 
     async fn on_commited(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: Option<ObjectId>,
-        object_map_processor: &dyn GroupObjectMapProcessor,
+        prev_state_id: &Option<ObjectId>,
         execute_result: &ExecuteResult,
         block: &GroupConsensusBlock,
+        object_map_processor: &dyn GroupObjectMapProcessor,
     );
 }
 
 #[async_trait::async_trait]
 pub trait GroupObjectMapProcessor: Send + Sync {
-    async fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef>;
-    async fn create_sub_tree_op_env(&self) -> BuckyResult<ObjectMapIsolatePathOpEnvRef>;
+    async fn create_single_op_env(
+        &self,
+        access: Option<RootStateOpEnvAccess>,
+    ) -> BuckyResult<SingleOpEnvStub>;
+    async fn create_sub_tree_op_env(
+        &self,
+        access: Option<RootStateOpEnvAccess>,
+    ) -> BuckyResult<IsolatePathOpEnvStub>;
 }

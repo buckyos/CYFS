@@ -1,22 +1,117 @@
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_core::DecAppId;
-use cyfs_lib::SharedCyfsStack;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::{DelegateFactory, RPathClient, RPathDelegate, RPathService};
+use async_std::sync::RwLock;
+use cyfs_base::{
+    BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
+    RawConvertTo, RawDecode,
+};
+use cyfs_core::{CoreObjectType, DecAppId, GroupProposalObject, GroupRPath};
+use cyfs_lib::{
+    CyfsStackRequestorType, HttpRequestorRef, NONAPILevel, NONObjectInfo,
+    NONPostObjectInputResponse, RouterHandlerAction, RouterHandlerChain,
+    RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult,
+    SharedCyfsStack,
+};
+use cyfs_util::EventListenerAsyncRoutine;
+
+use crate::{
+    DelegateFactory, ExecuteResult, GroupCommand, GroupCommandCommited, GroupCommandExecute,
+    GroupCommandExecuteResult, GroupCommandNewRPath, GroupCommandObject, GroupCommandType,
+    GroupCommandVerify, RPathClient, RPathDelegate, RPathService,
+};
+
+type ServiceByRPath = HashMap<String, RPathService>;
+type ServiceByDec = HashMap<ObjectId, ServiceByRPath>;
+type ServiceByGroup = HashMap<ObjectId, ServiceByDec>;
+
+type ClientByRPath = HashMap<String, RPathClient>;
+type ClientByDec = HashMap<ObjectId, ClientByRPath>;
+type ClientByGroup = HashMap<ObjectId, ClientByDec>;
+
+struct GroupManagerRaw {
+    stack: SharedCyfsStack,
+    requestor: HttpRequestorRef,
+    delegate_factory: Option<Box<dyn DelegateFactory>>,
+    clients: RwLock<ClientByGroup>,
+    services: RwLock<ServiceByGroup>,
+    local_zone: Option<ObjectId>,
+}
 
 #[derive(Clone)]
-pub struct GroupManager;
+pub struct GroupManager(Arc<GroupManagerRaw>);
 
 impl GroupManager {
     pub async fn open(
         stack: SharedCyfsStack,
         delegate_factory: Box<dyn DelegateFactory>,
+        requestor_type: &CyfsStackRequestorType,
     ) -> BuckyResult<Self> {
+        if stack.dec_id().is_none() {
+            let msg = "the stack should be opened with dec-id";
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        let dec_id = stack.dec_id().unwrap().clone();
+        let requestor = stack.select_requestor(requestor_type);
+        let local_zone = stack.local_device().desc().owner().clone();
+        let router_handler_manager = stack.router_handlers().clone();
+
+        let mgr = Self(Arc::new(GroupManagerRaw {
+            stack,
+            requestor,
+            delegate_factory: Some(delegate_factory),
+            clients: RwLock::new(HashMap::new()),
+            services: RwLock::new(HashMap::new()),
+            local_zone,
+        }));
+
+        // TODO: other filters? only local zone
+        let filter = format!(
+            "obj_type == {} && dec_id == {}",
+            CoreObjectType::GroupCommand as u16,
+            dec_id,
+        );
+
+        router_handler_manager
+            .post_object()
+            .add_handler(
+                RouterHandlerChain::Handler,
+                format!("group-cmd-{}", dec_id).as_str(),
+                0,
+                Some(filter),
+                None,
+                RouterHandlerAction::Pass,
+                Some(Box::new(mgr.clone())),
+            )
+            .await?;
+
+        Ok(mgr)
+    }
+
+    pub async fn open_as_client(
+        stack: SharedCyfsStack,
+        requestor_type: &CyfsStackRequestorType,
+    ) -> BuckyResult<Self> {
+        let requestor = stack.select_requestor(requestor_type);
+        let local_zone = stack.local_device().desc().owner().clone();
+
+        Ok(Self(Arc::new(GroupManagerRaw {
+            stack,
+            requestor,
+            delegate_factory: None,
+            clients: RwLock::new(HashMap::new()),
+            services: RwLock::new(HashMap::new()),
+            local_zone,
+        })))
+    }
+
+    pub async fn stop(&self) {
         unimplemented!()
     }
 
-    pub async fn open_as_client(stack: SharedCyfsStack) -> BuckyResult<Self> {
-        unimplemented!()
+    pub fn stack(&self) -> &SharedCyfsStack {
+        &self.0.stack
     }
 
     pub async fn start_rpath_service(
@@ -25,13 +120,13 @@ impl GroupManager {
         rpath: String,
         delegate: Box<dyn RPathDelegate>,
     ) -> BuckyResult<RPathService> {
-        Err(BuckyError::new(BuckyErrorCode::NotImplement, ""))
+        unimplemented!()
     }
 
     pub async fn find_rpath_service(
         &self,
-        group_id: ObjectId,
-        rpath: String,
+        group_id: &ObjectId,
+        rpath: &str,
     ) -> BuckyResult<RPathService> {
         unimplemented!()
     }
@@ -40,8 +135,329 @@ impl GroupManager {
         &self,
         group_id: ObjectId,
         dec_id: DecAppId,
-        rpath: String,
-    ) -> BuckyResult<RPathClient> {
-        unimplemented!()
+        rpath: &str,
+    ) -> RPathClient {
+        {
+            let clients = self.0.clients.read().await;
+            let found = clients
+                .get(&group_id)
+                .and_then(|by_dec| by_dec.get(dec_id.object_id()))
+                .and_then(|by_rpath| by_rpath.get(rpath));
+
+            if let Some(found) = found {
+                return found.clone();
+            }
+        }
+
+        {
+            let client = RPathClient::new(
+                GroupRPath::new(group_id, dec_id.object_id().clone(), rpath.to_string()),
+                self.0.stack.dec_id().cloned(),
+                self.0.stack.non_service().clone(),
+            );
+
+            let mut clients = self.0.clients.write().await;
+            let client = clients
+                .entry(group_id)
+                .or_insert_with(HashMap::new)
+                .entry(dec_id.into())
+                .or_insert_with(HashMap::new)
+                .entry(rpath.to_string())
+                .or_insert(client);
+            client.clone()
+        }
+    }
+
+    async fn on_command(
+        &self,
+        cmd: GroupCommand,
+    ) -> BuckyResult<Option<GroupCommandExecuteResult>> {
+        match cmd.into_cmd() {
+            crate::GroupCommandBodyContent::NewRPath(cmd) => {
+                self.on_new_rpath(cmd).await.map(|_| None)
+            }
+            crate::GroupCommandBodyContent::Execute(cmd) => {
+                self.on_execute(cmd).await.map(|r| Some(r))
+            }
+            crate::GroupCommandBodyContent::ExecuteResult(_) => {
+                let msg = format!(
+                    "should not get the cmd({:?}) in sdk",
+                    GroupCommandType::ExecuteResult
+                );
+                log::warn!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+            crate::GroupCommandBodyContent::Verify(cmd) => self.on_verify(cmd).await.map(|_| None),
+            crate::GroupCommandBodyContent::Commited(cmd) => {
+                self.on_commited(cmd).await.map(|_| None)
+            }
+        }
+    }
+
+    async fn on_new_rpath(&self, cmd: GroupCommandNewRPath) -> BuckyResult<()> {
+        match self.0.delegate_factory.as_ref() {
+            Some(factory) => {
+                let group_id = &cmd.group_id;
+                let dec_id = self.0.stack.dec_id().unwrap();
+                let rpath = cmd.rpath.as_str();
+
+                {
+                    let services = self.0.services.read().await;
+                    let found = services
+                        .get(group_id)
+                        .and_then(|by_dec| by_dec.get(dec_id))
+                        .and_then(|by_rpath| by_rpath.get(rpath));
+
+                    if found.is_some() {
+                        return Ok(());
+                    }
+                }
+
+                let delegate = factory
+                    .create_rpath_delegate(&cmd.group_id, &cmd.rpath, cmd.with_block.as_ref())
+                    .await?;
+
+                let new_service = {
+                    let mut is_new = false;
+
+                    let mut services = self.0.services.write().await;
+                    let service = services
+                        .entry(group_id.clone())
+                        .or_insert_with(HashMap::new)
+                        .entry(dec_id.clone())
+                        .or_insert_with(HashMap::new)
+                        .entry(rpath.to_string())
+                        .or_insert_with(|| {
+                            is_new = true;
+
+                            RPathService::new(
+                                GroupRPath::new(
+                                    group_id.clone(),
+                                    dec_id.clone(),
+                                    rpath.to_string(),
+                                ),
+                                self.0.requestor.clone(),
+                                delegate,
+                                self.0.stack.clone(),
+                            )
+                        });
+
+                    if is_new {
+                        service.clone()
+                    } else {
+                        return Ok(());
+                    }
+                };
+
+                new_service.start().await;
+                Ok(())
+            }
+            None => Err(BuckyError::new(BuckyErrorCode::Reject, "is not service")),
+        }
+    }
+
+    async fn on_execute(&self, cmd: GroupCommandExecute) -> BuckyResult<GroupCommandExecuteResult> {
+        let group_id = cmd.proposal.rpath().group_id();
+        let dec_id = self.0.stack.dec_id().unwrap();
+        let rpath = cmd.proposal.rpath().rpath();
+
+        if cmd.proposal.rpath().dec_id() != dec_id {
+            let msg = format!(
+                "try execute proposal in different dec {:?}, expected: {:?}",
+                cmd.proposal.rpath().dec_id(),
+                dec_id
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        let service = {
+            let services = self.0.services.read().await;
+            let found = services
+                .get(group_id)
+                .and_then(|by_dec| by_dec.get(dec_id))
+                .and_then(|by_rpath| by_rpath.get(rpath));
+
+            match found {
+                Some(found) => found.clone(),
+                None => {
+                    let msg = format!("try execute proposal in not exist rpath {}", rpath);
+                    log::warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            }
+        };
+
+        let mut result = service
+            .on_execute(&cmd.proposal, &cmd.prev_state_id)
+            .await?;
+
+        Ok(GroupCommandExecuteResult {
+            result_state_id: result.result_state_id.take(),
+            receipt: result.receipt.take(),
+            context: result.context.take(),
+        })
+    }
+
+    async fn on_verify(&self, mut cmd: GroupCommandVerify) -> BuckyResult<()> {
+        let group_id = cmd.proposal.rpath().group_id();
+        let dec_id = self.0.stack.dec_id().unwrap();
+        let rpath = cmd.proposal.rpath().rpath();
+
+        if cmd.proposal.rpath().dec_id() != dec_id {
+            let msg = format!(
+                "try verify proposal in different dec {:?}, expected: {:?}",
+                cmd.proposal.rpath().dec_id(),
+                dec_id
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        let service = {
+            let services = self.0.services.read().await;
+            let found = services
+                .get(group_id)
+                .and_then(|by_dec| by_dec.get(dec_id))
+                .and_then(|by_rpath| by_rpath.get(rpath));
+
+            match found {
+                Some(found) => found.clone(),
+                None => {
+                    let msg = format!("try verify proposal in not exist rpath {}", rpath);
+                    log::warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            }
+        };
+
+        let result = ExecuteResult {
+            result_state_id: cmd.result_state_id.take(),
+            receipt: cmd.receipt.take(),
+            context: cmd.context.take(),
+        };
+
+        service
+            .on_verify(&cmd.proposal, &cmd.prev_state_id, &result)
+            .await
+    }
+
+    async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
+        let group_id = cmd.proposal.rpath().group_id();
+        let dec_id = self.0.stack.dec_id().unwrap();
+        let rpath = cmd.proposal.rpath().rpath();
+
+        if cmd.proposal.rpath().dec_id() != dec_id {
+            let msg = format!(
+                "try commited proposal in different dec {:?}, expected: {:?}",
+                cmd.proposal.rpath().dec_id(),
+                dec_id
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        let service = {
+            let services = self.0.services.read().await;
+            let found = services
+                .get(group_id)
+                .and_then(|by_dec| by_dec.get(dec_id))
+                .and_then(|by_rpath| by_rpath.get(rpath));
+
+            match found {
+                Some(found) => found.clone(),
+                None => {
+                    let msg = format!("try commited proposal in not exist rpath {}", rpath);
+                    log::warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            }
+        };
+
+        let result = ExecuteResult {
+            result_state_id: cmd.result_state_id.take(),
+            receipt: cmd.receipt.take(),
+            context: cmd.context.take(),
+        };
+
+        service
+            .on_commited(&cmd.proposal, &cmd.prev_state_id, &result, &cmd.block)
+            .await;
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult>
+    for GroupManager
+{
+    async fn call(
+        &self,
+        param: &RouterHandlerPostObjectRequest,
+    ) -> BuckyResult<RouterHandlerPostObjectResult> {
+        let req_common = &param.request.common;
+        if req_common.level != NONAPILevel::NOC
+            || req_common.source.zone.zone != self.0.local_zone
+            || self.0.local_zone.is_none()
+            || self.0.stack.dec_id().is_none()
+        {
+            log::warn!(
+                "there should no group-command from other zone, level = {:?}, zone = {:?}, local-zone = {:?}, dec-id = {:?}",
+                req_common.level,
+                req_common.source.zone,
+                self.0.local_zone,
+                self.0.stack.dec_id()
+            );
+
+            return Ok(RouterHandlerPostObjectResult {
+                action: RouterHandlerAction::Reject,
+                request: None,
+                response: None,
+            });
+        }
+
+        let obj = &param.request.object;
+        match obj.object.as_ref() {
+            None => {
+                return Ok(RouterHandlerPostObjectResult {
+                    action: RouterHandlerAction::Reject,
+                    request: None,
+                    response: None,
+                })
+            }
+            Some(any_obj) => {
+                assert_eq!(any_obj.obj_type(), CoreObjectType::GroupCommand as u16);
+                if any_obj.obj_type() != CoreObjectType::GroupCommand as u16 {
+                    return Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Reject,
+                        request: None,
+                        response: None,
+                    });
+                }
+
+                let (cmd, remain) = GroupCommand::raw_decode(obj.object_raw.as_slice())?;
+                assert_eq!(remain.len(), 0);
+
+                let resp_obj = self.on_command(cmd).await;
+
+                let resp_cmd = resp_obj.map_or_else(
+                    |err| Err(err),
+                    |resp_obj| {
+                        resp_obj.map_or(Ok(None), |resp_cmd| {
+                            let resp_cmd = GroupCommand::from(resp_cmd);
+                            resp_cmd.to_vec().map(|buf| {
+                                Some(NONObjectInfo::new(resp_cmd.desc().object_id(), buf, None))
+                            })
+                        })
+                    },
+                );
+
+                Ok(RouterHandlerPostObjectResult {
+                    action: RouterHandlerAction::Response,
+                    request: None,
+                    response: Some(resp_cmd.map(|cmd| NONPostObjectInputResponse { object: cmd })),
+                })
+            }
+        }
     }
 }

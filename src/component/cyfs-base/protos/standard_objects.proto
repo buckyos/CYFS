@@ -72,7 +72,7 @@ message GroupMethodACL {
 
     // target
     optional bytes target_dec_id = 2;
-    optional string r_path = 3;
+    optional string rpath = 3;
 
     double min_support_percent = 4;
     string permissions = 5; // ACL-String
@@ -83,7 +83,7 @@ message GroupRoleACL {
 
     // target
     optional bytes target_dec_id = 2;
-    optional string r_path = 3;
+    optional string rpath = 3;
     string method = 4;
 
     double right_percent = 5;

@@ -321,16 +321,16 @@ impl std::fmt::Debug for HotstuffPackage {
 impl HotstuffPackage {
     pub(crate) fn rpath(&self) -> &GroupRPath {
         match self {
-            HotstuffPackage::Block(block) => block.r_path(),
+            HotstuffPackage::Block(block) => block.rpath(),
             HotstuffPackage::BlockVote(addr, _) => addr.check_rpath(),
             HotstuffPackage::TimeoutVote(addr, _) => addr.check_rpath(),
             HotstuffPackage::Timeout(addr, _) => addr.check_rpath(),
             HotstuffPackage::SyncRequest(addr, _, _) => addr.check_rpath(),
-            HotstuffPackage::StateChangeNotify(block, _) => block.r_path(),
+            HotstuffPackage::StateChangeNotify(block, _) => block.rpath(),
             HotstuffPackage::LastStateRequest(addr) => addr.check_rpath(),
             HotstuffPackage::ProposalResult(_, result) => result.as_ref().map_or_else(
                 |(_, addr)| addr.check_rpath(),
-                |(_, block, _)| block.r_path(),
+                |(_, block, _)| block.rpath(),
             ),
             HotstuffPackage::QueryState(addr, _) => addr.check_rpath(),
             HotstuffPackage::VerifiableState(_, result) => result.as_ref().map_or_else(
