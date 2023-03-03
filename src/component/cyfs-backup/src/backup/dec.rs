@@ -150,7 +150,7 @@ impl ObjectTraverserHandler for DecStateBackup {
         self.backup_meta.on_missing(id);
     }
 
-    async fn on_object(&self, object: &NONObjectInfo) {
+    async fn on_object(&self, object: &NONObjectInfo, meta: &Option<NamedObjectMetaData>) {
         self.backup_meta.on_object(object);
     }
 

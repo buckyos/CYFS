@@ -5,7 +5,7 @@ enum NamedObjectStorageCategory {
     Cache = 1;
 }
 
-message ObjectInnerFileMeta {
+message ArchiveInnerFileMeta {
     uint32 access = 1;
     uint64 insert_time = 2;
     uint64 update_time = 3;

@@ -27,7 +27,7 @@ pub trait ObjectTraverserHandler: Send + Sync {
     async fn on_error(&self, id: &ObjectId, e: BuckyError);
     async fn on_missing(&self, id: &ObjectId);
 
-    async fn on_object(&self, object: &NONObjectInfo);
+    async fn on_object(&self, object: &NONObjectInfo, meta: &Option<NamedObjectMetaData>);
     async fn on_chunk(&self, chunk_id: &ChunkId);
 }
 
@@ -100,7 +100,7 @@ impl ObjectTraverser {
         }
 
         let data = ret.unwrap();
-        self.handler.on_object(&data.object).await;
+        self.handler.on_object(&data.object, &data.meta).await;
 
         let filter_ret = self.handler.filter_path("/").await;
         let config_ref_depth = match filter_ret {
@@ -215,7 +215,7 @@ impl ObjectTraverserCallBack for ObjectTraverser {
 
         match self.loader.get_object(id).await {
             Ok(Some(data)) => {
-                self.handler.on_object(&data.object).await;
+                self.handler.on_object(&data.object, &data.meta).await;
 
                 match item {
                     TraverseObjectItem::Normal(mut item) => {

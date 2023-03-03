@@ -1,10 +1,28 @@
 use super::generator::*;
 use super::loader::*;
+use super::file_meta::*;
 use cyfs_base::*;
 use cyfs_core::*;
+use cyfs_lib::*;
 
 use async_std::io::ReadExt;
-use std::collections::HashSet;
+use std::collections::HashMap;
+
+
+fn new_dec(name: &str) -> ObjectId {
+    DecApp::generate_id(ObjectId::default(), name)
+}
+
+fn gen_meta(i: u64) -> ArchiveInnerFileMeta {
+    ArchiveInnerFileMeta {
+        access: AccessString::default().value(),
+        insert_time: i,
+        update_time: i + 1,
+        create_dec_id: new_dec(&format!("{}", i)),
+        storage_category: NamedObjectStorageCategory::Storage,
+        context: Some(format!("context: {}", i)),
+    }
+}
 
 async fn test_archive() {
     let file_buffer: Vec<u8> = (0..1024 * 4).map(|_| rand::random::<u8>()).collect();
@@ -14,7 +32,7 @@ async fn test_archive() {
         std::fs::create_dir_all(&path).unwrap();
     }
 
-    let mut objects = HashSet::new();
+    let mut objects = HashMap::new();
     let mut generator = ObjectArchiveGenerator::new(
         crate::object_pack::ObjectPackFormat::Zip,
         path.clone(),
@@ -24,13 +42,15 @@ async fn test_archive() {
         let obj = Text::create(&format!("test{}", i), "", "");
         let id = obj.desc().calculate_id();
 
-        let data = async_std::io::Cursor::new(file_buffer.clone());
-        generator.add_data(&id, Box::new(data)).await.unwrap();
+        let meta = gen_meta(i);
 
-        objects.insert(id.clone());
+        let data = async_std::io::Cursor::new(file_buffer.clone());
+        generator.add_data(&id, Box::new(data), Some(meta.clone())).await.unwrap();
+
+        objects.insert(id, meta);
     }
 
-    let mut chunks = HashSet::new();
+    let mut chunks = HashMap::new();
     for i in 0u32..1024 * 6 {
         let mut file_buffer = file_buffer.clone();
         file_buffer[0] = i.to_be_bytes()[0];
@@ -40,13 +60,14 @@ async fn test_archive() {
 
         let chunk_id = ChunkId::calculate_sync(&file_buffer).unwrap();
 
+        let meta = gen_meta(i as u64);
         let data = async_std::io::Cursor::new(file_buffer.clone());
         generator
-            .add_data(&chunk_id.object_id(), Box::new(data))
+            .add_data(&chunk_id.object_id(), Box::new(data), Some(meta.clone()))
             .await
             .unwrap();
 
-        chunks.insert(chunk_id);
+        chunks.insert(chunk_id, meta);
     }
 
     let meta = generator.finish().await.unwrap();
@@ -65,11 +86,14 @@ async fn test_archive() {
         }
 
         let (object_id, mut data) = ret.unwrap();
-        assert!(objects.remove(&object_id));
+        let meta = objects.remove(&object_id).unwrap();
 
         let mut buf = vec![];
-        data.read_to_end(&mut buf).await.unwrap();
+        data.data.read_to_end(&mut buf).await.unwrap();
         assert_eq!(buf, file_buffer);
+
+        // info!("{:?}", meta);
+        assert_eq!(meta, data.meta.unwrap());
     }
     assert!(objects.is_empty());
 
@@ -82,12 +106,14 @@ async fn test_archive() {
 
         let (object_id, mut data) = ret.unwrap();
         let chunk_id = ChunkId::try_from(&object_id).unwrap();
-        assert!(chunks.remove(&chunk_id));
+        let meta = chunks.remove(&chunk_id).unwrap();
 
         let mut buf = vec![];
-        data.read_to_end(&mut buf).await.unwrap();
+        data.data.read_to_end(&mut buf).await.unwrap();
         let read_chunk_id = ChunkId::calculate_sync(&buf).unwrap();
         assert_eq!(read_chunk_id, chunk_id);
+
+        assert_eq!(meta, data.meta.unwrap());
     }
 
     assert!(chunks.is_empty());
@@ -95,5 +121,6 @@ async fn test_archive() {
 
 #[test]
 fn test() {
+    cyfs_base::init_simple_log("test-backup-archive", None);
     async_std::task::block_on(test_archive());
 }

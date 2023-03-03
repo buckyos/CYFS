@@ -1,5 +1,6 @@
+use super::file_meta::ArchiveInnerFileMeta;
 use super::meta::*;
-use crate::object_pack::{ObjectPackFormat, ObjectPackRollWriter};
+use crate::object_pack::*;
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
@@ -42,10 +43,27 @@ impl ObjectArchiveGenerator {
         &mut self,
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + 'static>,
+        meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<u64> {
+        let meta_data = match meta {
+            Some(meta) => Some(meta.to_vec().map_err(|e| {
+                let msg = format!(
+                    "encode archive data failed! object={}, meta={:?}, {}",
+                    object_id, meta, e
+                );
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::InvalidData, msg)
+            })?),
+            None => None,
+        };
+
         match object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data, None).await,
-            _ => self.object_writer.add_data(object_id, data, None).await,
+            ObjectTypeCode::Chunk => self.chunk_writer.add_data(object_id, data, meta_data).await,
+            _ => {
+                self.object_writer
+                    .add_data(object_id, data, meta_data)
+                    .await
+            }
         }
     }
 

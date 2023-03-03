@@ -78,7 +78,25 @@ impl ZipObjectPackReader {
 
         let meta = zip_file.extra_data();
         let meta = if !meta.is_empty() {
-            Some(meta.to_owned())
+            if meta.len() > 4 {
+                if &meta[..2] == super::writer::META_EXTRA_FIELD_ID.to_le_bytes() {
+                    let len = u16::from_le_bytes(meta[2..4].try_into().unwrap());
+                    let data = &meta[4..];
+                    if len as usize == data.len() {
+                        Some(data.to_owned())
+                    } else {
+                        error!("invalid zip extra data len! config={}, got={}", len, data.len());
+                        None
+                    }
+                } else {
+                    warn!("unknown zip extra field id: {:?}", &meta[..2]);
+                    None
+                }
+            } else {
+                error!("invalid zip extra field! len={}", meta.len());
+                None
+            }
+            
         } else {
             None
         };

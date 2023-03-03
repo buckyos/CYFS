@@ -7,6 +7,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use byteorder::{LittleEndian, WriteBytesExt};
 
+pub const META_EXTRA_FIELD_ID: u16 = 0x6D65;
+
 pub struct ZipObjectPackWriter {
     path: PathBuf,
     writer: Option<zip::ZipWriter<File>>,
@@ -51,7 +53,7 @@ impl ZipObjectPackWriter {
     pub fn open(&mut self) -> BuckyResult<()> {
         if self.path.is_file() {
             warn!(
-                "zip file already exists! now been truncated and overwritten! file={}",
+                "zip file already exists! now will been truncated and overwritten! file={}",
                 self.path.display()
             );
         }
@@ -100,6 +102,15 @@ impl ZipObjectPackWriter {
                         error!("{}", msg);
                         BuckyError::new(BuckyErrorCode::Failed, msg)
                     })?;
+                
+                writer.write_u16::<LittleEndian>(META_EXTRA_FIELD_ID).map_err(|e|{
+                    let msg = format!(
+                        "add meta data id to zip failed! id={}, file={}, {}",
+                        object_id, full_file_path, e
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                })?;
 
                 writer.write_u16::<LittleEndian>(meta.len() as u16).map_err(|e|{
                     let msg = format!(

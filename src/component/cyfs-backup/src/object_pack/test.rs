@@ -24,7 +24,7 @@ async fn test_pack() {
         let id = obj.desc().calculate_id();
 
         let data = async_std::io::Cursor::new(file_buffer.clone());
-        pack.add_data(&id, Box::new(data)).await.unwrap();
+        pack.add_data(&id, Box::new(data), Some(id.to_vec().unwrap())).await.unwrap();
 
         if i % 1024 == 0 {
             info!("gen dir index: {}", i);
@@ -49,8 +49,11 @@ async fn test_pack() {
 
         let mut data = pack_reader.get_data(&id).await.unwrap().unwrap();
         let mut buf = vec![];
-        data.read_to_end(&mut buf).await.unwrap();
+        data.data.read_to_end(&mut buf).await.unwrap();
         assert_eq!(buf, file_buffer);
+
+        let data_id = ObjectId::clone_from_slice(data.meta.as_ref().unwrap()).unwrap();
+        assert_eq!(data_id, id);
     }
 
     pack_reader.reset().await;
@@ -64,8 +67,11 @@ async fn test_pack() {
         assert!(all.remove(&object_id));
 
         let mut buf = vec![];
-        data.read_to_end(&mut buf).await.unwrap();
+        data.data.read_to_end(&mut buf).await.unwrap();
         assert_eq!(buf, file_buffer);
+
+        let data_id = ObjectId::clone_from_slice(data.meta.as_ref().unwrap()).unwrap();
+        assert_eq!(data_id, object_id);
     }
 
     assert!(all.is_empty());
