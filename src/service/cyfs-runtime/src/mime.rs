@@ -4,6 +4,8 @@ use http_types::{mime, Mime, Url};
 use mime_sniffer::{HttpRequest, MimeTypeSniffer};
 use std::borrow::Cow;
 use std::str::FromStr;
+use async_std::io::BufRead as AsyncBufRead;
+use async_std::prelude::*;
 
 pub(crate) struct MimeHelper;
 
@@ -77,29 +79,20 @@ impl MimeHelper {
 
         // 根据内容猜测
         // read some content and try sniff the mime
-        use async_std::io::ReadExt;
         let body_len = resp.len();
         if body_len == Some(0) {
             return;
         }
 
-        let mut body = resp.take_body().into_reader();
-        let mut content: Vec<u8> = vec![0; 512];
-        let read_content_len;
-        match body.read(&mut content).await {
-            Ok(bytes) => {
-                if bytes == 0 {
-                    warn!("sniff mime read resp body but got empty! url={}", url);
-                    return;
-                }
+        let body = resp.take_body().into_reader();
+        let mut body = body.take(512);
 
-                read_content_len = bytes;
-            }
-            Err(e) => {
-                error!("sniff read resp body but error! url={}, {}", url, e);
-                resp.set_body(http_types::Body::from_reader(body, body_len));
-                return;
-            }
+        let mut content: Vec<u8> = Vec::with_capacity(512);
+        if let Err(e) = body.read_to_end(&mut content).await {
+            error!("sniff read resp body but error! url={}, {}", url, e);
+            let new_body = Self::merge_body(body_len, content, body.into_inner());
+            resp.set_body(new_body);
+            return;
         }
 
         let str_url = url.to_string();
@@ -155,7 +148,21 @@ impl MimeHelper {
             }
         }
 
-        let new_body = http_types::Body::from_bytes(content[..read_content_len].to_vec());
+        let new_body = Self::merge_body(body_len, content, body.into_inner());
+        resp.set_body(new_body);
+    }
+
+    fn merge_body(
+        body_len: Option<usize>,
+        content: Vec<u8>,
+        body_reader: Box<dyn AsyncBufRead + Unpin + Send + Sync + 'static>,
+    ) -> http_types::Body {
+        if content.len() == 0 {
+            return http_types::Body::from_reader(body_reader, body_len);
+        }
+
+        let read_content_len = content.len();
+        let new_body = http_types::Body::from_bytes(content);
 
         let tail_len = match body_len {
             Some(len) => {
@@ -172,8 +179,7 @@ impl MimeHelper {
             None => None,
         };
 
-        let tail_body = http_types::Body::from_reader(body, tail_len);
-        let new_body = new_body.chain(tail_body);
-        resp.set_body(new_body);
+        let tail_body = http_types::Body::from_reader(body_reader, tail_len);
+        new_body.chain(tail_body)
     }
 }
