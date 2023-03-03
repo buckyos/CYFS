@@ -333,12 +333,12 @@ message SyncResponseObjectMetaInfo {
 message GroupRPath {
     bytes group_id = 1;
     bytes dec_id = 2;
-    string r_path = 3;
+    string rpath = 3;
 }
 
 message GroupProposalDescContent {
     // target
-    GroupRPath r_path = 1;
+    GroupRPath rpath = 1;
 
     // for app
     string method = 2;
@@ -404,7 +404,7 @@ message HotstuffTimeout {
 
 message GroupConsensusBlockDescContent {
     // target
-    GroupRPath r_path = 1;
+    GroupRPath rpath = 1;
 
     // input
     bytes body_hash = 2; // hash(Encode(proposals, proposal_result_states, proposal_receiptes))
@@ -437,7 +437,7 @@ message GroupConsensusBlockBodyContent {
 /*
 message GroupActionDescContent {
     // target
-    GroupRPath r_path = 1;
+    GroupRPath rpath = 1;
 
     // for app
     string method = 2;

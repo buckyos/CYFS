@@ -32,3 +32,4 @@ cyfs-core = { path = '../../component/cyfs-core', version = '0.6' }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = '../../component/cyfs-lib' }
 cyfs-chunk-lib = { path = '../../component/cyfs-chunk-lib' }
+cyfs-util = { path = '../../component/cyfs-util' }
