@@ -6,7 +6,7 @@ use cyfs_base::{
     ObjectDesc, ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode, RawFrom,
     TypelessCoreObject,
 };
-use cyfs_chunk_lib::ChunkMeta;
+
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
 };
@@ -29,8 +29,8 @@ pub trait NONDriver: Send + Sync {
         &self,
         dec_id: &ObjectId,
         obj: NONObjectInfo,
-        to: &ObjectId,
-    ) -> BuckyResult<()>;
+        to: Option<&ObjectId>,
+    ) -> BuckyResult<Option<NONObjectInfo>>;
 }
 
 #[derive(Clone)]
@@ -47,6 +47,10 @@ impl NONDriverHelper {
             dec_id,
             cache: NONObjectCache::new(),
         }
+    }
+
+    pub fn dec_id(&self) -> &ObjectId {
+        &self.dec_id
     }
 
     pub async fn get_object(
@@ -74,12 +78,17 @@ impl NONDriverHelper {
         self.driver.put_object(&self.dec_id, obj).await
     }
 
-    pub async fn post_object(&self, obj: NONObjectInfo, to: &ObjectId) -> BuckyResult<()> {
+    pub async fn post_object(
+        &self,
+        obj: NONObjectInfo,
+        to: Option<&ObjectId>,
+    ) -> BuckyResult<Option<NONObjectInfo>> {
         self.driver.post_object(&self.dec_id, obj, to).await
     }
 
     pub async fn broadcast(&self, obj: NONObjectInfo, to: &[ObjectId]) {
-        futures::future::join_all(to.iter().map(|to| self.post_object(obj.clone(), to))).await;
+        futures::future::join_all(to.iter().map(|to| self.post_object(obj.clone(), Some(to))))
+            .await;
     }
 
     pub async fn get_block(

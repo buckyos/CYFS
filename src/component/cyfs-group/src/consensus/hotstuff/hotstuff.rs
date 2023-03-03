@@ -514,7 +514,7 @@ impl HotstuffRunner {
 
             self
                 .event_notifier
-                .on_verify(proposal, prev_state_id, &exe_result)
+                .on_verify(proposal.clone(), prev_state_id, &exe_result)
                 .await.map_err(|err| {
                     log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} verify by app failed {:?}."
                         , self, proposal_exe_info.proposal, block.block_id(), err);
@@ -831,14 +831,14 @@ impl HotstuffRunner {
 
             self.event_notifier
                 .on_commited(
-                    &proposal_obj,
+                    proposal_obj,
                     pre_state_id,
                     &ExecuteResult {
                         result_state_id: proposal.result_state.clone(),
                         receipt,
                         context: proposal.context.clone(),
                     },
-                    &new_header,
+                    new_header.clone(),
                 )
                 .await;
             
@@ -1613,7 +1613,7 @@ impl HotstuffRunner {
                 continue;
             }
 
-            match self.event_notifier.on_execute(&proposal, result_state_id).await {
+            match self.event_notifier.on_execute(proposal.clone(), result_state_id).await {
                 Ok(exe_result) => {
                     result_state_id = exe_result.result_state_id;
                     executed_proposals.push((proposal, exe_result));
