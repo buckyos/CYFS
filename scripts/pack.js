@@ -6,8 +6,8 @@ const { apps, services } = require('./build_config')
 const path = require('path');
 const assert = require('assert');
 
-const buildnumber = process.argv[6] || "0"
-const channel = process.argv[7] || "nightly"
+const buildnumber = process.argv[4] || "0"
+const channel = process.argv[5] || "nightly"
 
 if (!fs.existsSync('Cargo.toml')) {
     console.error('cannot find Cargo.toml in cwd! check working dir')
@@ -209,7 +209,7 @@ async function run() {
 
             if (need_step(service.name, PublishStep.SetVersion)) {
                 // 运行app-tool，添加版本和fid
-                let fid = get_step_arg(service.name, PublishStep.Upload);
+                let fid = get_step_arg(service.name, PublishStep.Upload)
                 let app_version = version + "-preview";
                 let cmd = `app-tool app set -v ${app_version} -s ${fid} ${service.id} -o ${repo_path}`;
                 console.log("will run app tool cmd:", cmd)
