@@ -180,12 +180,61 @@ pub struct NamedObjectCacheCheckObjectAccessRequest {
     pub required_access: AccessPermissions,
 }
 
-
 // stat
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedObjectCacheStat {
     pub count: u64,
     pub storage_size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedObjectCacheSelectObjectFilter {
+    pub obj_type: Option<u16>,
+}
+
+impl Default for NamedObjectCacheSelectObjectFilter {
+    fn default() -> Self {
+        Self {
+            obj_type: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedObjectCacheSelectObjectOption {
+    // The number of readings per page
+    pub page_size: u16,
+
+    // The page number currently read, starting from 0
+    pub page_index: u16,
+}
+
+impl Default for NamedObjectCacheSelectObjectOption {
+    fn default() -> Self {
+        Self {
+            page_size: 256_u16,
+            page_index: 0_u16,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct NamedObjectCacheSelectObjectRequest {
+    // filters
+    pub filter: NamedObjectCacheSelectObjectFilter,
+
+    // configs
+    pub opt: NamedObjectCacheSelectObjectOption,
+}
+
+#[derive(Debug)]
+pub struct NamedObjectCacheSelectObjectData {
+    pub object_id: ObjectId,
+}
+
+#[derive(Debug)]
+pub struct NamedObjectCacheSelectObjectResponse {
+    pub list: Vec<NamedObjectCacheSelectObjectData>,
 }
 
 #[async_trait::async_trait]
@@ -237,17 +286,26 @@ pub trait NamedObjectCache: Sync + Send {
         req: &NamedObjectCacheUpdateObjectMetaRequest,
     ) -> BuckyResult<()>;
 
-    async fn check_object_access(&self, 
-        req: &NamedObjectCacheCheckObjectAccessRequest
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectCacheCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
 
-    fn bind_object_meta_access_provider(&self, object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef);
+    // for internal use only
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse>;
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    );
 }
 
 pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache>>;
-
 
 impl ObjectSelectorDataProvider for NamedObjectMetaData {
     fn object_id(&self) -> &ObjectId {
@@ -296,4 +354,5 @@ pub trait NamedObjectCacheObjectMetaAccessProvider: Sync + Send {
     ) -> BuckyResult<Option<()>>;
 }
 
-pub type NamedObjectCacheObjectMetaAccessProviderRef = Arc<Box<dyn NamedObjectCacheObjectMetaAccessProvider>>;
+pub type NamedObjectCacheObjectMetaAccessProviderRef =
+    Arc<Box<dyn NamedObjectCacheObjectMetaAccessProvider>>;

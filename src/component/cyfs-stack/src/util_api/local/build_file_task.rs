@@ -487,6 +487,13 @@ mod build_file_task_test {
             todo!();
         }
 
+        async fn select_object(
+            &self,
+            req: &NamedObjectCacheSelectObjectRequest,
+        ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+            todo!();    
+        }
+
         fn bind_object_meta_access_provider(&self, _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef) {
 
         }

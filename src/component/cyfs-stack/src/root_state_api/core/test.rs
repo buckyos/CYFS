@@ -152,6 +152,13 @@ impl NamedObjectCache for MemoryNOC {
         unreachable!();
     }
 
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        unreachable!();  
+    }
+
     fn bind_object_meta_access_provider(
         &self,
         _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,

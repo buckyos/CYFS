@@ -494,6 +494,13 @@ impl NamedObjectLocalStorage {
 
         Ok(resp)
     }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        self.meta.select_object(req).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -542,6 +549,13 @@ impl NamedObjectCache for NamedObjectLocalStorage {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         Self::stat(&self).await
+    }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        Self::select_object(self, req).await
     }
 
     fn bind_object_meta_access_provider(

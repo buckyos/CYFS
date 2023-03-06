@@ -142,6 +142,9 @@ pub struct NamedObjectMetaStat {
     pub storage_size: u64,
 }
 
+pub type NamedObjectMetaSelectObjectRequest = NamedObjectCacheSelectObjectRequest;
+pub type NamedObjectMetaSelectObjectResponse = NamedObjectCacheSelectObjectResponse;
+
 #[async_trait::async_trait]
 pub trait NamedObjectMeta: Sync + Send {
     async fn put_object(
@@ -177,6 +180,11 @@ pub trait NamedObjectMeta: Sync + Send {
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectMetaSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectMetaSelectObjectResponse>;
 
     fn bind_object_meta_access_provider(
         &self,

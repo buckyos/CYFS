@@ -237,6 +237,13 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         self.next.stat().await
     }
 
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        self.next.select_object(req).await
+    }
+
     fn bind_object_meta_access_provider(
         &self,
         object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
