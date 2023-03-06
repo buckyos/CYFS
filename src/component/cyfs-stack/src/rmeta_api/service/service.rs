@@ -193,7 +193,7 @@ impl NamedObjectCacheObjectMetaAccessProvider for GlobalStateMetaLocalService {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateMetaManagerRawProcessor for GlobalStatePathMetaManager {
+impl GlobalStateMetaManagerRawProcessor for GlobalStateMetaLocalService {
     async fn get_global_state_meta(
         &self,
         dec_id: &ObjectId,

@@ -1,21 +1,45 @@
-use super::log::BackupLogManager;
 use super::writer::*;
 use crate::archive::*;
-use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::AsyncReadWithSeek;
 
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectArchiveStatMeta {
+    pub id: u64,
+    pub time: String,
+    
+    pub isolates: Vec<ObjectArchiveIsolateMeta>,
+}
+
+impl ObjectArchiveStatMeta {
+    pub fn new(id: u64) -> Self {
+        let datetime = chrono::offset::Local::now();
+        let time = format!("{:?}", datetime);
+
+        Self {
+            id,
+            time,
+            isolates: vec![],
+        }
+    }
+
+    pub fn add_isolate(&mut self, isolate_meta: ObjectArchiveIsolateMeta) {
+        self.isolates.push(isolate_meta);
+    }
+}
+
 pub struct BackupDataStatWriterInner {
-    meta: ObjectArchiveMeta,
+    meta: ObjectArchiveStatMeta,
     completed: ObjectArchiveDataMetas,
 }
 
 impl BackupDataStatWriterInner {
-    pub fn new(id: u64, format: ObjectPackFormat) -> Self {
-        let meta = ObjectArchiveMeta::new(id, format);
+    pub fn new(id: u64) -> Self {
+        let meta = ObjectArchiveStatMeta::new(id);
         Self {
             meta,
             completed: ObjectArchiveDataMetas::default(),
@@ -36,8 +60,8 @@ impl BackupDataStatWriterInner {
         self.completed.chunks.count += 1;
     }
 
-    pub fn finish(&mut self) -> ObjectArchiveMeta {
-        let mut empty_meta = ObjectArchiveMeta::new(self.meta.id, self.meta.format);
+    pub fn finish(&mut self) -> ObjectArchiveStatMeta {
+        let mut empty_meta = ObjectArchiveStatMeta::new(self.meta.id);
         std::mem::swap(&mut self.meta, &mut empty_meta);
 
         empty_meta
@@ -48,8 +72,8 @@ impl BackupDataStatWriterInner {
 pub struct BackupDataStatWriter(Arc<Mutex<BackupDataStatWriterInner>>);
 
 impl BackupDataStatWriter {
-    pub fn new(id: u64, format: ObjectPackFormat) -> Self {
-        let inner = BackupDataStatWriterInner::new(id, format);
+    pub fn new(id: u64) -> Self {
+        let inner = BackupDataStatWriterInner::new(id);
         Self(Arc::new(Mutex::new(inner)))
     }
 
@@ -90,7 +114,37 @@ impl BackupDataStatWriter {
         Ok(())
     }
 
-    pub async fn finish(&self) -> BuckyResult<ObjectArchiveMeta> {
+    fn on_error(&self, id: &ObjectId) -> BuckyResult<()> {
+        let mut inner = self.0.lock().unwrap();
+        match id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                let bytes = id.as_chunk_id().len();
+                inner.add_chunk(bytes);
+            }
+            _ => {
+                inner.add_object(0);
+            }
+        };
+
+        Ok(())
+    }
+
+    fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
+        let mut inner = self.0.lock().unwrap();
+        match id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                let bytes = id.as_chunk_id().len();
+                inner.add_chunk(bytes);
+            }
+            _ => {
+                inner.add_object(0);
+            }
+        };
+
+        Ok(())
+    }
+
+    pub async fn finish(&self) -> BuckyResult<ObjectArchiveStatMeta> {
         let mut inner = self.0.lock().unwrap();
 
         Ok(inner.finish())
@@ -121,11 +175,22 @@ impl BackupDataWriter for BackupDataStatWriter {
         Self::add_chunk(&self, chunk_id, data, meta).await
     }
 
-    fn logger(&self) -> Option<&BackupLogManager> {
-        None
+    async fn on_error(
+        &self,
+        _isolate_id: &ObjectId,
+        _dec_id: &ObjectId,
+        id: &ObjectId,
+        _e: BuckyError,
+    ) -> BuckyResult<()> {
+        Self::on_error(&self, id)
     }
 
-    async fn finish(&self) -> BuckyResult<ObjectArchiveMeta> {
-        Self::finish(&self).await
+    async fn on_missing(
+        &self,
+        _isolate_id: &ObjectId,
+        _dec_id: &ObjectId,
+        id: &ObjectId,
+    ) -> BuckyResult<()> {
+        Self::on_missing(&self, id)
     }
 }

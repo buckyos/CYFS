@@ -1,6 +1,6 @@
 use super::isolate::*;
 use crate::archive::*;
-use crate::data::{BackupDataLocalFileWriter, BackupDataStatWriter, BackupDataWriterRef};
+use crate::data::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -77,23 +77,38 @@ impl GlobalStateBackup {
             backup_dir,
             self.format,
             1024 * 1024 * 128,
-        )?
-        .into_writer();
+        )?;
 
-        self.backup_impl(data_writer, filters).await
+        self.backup_impl(data_writer.clone().into_writer(), filters).await?;
+
+        let meta = data_writer.finish().await.map_err(|e| {
+            let msg = format!("backup global state but finish failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
+
+        Ok(meta)
     }
 
-    pub async fn stat(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveMeta> {
-        let data_writer = BackupDataStatWriter::new(self.id, self.format).into_writer();
+    pub async fn stat(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveStatMeta> {
+        let data_writer = BackupDataStatWriter::new(self.id);
 
-        self.backup_impl(data_writer, params.filter).await
+        self.backup_impl(data_writer.clone().into_writer(), params.filter).await?;
+
+        let meta = data_writer.finish().await.map_err(|e| {
+            let msg = format!("stat global state but finish failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
+
+        Ok(meta)
     }
 
     async fn backup_impl(
         &self,
         data_writer: BackupDataWriterRef,
         filters: GlobalStateBackupFilter,
-    ) -> BuckyResult<ObjectArchiveMeta> {
+    ) -> BuckyResult<()> {
         for isolate_filter in filters.isolate_list {
             if isolate_filter.dec_list.is_empty() {
                 warn!(
@@ -131,12 +146,6 @@ impl GlobalStateBackup {
             data_writer.add_isolate_meta(isolate_meta).await;
         }
 
-        let meta = data_writer.finish().await.map_err(|e| {
-            let msg = format!("backup global state but finish failed! {}", e);
-            error!("{}", msg);
-            BuckyError::new(e.code(), msg)
-        })?;
-
-        Ok(meta)
+        Ok(())
     }
 }

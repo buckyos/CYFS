@@ -1,4 +1,3 @@
-use super::log::BackupLogManager;
 use crate::archive::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -24,9 +23,19 @@ pub trait BackupDataWriter: Send + Sync {
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()>;
 
-    fn logger(&self) -> Option<&BackupLogManager>;
-
-    async fn finish(&self) -> BuckyResult<ObjectArchiveMeta>;
+    async fn on_error(
+        &self,
+        isolate_id: &ObjectId,
+        dec_id: &ObjectId,
+        id: &ObjectId,
+        e: BuckyError,
+    ) -> BuckyResult<()>;
+    async fn on_missing(
+        &self,
+        isolate_id: &ObjectId,
+        dec_id: &ObjectId,
+        id: &ObjectId,
+    ) -> BuckyResult<()>;
 }
 
 pub type BackupDataWriterRef = Arc<Box<dyn BackupDataWriter>>;

@@ -162,21 +162,13 @@ impl ObjectTraverserHandler for DecStateBackup {
     async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
         self.backup_meta.on_error(id);
 
-        if let Some(logger) = self.data_writer.logger() {
-            logger.on_error(&self.isolate_id, &self.dec_id, id, e);
-        }
-
-        Ok(())
+        self.data_writer.on_error(&self.isolate_id, &self.dec_id, id, e).await
     }
 
     async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
 
-        if let Some(logger) = self.data_writer.logger() {
-            logger.on_missing(&self.isolate_id, &self.dec_id, id);
-        }
-
-        Ok(())
+        self.data_writer.on_missing(&self.isolate_id, &self.dec_id, id).await
     }
 
     async fn on_object(

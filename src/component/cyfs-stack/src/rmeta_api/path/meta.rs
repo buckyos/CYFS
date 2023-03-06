@@ -300,7 +300,7 @@ impl GlobalStatePathMetaSyncCollection {
         meta.object
             .query_object_meta(object_data)
             .map(|ret| GlobalStateObjectMetaConfigItemValue {
-                access: ret.access,
+                access: ret.access.clone(),
                 depth: ret.depth,
             })
     }
@@ -435,7 +435,7 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_object_meta(self).await
     }
 
-    pub fn query_object_meta(
+    fn query_object_meta(
         &self,
         object_data: &dyn ObjectSelectorDataProvider,
     ) -> Option<GlobalStateObjectMetaConfigItemValue> {

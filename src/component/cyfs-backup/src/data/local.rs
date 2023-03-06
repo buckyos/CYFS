@@ -143,11 +143,26 @@ impl BackupDataWriter for BackupDataLocalFileWriter {
         Self::add_chunk(&self, chunk_id, data, meta).await
     }
 
-    fn logger(&self) -> Option<&BackupLogManager> {
-        Some(&self.log)
+    async fn on_error(
+        &self,
+        isolate_id: &ObjectId,
+        dec_id: &ObjectId,
+        id: &ObjectId,
+        e: BuckyError,
+    ) -> BuckyResult<()> {
+        self.log.on_error(isolate_id, dec_id, id, e);
+
+        Ok(())
     }
 
-    async fn finish(&self) -> BuckyResult<ObjectArchiveMeta> {
-        Self::finish(&self).await
+    async fn on_missing(
+        &self,
+        isolate_id: &ObjectId,
+        dec_id: &ObjectId,
+        id: &ObjectId,
+    ) -> BuckyResult<()> {
+        self.log.on_missing(isolate_id, dec_id, id);
+
+        Ok(())
     }
 }
