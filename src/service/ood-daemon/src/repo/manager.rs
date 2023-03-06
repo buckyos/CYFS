@@ -73,6 +73,7 @@ pub trait Repo: Send + Sync {
 
 pub struct RepoManager {
     cache_dir: PathBuf,
+    repo_config: Mutex<Option<String>>,
     repo_list: Mutex<Vec<Arc<Box<dyn Repo>>>>,
 }
 
@@ -99,6 +100,7 @@ impl RepoManager {
     pub fn new() -> RepoManager {
         let cache_dir = Self::cache_dir();
         RepoManager {
+            repo_config: Mutex::new(None),
             repo_list: Mutex::new(Vec::new()),
             cache_dir,
         }
@@ -112,6 +114,7 @@ impl RepoManager {
         let repo = Arc::new(Box::new(repo) as Box<dyn Repo>);
 
         Ok(Self {
+            repo_config: Mutex::new(None),
             repo_list: Mutex::new(vec![repo]),
             cache_dir,
         })
@@ -119,13 +122,13 @@ impl RepoManager {
 
     pub async fn fetch_service(&self, fid: &str) -> BuckyResult<PathBuf> {
         let repo_list = self.repo_list.lock().unwrap().clone();
-        let cache_dir = self.cache_dir.clone();
-        let fid = fid.to_owned();
+        if repo_list.is_empty() {
+            let msg = format!("fetch service but repo list is empty! fid={}", fid);
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
+        }
 
-        async_std::task::spawn(async move {
-            Self::fetch_service_with_repo_list(&cache_dir, &fid, &repo_list).await
-        })
-        .await
+        Self::fetch_service_with_repo_list(&self.cache_dir, fid, &repo_list).await
     }
 
     async fn fetch_service_with_repo_list(
@@ -191,7 +194,11 @@ impl RepoManager {
         local_file: &Path,
     ) -> BuckyResult<()> {
         if let Err(e) = repo
-            .fetch_with_timeout(info, local_file, std::time::Duration::from_secs(60 * 20))
+            .fetch_with_timeout(
+                info,
+                local_file,
+                std::time::Duration::from_secs(60 * 60 * 2),
+            )
             .await
         {
             error!(
@@ -217,20 +224,41 @@ impl RepoManager {
     // 从system_config的repo字段加载配置
     pub async fn load(&self, repo_node: &Vec<toml::Value>) -> BuckyResult<()> {
         assert!(repo_node.len() > 0);
-        assert!(self.repo_list.lock().unwrap().is_empty());
 
+        let config_string = serde_json::to_string(&repo_node).unwrap();
+        {
+            let current = self.repo_config.lock().unwrap();
+            if current.as_deref() == Some(&config_string) {
+                return Ok(());
+            }
+
+            info!("repo config changed! {:?} -> {}", &*current, config_string);
+        }
+
+        let mut list = vec![];
         for item in repo_node.iter() {
             info!("new repo item: {:?}", item);
             if let toml::Value::Table(m) = item {
-                let ret = Self::load_repo_item(&m).await;
-                if !ret.is_ok() {
-                    continue;
-                }
-
-                let repo = ret.unwrap();
-                self.repo_list.lock().unwrap().push(Arc::new(repo));
+                let repo = Self::load_repo_item(&m).await?;
+                list.push(Arc::new(repo));
+            } else {
+                let msg = format!("unsupport repo item format!");
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
             }
         }
+
+        // Support for repeated loading
+        {
+            let mut current = self.repo_list.lock().unwrap();
+            if !current.is_empty() {
+                warn!("will replace current repo list!");
+            }
+
+            *current = list;
+        }
+
+        *self.repo_config.lock().unwrap() = Some(config_string);
 
         Ok(())
     }

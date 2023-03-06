@@ -1,8 +1,9 @@
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId, Endpoint};
+use crate::base::CYFS_CURRENT_API_EDITION;
+use cyfs_base::*;
 
-use http_types::{Request, Response};
 use async_std::net::SocketAddr;
 use async_trait::async_trait;
+use http_types::{Request, Response};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,6 +17,11 @@ pub enum HttpRequestConnectionInfo {
 pub trait HttpRequestor: Send + Sync {
     fn remote_addr(&self) -> String;
     fn remote_device(&self) -> Option<DeviceId>;
+
+    fn add_default_headers(&self, mut req: Request) -> Request {
+        req.insert_header(CYFS_API_EDITION, CYFS_CURRENT_API_EDITION.to_string());
+        req
+    }
 
     async fn request(&self, req: Request) -> BuckyResult<Response> {
         self.request_ext(&mut Some(req), None).await

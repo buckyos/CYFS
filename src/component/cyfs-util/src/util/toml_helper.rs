@@ -19,7 +19,7 @@ impl TomlHelper {
 
         let v = T::from_str(v.as_str().unwrap()).map_err(|e| {
             let msg = format!(
-                "parse json string error: value={}, {}",
+                "parse toml string error: value={}, {}",
                 v.as_str().unwrap(),
                 e
             );

@@ -21,38 +21,18 @@ pub enum StreamListenerState {
     Stopped
 }
 
-pub struct StreamListenerImpl {
+struct StreamListenerImpl {
     manager: WeakStreamManager, 
     port: u16, 
     state: RwLock<StreamListenerState>
 }
 
-impl std::fmt::Display for StreamListenerImpl {
+impl std::fmt::Display for StreamListener {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StreamListener {{port:{}}}", self.port)
+        write!(f, "StreamListener {{port:{}}}", self.port())
     }
 }
 
-impl StreamListenerImpl {
-    pub fn push_stream(&self, arc_self: StreamListener, stream: PreAcceptedStream) {
-        async_std::task::spawn(async move {
-            let s: Option<Sender<PreAcceptedStream>> = match &*arc_self.0.state.read().unwrap() {
-                StreamListenerState::Listening((s, _)) => Some(s.clone()),
-                StreamListenerState::Stopped => None
-            };
-            if let Some(sender) = s {
-                if !sender.is_full() {
-                    debug!("{} push new pre accepted stream", arc_self.as_ref());
-                    let _ = sender.send(stream).await;
-                } else {
-                    debug!("{} backlog full", arc_self.as_ref());
-                }
-            } else {
-                debug!("{} not listening", arc_self.as_ref());
-            }
-        });
-    }
-}
 
 #[derive(Clone)]
 pub struct StreamListener(Arc<StreamListenerImpl>);
@@ -93,15 +73,30 @@ impl StreamListener {
         } else {
             return;
         }
-        StreamManager::from(&self.0.manager).as_ref().remove_acceptor(self);
+        StreamManager::from(&self.0.manager).remove_acceptor(self);
+    }
+
+    pub(super) fn push_stream(&self, stream: PreAcceptedStream) {
+        let listener = self.clone();
+        async_std::task::spawn(async move {
+            let s: Option<Sender<PreAcceptedStream>> = match &*listener.0.state.read().unwrap() {
+                StreamListenerState::Listening((s, _)) => Some(s.clone()),
+                StreamListenerState::Stopped => None
+            };
+            if let Some(sender) = s {
+                if !sender.is_full() {
+                    debug!("{} push new pre accepted stream", listener);
+                    let _ = sender.send(stream).await;
+                } else {
+                    debug!("{} backlog full", listener);
+                }
+            } else {
+                debug!("{} not listening", listener);
+            }
+        });
     }
 }
 
-impl AsRef<StreamListenerImpl> for StreamListener {
-    fn as_ref(&self) -> &StreamListenerImpl {
-        &self.0
-    }
-}
 
 struct IncommingState {
     result: Option<Option<std::io::Result<PreAcceptedStream>>>,
@@ -194,7 +189,7 @@ impl From<StreamListener> for StreamListenerGuard {
 
 impl std::fmt::Display for StreamListenerGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StreamListenerGuard {{listener:{}}}", (*self.0).0.as_ref())
+        write!(f, "StreamListenerGuard {{listener:{}}}", (*self.0).0)
     }
 }
 

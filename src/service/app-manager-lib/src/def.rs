@@ -16,6 +16,44 @@ pub enum SandBoxMode {
     Docker
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RepoMode {
+    NamedData,
+    Local
+}
+
+impl Default for RepoMode {
+    fn default() -> Self {
+        Self::NamedData
+    }
+}
+
+impl FromStr for RepoMode {
+    type Err = BuckyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "named_data" {
+            return Ok(Self::NamedData);
+        } else if s == "local" {
+            return Ok(Self::Local);
+        }
+
+        let msg = format!("invalid repo str {}", s);
+        error!("{}", msg);
+        return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+    }
+}
+
+impl<'de> Deserialize<'de> for RepoMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(TStringVisitor::<Self>::new())
+    }
+}
+
 impl Display for SandBoxMode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

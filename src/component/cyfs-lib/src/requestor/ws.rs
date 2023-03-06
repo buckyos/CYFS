@@ -88,6 +88,7 @@ impl HttpRequestor for WSHttpRequestor {
 
         // request编码到buffer
         let req = req.take().unwrap();
+        let req  = self.add_default_headers(req);
         let mut encoder = async_h1::client::Encoder::new(req);
         let mut buf = vec![];
         encoder.read_to_end(&mut buf).await.map_err(|e| {

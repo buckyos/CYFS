@@ -112,7 +112,8 @@ impl TransInputProcessor for TransInputTransformer {
             common: Self::convert_common(req.common),
             owner: req.owner,
             local_path: req.local_path,
-            chunk_size: req.chunk_size,
+            chunk_size: req.chunk_size, 
+            chunk_method: req.chunk_method, 
             file_id: req.file_id,
             dirs: req.dirs,
             access: req.access,
@@ -130,7 +131,8 @@ impl TransInputProcessor for TransInputTransformer {
         req: TransGetTaskGroupStateInputRequest,
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
         let out_req = TransGetTaskGroupStateOutputRequest {
-            common: Self::convert_common(req.common),
+            common: Self::convert_common(req.common), 
+            group_type: req.group_type, 
             group: req.group.clone(),
             speed_when: req.speed_when,
         };
@@ -144,6 +146,7 @@ impl TransInputProcessor for TransInputTransformer {
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
         let out_req = TransControlTaskGroupOutputRequest {
             common: Self::convert_common(req.common),
+            group_type: req.group_type, 
             group: req.group.clone(),
             action: req.action.clone(),
         };
@@ -229,6 +232,7 @@ impl TransOutputProcessor for TransOutputTransformer {
             owner: req.owner,
             local_path: req.local_path,
             chunk_size: req.chunk_size,
+            chunk_method: req.chunk_method, 
             file_id: req.file_id,
             dirs: req.dirs,
             access: req.access,
@@ -292,6 +296,7 @@ impl TransOutputProcessor for TransOutputTransformer {
     ) -> BuckyResult<TransGetTaskGroupStateOutputResponse> {
         let in_req = TransGetTaskGroupStateInputRequest {
             common: self.convert_common(req.common),
+            group_type: req.group_type, 
             group: req.group,
             speed_when: req.speed_when,
         };
@@ -304,7 +309,8 @@ impl TransOutputProcessor for TransOutputTransformer {
         req: TransControlTaskGroupOutputRequest,
     ) -> BuckyResult<TransControlTaskGroupOutputResponse> {
         let in_req = TransControlTaskGroupInputRequest {
-            common: self.convert_common(req.common),
+            common: self.convert_common(req.common), 
+            group_type: req.group_type, 
             group: req.group,
             action: req.action,
         };

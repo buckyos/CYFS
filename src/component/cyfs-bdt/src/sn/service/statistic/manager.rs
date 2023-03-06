@@ -120,7 +120,8 @@ mod test {
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        /*let s2 = */m.get_peer_status(DeviceId::default(), bucky_time_now());
+
+        let _s2 = m.get_peer_status(DeviceId::default(), bucky_time_now());
 
         std::thread::sleep(std::time::Duration::from_secs(1));
     }

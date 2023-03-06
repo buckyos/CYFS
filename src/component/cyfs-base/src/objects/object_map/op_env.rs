@@ -3,6 +3,7 @@ use super::cache::*;
 use super::lock::*;
 use super::path_env::*;
 use super::single_env::*;
+use super::isolate_path_env::*;
 use crate::*;
 
 use std::str::FromStr;
@@ -13,16 +14,24 @@ use std::sync::{Arc, Mutex};
 pub enum ObjectMapOpEnvType {
     Path,
     Single,
+    IsolatePath,
 }
 
-impl ToString for ObjectMapOpEnvType {
-    fn to_string(&self) -> String {
+
+impl ObjectMapOpEnvType {
+    fn as_str(&self) -> &str {
         match *self {
             Self::Path => "path",
             Self::Single => "single",
+            Self::IsolatePath => "isolate-path",
         }
-        .to_owned()
     }
+}
+
+impl std::fmt::Display for ObjectMapOpEnvType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(f, "{}", self.as_str())
+	}
 }
 
 impl FromStr for ObjectMapOpEnvType {
@@ -32,6 +41,7 @@ impl FromStr for ObjectMapOpEnvType {
         let ret = match value {
             "path" => Self::Path,
             "single" => Self::Single,
+            "isolate-path" => Self::IsolatePath,
 
             v @ _ => {
                 let msg = format!("unknown op env type: {}", v);
@@ -51,6 +61,7 @@ pub struct OpEnvSessionIDHelper;
 // 最高位两位表示op_env的类型
 const OP_ENV_PATH_FLAGS: u8 = 0b_00000000;
 const OP_ENV_SINGLE_FLAGS: u8 = 0b_00000001;
+const OP_ENV_ISOLATE_PATH_FLAGS: u8 = 0b_00000010;
 
 impl OpEnvSessionIDHelper {
     pub fn get_flags(sid: u64) -> u8 {
@@ -63,6 +74,8 @@ impl OpEnvSessionIDHelper {
             Ok(ObjectMapOpEnvType::Path)
         } else if flags == OP_ENV_SINGLE_FLAGS {
             Ok(ObjectMapOpEnvType::Single)
+        } else if flags == OP_ENV_ISOLATE_PATH_FLAGS {
+            Ok(ObjectMapOpEnvType::IsolatePath)
         } else {
             let msg = format!("unknown op_ev sid flags: sid={}, flags={}", sid, flags);
             error!("{}", msg);
@@ -74,6 +87,7 @@ impl OpEnvSessionIDHelper {
         let flags = match op_env_type {
             ObjectMapOpEnvType::Path => OP_ENV_PATH_FLAGS,
             ObjectMapOpEnvType::Single => OP_ENV_SINGLE_FLAGS,
+            ObjectMapOpEnvType::IsolatePath => OP_ENV_ISOLATE_PATH_FLAGS,
         };
 
         //assert!(Self::get_flags(sid) == 0);
@@ -104,6 +118,10 @@ mod test_sid {
         let t = OpEnvSessionIDHelper::get_type(sid).unwrap();
         assert_eq!(t, ObjectMapOpEnvType::Single);
 
+        let sid = OpEnvSessionIDHelper::set_type(sid, ObjectMapOpEnvType::IsolatePath);
+        let t = OpEnvSessionIDHelper::get_type(sid).unwrap();
+        assert_eq!(t, ObjectMapOpEnvType::IsolatePath);
+
         let sid = OpEnvSessionIDHelper::set_type(sid, ObjectMapOpEnvType::Path);
         let t = OpEnvSessionIDHelper::get_type(sid).unwrap();
         assert_eq!(t, ObjectMapOpEnvType::Path);
@@ -120,6 +138,7 @@ mod test_sid {
 pub enum ObjectMapOpEnv {
     Path(ObjectMapPathOpEnvRef),
     Single(ObjectMapSingleOpEnvRef),
+    IsolatePath(ObjectMapIsolatePathOpEnvRef)
 }
 
 impl ObjectMapOpEnv {
@@ -127,6 +146,15 @@ impl ObjectMapOpEnv {
         match self {
             Self::Path(value) => value.sid(),
             Self::Single(value) => value.sid(),
+            Self::IsolatePath(value) => value.sid(),
+        }
+    }
+
+    pub fn op_env_type(&self) -> ObjectMapOpEnvType {
+        match self {
+            Self::Path(_) => ObjectMapOpEnvType::Path,
+            Self::Single(_) => ObjectMapOpEnvType::Single,
+            Self::IsolatePath(_) => ObjectMapOpEnvType::IsolatePath,
         }
     }
 
@@ -135,7 +163,8 @@ impl ObjectMapOpEnv {
             Self::Path(value) => Ok(value.clone()),
             _ => {
                 let msg = format!(
-                    "unmatch env type, path_op_env expected, got single_op_env! sid={}",
+                    "unmatch env type, path_op_env expected, got {}! sid={}",
+                    self.op_env_type(),
                     sid
                 );
                 error!("{}", msg);
@@ -149,7 +178,23 @@ impl ObjectMapOpEnv {
             Self::Single(value) => Ok(value.clone()),
             _ => {
                 let msg = format!(
-                    "unmatch env type, single_op_env expected, got path_op_env! sid={}",
+                    "unmatch env type, single_op_env expected, got {}! sid={}",
+                    self.op_env_type(),
+                    sid
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
+            }
+        }
+    }
+
+    pub fn isolate_path_op_env(&self, sid: u64) -> BuckyResult<ObjectMapIsolatePathOpEnvRef> {
+        match self {
+            Self::IsolatePath(value) => Ok(value.clone()),
+            _ => {
+                let msg = format!(
+                    "unmatch env type, isolate_path_op_env expected, got {}! sid={}",
+                    self.op_env_type(),
                     sid
                 );
                 error!("{}", msg);
@@ -169,6 +214,14 @@ impl ObjectMapOpEnv {
                     Err(BuckyError::new(BuckyErrorCode::ErrorState, msg))
                 }
             },
+            ObjectMapOpEnv::IsolatePath(env) => match env.root() {
+                Some(root) => Ok(root),
+                None => {
+                    let msg = format!("isolate_path_op_env root not been init yet! sid={}", env.sid());
+                    error!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::ErrorState, msg))
+                }
+            },
         }
     }
 
@@ -176,6 +229,7 @@ impl ObjectMapOpEnv {
         match self {
             ObjectMapOpEnv::Path(env) => env.update().await,
             ObjectMapOpEnv::Single(env) => env.update().await,
+            ObjectMapOpEnv::IsolatePath(env) => env.update().await,
         }
     }
 
@@ -183,6 +237,7 @@ impl ObjectMapOpEnv {
         match self {
             ObjectMapOpEnv::Path(env) => env.commit().await,
             ObjectMapOpEnv::Single(env) => env.commit().await,
+            ObjectMapOpEnv::IsolatePath(env) => env.commit().await,
         }
     }
 
@@ -190,6 +245,7 @@ impl ObjectMapOpEnv {
         match self {
             ObjectMapOpEnv::Path(env) => env.abort(),
             ObjectMapOpEnv::Single(env) => env.abort(),
+            ObjectMapOpEnv::IsolatePath(env) => env.abort(),
         }
     }
 
@@ -197,6 +253,7 @@ impl ObjectMapOpEnv {
         match self {
             ObjectMapOpEnv::Path(env) => env.is_dropable(),
             ObjectMapOpEnv::Single(env) => env.is_dropable(),
+            ObjectMapOpEnv::IsolatePath(env) => env.is_dropable(),
         }
     }
 }
@@ -354,7 +411,7 @@ impl ObjectMapOpEnvContainer {
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                 }
-                
+
                 value.touch();
                 Ok(value.op_env().to_owned())
             }
@@ -366,41 +423,74 @@ impl ObjectMapOpEnvContainer {
         }
     }
 
-    pub fn get_path_op_env(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapPathOpEnvRef> {
+    pub fn get_path_op_env(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let op_env = self.get_op_env(sid, source)?;
         op_env.path_op_env(sid)
     }
 
-    pub fn get_single_op_env(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+    pub fn get_single_op_env(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let op_env = self.get_op_env(sid, source)?;
         op_env.single_op_env(sid)
     }
 
-    pub async fn get_current_root(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub fn get_isolate_path_op_env(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectMapIsolatePathOpEnvRef> {
+        let op_env = self.get_op_env(sid, source)?;
+        op_env.isolate_path_op_env(sid)
+    }
+
+    pub async fn get_current_root(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectId> {
         let op_env = self.get_op_env(sid, source)?;
 
         op_env.get_current_root().await
     }
 
-    pub async fn update(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub async fn update(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectId> {
         let op_env = self.get_op_env(sid, source)?;
 
         op_env.update().await
     }
 
-    pub async fn commit(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub async fn commit(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectId> {
         let item = self.remove(sid, source)?;
-        
+
         item.into_op_env().commit().await
     }
 
-    pub fn abort(&self, sid: u64,  source: Option<&OpEnvSourceInfo>,) -> BuckyResult<()> {
+    pub fn abort(&self, sid: u64, source: Option<&OpEnvSourceInfo>) -> BuckyResult<()> {
         let item = self.remove(sid, source)?;
 
         item.into_op_env().abort()
     }
 
-    fn remove(&self, sid: u64,  source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapOpEnvHolder> {
+    fn remove(
+        &self,
+        sid: u64,
+        source: Option<&OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectMapOpEnvHolder> {
         let mut all = self.all.lock().unwrap();
         let ret = all.get(&sid);
         if ret.is_none() {
@@ -497,25 +587,26 @@ impl ObjectMapRootManager {
         &self.all_envs
     }
 
-    pub async fn create_op_env(
+    pub fn create_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
     ) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let sid = self.next_sid(ObjectMapOpEnvType::Path);
-        let env = ObjectMapPathOpEnv::new(sid, &self.root, &self.lock, &self.cache, access).await;
+        let env = ObjectMapPathOpEnv::new(sid, &self.root, &self.lock, &self.cache, access);
         let env = ObjectMapPathOpEnvRef::new(env);
 
         Ok(env)
     }
 
-    pub async fn create_managed_op_env(
+    pub fn create_managed_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
         source: Option<OpEnvSourceInfo>,
     ) -> BuckyResult<ObjectMapPathOpEnvRef> {
-        let env = self.create_op_env(access).await?;
+        let env = self.create_op_env(access)?;
 
-        self.all_envs.add_env(ObjectMapOpEnv::Path(env.clone()), source);
+        self.all_envs
+            .add_env(ObjectMapOpEnv::Path(env.clone()), source);
 
         Ok(env)
     }
@@ -541,10 +632,41 @@ impl ObjectMapRootManager {
     pub fn create_managed_single_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
-        source: Option<OpEnvSourceInfo>
+        source: Option<OpEnvSourceInfo>,
     ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let env = self.create_single_op_env(access)?;
-        self.all_envs.add_env(ObjectMapOpEnv::Single(env.clone()), source);
+        self.all_envs
+            .add_env(ObjectMapOpEnv::Single(env.clone()), source);
+
+        Ok(env)
+    }
+
+    pub fn create_isolate_path_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+    ) -> BuckyResult<ObjectMapIsolatePathOpEnvRef> {
+        let sid = self.next_sid(ObjectMapOpEnvType::IsolatePath);
+        let env = ObjectMapIsolatePathOpEnv::new(
+            sid,
+            &self.root,
+            &self.cache,
+            self.owner.clone(),
+            self.dec_id.clone(),
+            access,
+        );
+        let env = ObjectMapIsolatePathOpEnvRef::new(env);
+
+        Ok(env)
+    }
+
+    pub fn create_managed_isolate_path_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+        source: Option<OpEnvSourceInfo>,
+    ) -> BuckyResult<ObjectMapIsolatePathOpEnvRef> {
+        let env = self.create_isolate_path_op_env(access)?;
+        self.all_envs
+            .add_env(ObjectMapOpEnv::IsolatePath(env.clone()), source);
 
         Ok(env)
     }

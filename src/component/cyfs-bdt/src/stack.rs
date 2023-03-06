@@ -49,6 +49,7 @@ struct StackLazyComponents {
 #[derive(Clone)]
 pub struct StackConfig {
     pub statistic_interval: Duration, 
+    pub device_cache: DeviceCacheConfig, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
     pub sn_client: sn::client::Config,
@@ -66,14 +67,18 @@ impl StackConfig {
             keystore: keystore::Config {
                 active_time: Duration::from_secs(300),
                 capacity: 10000,
-            },
+            }, 
+            device_cache: DeviceCacheConfig {
+                expire: Duration::from_secs(5 * 60),
+                capacity: 1024 * 1024
+            }, 
             interface: interface::Config {
                 udp: interface::udp::Config {
                     sn_only: false, 
                     sim_loss_rate: 0, 
                     recv_buffer: 52428800
                 }
-            }, 
+            },
             sn_client: sn::client::Config {
                 atomic_interval: Duration::from_millis(100),
                 ping: sn::client::ping::PingConfig {
@@ -90,7 +95,7 @@ impl StackConfig {
                         resend_interval: Duration::from_millis(500),
                     }
                 }
-            },     
+            },
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
                 retry_sn_timeout: Duration::from_secs(2), 
@@ -117,10 +122,10 @@ impl StackConfig {
                 listener: stream::listener::Config { backlog: 100 },
                 stream: stream::container::Config {
                     nagle: Duration::from_millis(0),
-                    recv_buffer: 1024 * 256,
+                    recv_buffer: 1024 * 1024,
                     recv_timeout: Duration::from_millis(200),
                     drain: 0.5,
-                    send_buffer: 1024 * 256, // 这个值不能小于下边的max_record
+                    send_buffer: 1024 * 512, // 这个值不能小于下边的max_record
                     retry_sn_timeout: Duration::from_secs(2), 
                     connect_timeout: Duration::from_secs(5),
                     tcp: stream::tcp::Config {
@@ -129,7 +134,7 @@ impl StackConfig {
                     },
                     package: stream::package::Config {
                         connect_resend_interval: Duration::from_millis(100),
-                        atomic_interval: Duration::from_millis(1),
+                        atomic_interval: Duration::from_millis(10),
                         break_overtime: Duration::from_secs(60),
                         msl: Duration::from_secs(60), 
                         cc: cc::Config {
@@ -165,7 +170,7 @@ impl StackConfig {
                         cc: cc::Config {
                             init_rto: Duration::from_secs(1),
                             min_rto: Duration::from_millis(200),
-                            cc_impl: cc::ImplConfig::BBR(Default::default()),
+                            cc_impl: cc::ImplConfig::Ledbat(Default::default()),
                         }
                     }, 
                     history_speed: HistorySpeedConfig {
@@ -302,7 +307,7 @@ impl Stack {
             local_const: local_device.desc().clone(),
             id_generator: IncreaseIdGenerator::new(),
             keystore: key_store,
-            device_cache: DeviceCache::new(outer_cache),
+            device_cache: DeviceCache::new(&params.config.device_cache, outer_cache),
             net_manager,
             lazy_components: None, 
             ndn: None
@@ -330,7 +335,6 @@ impl Stack {
             None
         };
 
-
         {
             let components = StackLazyComponents {
                 sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
@@ -343,7 +347,7 @@ impl Stack {
             
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.lazy_components = Some(components);
-    
+
             let mut chunk_store = None;
             std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
@@ -353,7 +357,9 @@ impl Stack {
             let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.ndn = Some(ndn);
-        }   
+
+        }
+        
 
         let mut known_device = vec![];
         if params.known_device.is_some() {
@@ -362,7 +368,7 @@ impl Stack {
         for device in known_device {
             stack
                 .device_cache()
-                .add(&device.desc().device_id(), &device);
+                .add_static(&device.desc().device_id(), &device);
         }
 
         let net_listener = stack.net_manager().listener();
@@ -372,8 +378,7 @@ impl Stack {
         if params.known_sn.is_some() {
             std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
         }
-        stack.reset_sn_list(known_sn);
-        
+        stack.reset_known_sn(known_sn.clone());
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -383,10 +388,13 @@ impl Stack {
         let arc_stack = stack.clone();
         task::spawn(async move {
             loop {
-                info!("{} statistic: {}, {}", 
+                info!("{} statistic: {}, {}, {}, {}", 
                     arc_stack, 
                     arc_stack.tunnel_manager().on_statistic(), 
-                    arc_stack.stream_manager().on_statistic());
+                    arc_stack.stream_manager().on_statistic(),
+                    arc_stack.ndn().channel_manager().on_statistic(), 
+                    arc_stack.ndn().chunk_manager().on_statistic()
+                );
                 let _ = future::timeout(arc_stack.config().statistic_interval, future::pending::<()>()).await;
             }
         });
@@ -456,13 +464,16 @@ impl Stack {
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
         info!("{} reset_sn_list {:?}", self, sn_id_list);
-        
-        for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
-            self.device_cache().add(id, sn);
-        }
-        self.sn_client().cache().add_known_sn(&sn_id_list);
-
         self.sn_client().reset_sn_list(sn_list)
+    }
+
+    pub fn reset_known_sn(&self, sn_list: Vec<Device>) {
+        let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
+        info!("{} reset_known_sn_list {:?}", self, sn_id_list);
+        for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
+            self.device_cache().add_static(id, sn);
+        }
+        self.sn_client().cache().reset_known_sn(&sn_id_list);
     }
 
     pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> PingClients {

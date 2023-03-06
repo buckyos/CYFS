@@ -8,11 +8,11 @@ extern crate log;
 
 use cyfs_debug::*;
 
-async fn main1() {
+async fn main_run() {
     CyfsLoggerBuilder::new_app("cyfs-stack-test")
         .level("debug")
         .console("debug")
-        .enable_bdt(Some("error"), Some("error"))
+        .enable_bdt(Some("debug"), Some("debug"))
         .disable_file_config(true)
         .file(true)
         .build()
@@ -26,18 +26,12 @@ async fn main1() {
 
     loader::load().await;
 
-    async_std::task::spawn(async move {
-        case::test().await;
-    });
-    
+    case::test().await;
     // info!("test process now will exits!");
-    // async_std::task::sleep(std::time::Duration::from_secs(30)).await;
-    // std::process::exit(0);
-    async_std::task::sleep(std::time::Duration::from_millis(u64::MAX)).await;
 }
 
 fn main() {
-    async_std::task::block_on(main1())
+    async_std::task::block_on(main_run())
 }
 
 #[cfg(test)]

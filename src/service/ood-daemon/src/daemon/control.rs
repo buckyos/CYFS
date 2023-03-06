@@ -1,8 +1,6 @@
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
-use ood_control::{
-    ControlInterface, ControlInterfaceParam, OODControlMode,
-    OOD_CONTROLLER,
-};
+use ood_control::*;
+use crate::status::OOD_STATUS_MANAGER;
 
 use clap::ArgMatches;
 use std::net::IpAddr;
@@ -83,6 +81,8 @@ async fn start_ood_control(mode: OODControlMode, matches: &ArgMatches<'_>) -> Bu
         "ood activate control: host={:?}, port={:?}, type={:?}",
         tcp_port, tcp_host, addr_type,
     );
+
+    OOD_STATUS_MANAGER.register_server();
 
     let param = ControlInterfaceParam {
         mode,

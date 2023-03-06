@@ -39,10 +39,21 @@ struct CacheImpl {
 #[derive(Clone)]
 pub struct ChunkStreamCache(Arc<CacheImpl>);
 
+impl std::fmt::Display for CacheImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChunkStreamCache{{chunk:{}}}", self.chunk)
+    }
+}
+
+impl Drop for CacheImpl {
+    fn drop(&mut self) {
+        info!("{} released", self);
+    }
+}
 
 impl std::fmt::Display for ChunkStreamCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChunkStreamCache{{chunk:{}}}", self.chunk())
+        write!(f, "{}", self.0)
     }
 }
 

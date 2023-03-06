@@ -14,6 +14,8 @@ pub trait DownloadTaskTracker {
 #[async_trait::async_trait]
 impl DownloadTaskTracker for SqlConnection {
     async fn add_task_info(&mut self, task_id: &TaskId, context_id: &Option<ObjectId>, task_status: TaskStatus, dec_list: Vec<(DeviceId, ObjectId)>) -> BuckyResult<()> {
+        info!("task tracker add task: id={}, context={:?}, dec_list={:?}", task_id, context_id, dec_list);
+        
         for (source, dec) in dec_list.iter() {
             let sql = r#"insert into download_task_tracker (source, dec_id, task_id, context_id, task_status) values (?1, ?2, ?3, ?4, ?5)"#;
             let context_id = if context_id.is_some() {

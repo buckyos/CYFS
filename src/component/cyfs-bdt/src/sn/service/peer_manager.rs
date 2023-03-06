@@ -223,6 +223,7 @@ impl PeerManager {
 
 
             let recount_req = match (send_time - cached_peer.last_send_time) / self.config.client_ping_interval.as_micros() as u64 {
+
                 0 => {
                     let recode = if cached_peer.last_ping_seq >= seq {
                         false
@@ -244,7 +245,6 @@ impl PeerManager {
             if recount_req {
                 cached_peer.last_ping_seq = seq;
             }
-
 
             // 客户端被签名的地址才被更新，避免恶意伪装
             if contain_addr(&cached_peer.desc, sender.remote()) 

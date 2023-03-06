@@ -24,7 +24,15 @@ async fn register_app(stack: &SharedCyfsStack, dec_id: &ObjectId) {
 
     let action_id = action.desc().calculate_id();
     let buf = action.to_vec().unwrap();
-    let req = NONPostObjectOutputRequest::new_router(None, action_id, buf);
+    let mut req = NONPostObjectOutputRequest::new_router(None, action_id, buf);
+    let ret = stack.non_service().post_object(req.clone()).await;
+    assert!(ret.is_err());
+
+    req.common.req_path = Some(cyfs_base::CYFS_SYSTEM_APP_VIRTUAL_PATH.to_owned());
+    let ret = stack.non_service().post_object(req.clone()).await;
+    assert!(ret.is_err());
+
+    req.common.dec_id = Some(cyfs_core::get_system_dec_app().to_owned());
     let resp = stack.non_service().post_object(req).await.unwrap();
     assert!(resp.object.is_none());
 
@@ -41,8 +49,11 @@ async fn unregister_app(stack: &SharedCyfsStack, dec_id: &ObjectId) {
 
     let action_id = action.desc().calculate_id();
     let buf = action.to_vec().unwrap();
-    let req = NONPostObjectOutputRequest::new_router(None, action_id, buf);
+    let mut req = NONPostObjectOutputRequest::new_router(None, action_id, buf);
+    req.common.req_path = Some(cyfs_base::CYFS_SYSTEM_APP_VIRTUAL_PATH.to_owned());
+    req.common.dec_id = Some(cyfs_core::get_system_dec_app().to_owned());
     let resp = stack.non_service().post_object(req).await.unwrap();
+
     assert!(resp.object.is_none());
 
     info!("register dec success!");

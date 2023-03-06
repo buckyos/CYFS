@@ -39,6 +39,19 @@ struct CacheImpl {
 pub struct ChunkCache(Arc<CacheImpl>);
 
 
+impl std::fmt::Display for CacheImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChunkCache{{chunk:{}}}", self.chunk)
+    }
+}
+
+impl Drop for CacheImpl {
+    fn drop(&mut self) {
+        info!("{} released", self);
+    }
+}
+
+
 pub struct WeakChunkCache(Weak<CacheImpl>);
 
 impl WeakChunkCache {
@@ -56,7 +69,7 @@ impl ChunkCache {
 
 impl std::fmt::Display for ChunkCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChunkCache{{chunk:{}}}", self.chunk())
+        write!(f, "{}", self.0)
     }
 }
 

@@ -1,15 +1,23 @@
 use crate::package::ServicePackage;
 use crate::config::{ServiceConfig, OOD_DAEMON_SERVICE};
-use cyfs_base::{BuckyError, BuckyErrorCode};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_util::ZipPackage;
 
+use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
-
+#[derive(Debug, Clone, Copy, Serialize)]
+pub enum ServicePackageLocalState {
+    Init,
+    NotExists,
+    Downloading,
+    Invalid,
+    Ready,
+}
 
 #[derive(Debug)]
 pub(super) struct ServicePackageInfo {
@@ -23,8 +31,8 @@ pub(super) struct ServicePackageInfo {
     current: Option<PathBuf>,
 
     // 在device_config里面指定
-    name: String,
-    version: String,
+    pub name: String,
+    pub version: String,
 
     // fid支持{dir_id}/{inner_path}模式，但本地目录只能使用第一段
     pub fid: String,
@@ -32,6 +40,9 @@ pub(super) struct ServicePackageInfo {
 
     // 从service.cfg里面加载而来
     scripts: HashMap<String, String>,
+
+    // the status of the local package dir
+    pub state: ServicePackageLocalState,
 }
 
 impl ServicePackageInfo {
@@ -48,6 +59,7 @@ impl ServicePackageInfo {
             full_fid: service_config.fid.clone(),
             version: service_config.version.clone(),
             scripts: HashMap::new(),
+            state: ServicePackageLocalState::Init,
         }
     }
 
@@ -123,7 +135,24 @@ impl ServicePackageInfo {
     }
 
     // 加载package.cfg
-    pub fn load_package(&mut self) -> Result<(), BuckyError> {
+    pub fn load_package(&mut self) -> BuckyResult<()> {
+        let ret = self.load_package_inner();
+        match &ret {
+            Ok(()) => {
+                self.state = ServicePackageLocalState::Ready;
+            }
+            Err(e) if e.code() == BuckyErrorCode::NotFound => {
+                self.state = ServicePackageLocalState::NotExists;
+            }
+            Err(_) => {
+                self.state = ServicePackageLocalState::Invalid;
+            }
+        }
+
+        ret
+    }
+
+    fn load_package_inner(&mut self) -> BuckyResult<()> {
         assert!(self.current.is_some());
 
         // 首先判断目录是否存在
@@ -147,7 +176,7 @@ impl ServicePackageInfo {
             );
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
         let ret = File::open(package_file.as_path());
@@ -160,7 +189,7 @@ impl ServicePackageInfo {
             );
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
         let reader = BufReader::new(ret.unwrap());
@@ -174,7 +203,7 @@ impl ServicePackageInfo {
             );
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
         let u: Value = ret.unwrap();
@@ -186,13 +215,13 @@ impl ServicePackageInfo {
             );
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        return self.load_package_config(u.as_object().unwrap());
+        self.load_package_config(u.as_object().unwrap())
     }
 
-    fn load_package_config(&mut self, service_node: &Map<String, Value>) -> Result<(), BuckyError> {
+    fn load_package_config(&mut self, service_node: &Map<String, Value>) -> BuckyResult<()> {
         for (k, v) in service_node {
             match k.as_str() {
                 "version" => {
@@ -206,7 +235,7 @@ impl ServicePackageInfo {
                     } else {
                         let msg = format!("invalid scripts node format: {:?}", v);
                         error!("{}", msg);
-                        return Result::Err(BuckyError::from(msg));
+                        return BuckyResult::Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
                     }
                 }
                 _ => {}
@@ -216,7 +245,7 @@ impl ServicePackageInfo {
         Ok(())
     }
 
-    fn load_scripts(&mut self, scripts_node: &Map<String, Value>) -> Result<(), BuckyError> {
+    fn load_scripts(&mut self, scripts_node: &Map<String, Value>) -> BuckyResult<()> {
         // 需要清空老的scripts
         self.scripts.clear();
 
@@ -241,7 +270,7 @@ impl ServicePackageInfo {
         Ok(())
     }
 
-    pub fn load_package_file(&mut self, file: &Path) -> Result<bool, BuckyError> {
+    pub fn load_package_file(&mut self, file: &Path) -> BuckyResult<bool> {
 
         // 解压到目标目录
         let pkg = ServicePackage::new(file).map_err(|e| {
@@ -286,9 +315,11 @@ impl ServicePackageInfo {
         Ok(true)
     }
 
-    pub fn check_package(&self) -> bool {
+    pub fn check_package(&mut self) -> bool {
         assert!(self.current.is_some());
         assert!(!self.fid.is_empty());
+
+        self.state = ServicePackageLocalState::NotExists;
 
         if !self.current.as_ref().unwrap().exists() {
             warn!(
@@ -310,20 +341,29 @@ impl ServicePackageInfo {
 
         // ood_daemon不再检测本地包是否发生改变，只更新到最新的fid即可，避免和当前正在运行的程序冲突
         if self.as_ood_daemon() {
+            self.state = ServicePackageLocalState::Ready;
             return true
         }
 
         // 校验hash
-        return match self.check_package_hash() {
+        let ret = match self.check_package_hash() {
             Ok(ret) => ret,
             Err(_e) => {
                 // 计算出错如何处理？
                 false
             }
         };
+
+        if ret {
+            self.state = ServicePackageLocalState::Ready;
+        } else {
+            self.state = ServicePackageLocalState::Invalid;
+        }
+
+        ret
     }
 
-    fn check_package_hash(&self) -> Result<bool, BuckyError> {
+    fn check_package_hash(&self) -> BuckyResult<bool> {
         // 检查是否存在.lock文件
         let lock_path = self.current.as_ref().unwrap().join(".lock");
         if lock_path.exists() {

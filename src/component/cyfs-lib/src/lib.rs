@@ -53,8 +53,11 @@ pub fn register_core_objects_format() {
     FORMAT_FACTORY.register(cyfs_core::CoreObjectType::Admin, format_json::<AdminObject>);
 }
 
+cyfs_base::declare_module_perf_isolate!("cyfs-lib");
+
 #[cfg(test)]
 mod tests {
     #[test]
-    fn main() {}
+    fn main() {
+    }
 }

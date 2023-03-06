@@ -294,7 +294,79 @@ impl SnService {
         }
     }
 
+
     fn handle_ping(
+        &self,
+        ping_req: Box<SnPing>,
+        resp_sender: MessageSender,
+        encryptor: Option<(&MixAesKey, &DeviceId)>,
+        send_time: Timestamp,
+    ) {
+        if resp_sender.local().unwrap().is_ipv4() {
+            self.handle_ipv4_ping(ping_req, resp_sender, encryptor, send_time);
+        } else {
+            self.handle_ipv6_ping(ping_req, resp_sender, encryptor, send_time)
+        }
+    }
+
+    fn handle_ipv6_ping(
+        &self,
+        ping_req: Box<SnPing>,
+        resp_sender: MessageSender,
+        encryptor: Option<(&MixAesKey, &DeviceId)>,
+        _send_time: Timestamp,
+    ) {
+        let from_peer_id = match ping_req.from_peer_id.as_ref() {
+            Some(id) => id,
+            None => match encryptor {
+                Some((_, id)) => id,
+                None => {
+                    warn!(
+                        "[ping from 'unknow-deviceid' seq({})] without from peer-desc.",
+                        ping_req.seq.value()
+                    );
+                    return;
+                }
+            },
+        };
+
+        let log_key = format!(
+            "[ping from {} seq({})]",
+            from_peer_id.to_string(),
+            ping_req.seq.value()
+        );
+
+        let resp_sender = match resp_sender {
+            MessageSender::Tcp(_) => {
+                warn!("{} from tcp.", log_key);
+                return;
+            }
+            MessageSender::Udp(u) => Arc::new(u),
+        };
+
+        info!("{}", log_key);
+
+        let ping_resp = SnPingResp {
+            seq: ping_req.seq,
+            sn_peer_id: self.local_device_id().clone(),
+            result: BuckyErrorCode::Ok.into_u8(),
+            peer_info: None,
+            end_point_array: vec![Endpoint::from((
+                Protocol::Udp,
+                resp_sender.remote().clone(),
+            ))],
+            receipt: None,
+        };
+
+        self.send_resp_udp(
+            resp_sender,
+            DynamicPackage::from(ping_resp),
+            format!("{}", log_key),
+        );
+
+    }
+
+    fn handle_ipv4_ping(
         &self,
         ping_req: Box<SnPing>,
         resp_sender: MessageSender,
