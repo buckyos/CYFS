@@ -217,9 +217,9 @@ async function run() {
                 set_step(service.name, PublishStep.SetVersion, version)
             }
 
-            let version = get_step_arg(service.name, PublishStep.SetVersion)
-            assert(!!version)
-            device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
+            let service_version = get_step_arg(service.name, PublishStep.SetVersion)
+            assert(!!service_version)
+            device_config.push({ "id": service.id, "ver": `${service_version}`, "status": 1 })
         }
     
         fs.writeFileSync('dist/device-config.cfg', JSON.stringify(device_config))
@@ -229,7 +229,7 @@ async function run() {
 }
 
 run().then(() => {
-    try {fs.removeSync(step_file_name)} catch(e) {}
+    fs.rmSync(step_file_name, {force: true, maxRetries: 3})
     process.exit(0)
 })
 
