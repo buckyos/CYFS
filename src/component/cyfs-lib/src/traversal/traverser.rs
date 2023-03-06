@@ -183,20 +183,6 @@ impl ObjectTraverser {
         }
     }
 
-    async fn load_object(&self, id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
-        match self.loader.get_object(&id).await {
-            Ok(Some(data)) => Ok(Some(data.object)),
-            Ok(None) => {
-                warn!("get object but not exists! {}", id);
-                Ok(None)
-            }
-            Err(e) => {
-                error!("get object got error! {}, {}", id, e);
-                Err(e)
-            }
-        }
-    }
-
     fn dedup(&self, object_id: &ObjectId) -> bool {
         let mut coll = self.coll.lock().unwrap();
         !coll.index.insert(object_id.to_owned())

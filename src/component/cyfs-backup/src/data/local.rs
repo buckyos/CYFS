@@ -145,8 +145,8 @@ impl BackupDataWriter for BackupDataLocalFileWriter {
 
     async fn on_error(
         &self,
-        isolate_id: &ObjectId,
-        dec_id: &ObjectId,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
         id: &ObjectId,
         e: BuckyError,
     ) -> BuckyResult<()> {
@@ -157,8 +157,8 @@ impl BackupDataWriter for BackupDataLocalFileWriter {
 
     async fn on_missing(
         &self,
-        isolate_id: &ObjectId,
-        dec_id: &ObjectId,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
         id: &ObjectId,
     ) -> BuckyResult<()> {
         self.log.on_missing(isolate_id, dec_id, id);

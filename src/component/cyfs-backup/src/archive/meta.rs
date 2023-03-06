@@ -93,11 +93,29 @@ impl ObjectArchiveIsolateMeta {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectArchiveRootsMeta {
+    pub data: ObjectArchiveDataMetas,
+    pub missing: ObjectArchiveDataMetas,
+    pub error: ObjectArchiveDataMetas,
+}
+
+impl Default for ObjectArchiveRootsMeta {
+    fn default() -> Self {
+        Self {
+            data: ObjectArchiveDataMetas::default(),
+            missing: ObjectArchiveDataMetas::default(),
+            error: ObjectArchiveDataMetas::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta {
     pub id: u64,
     pub time: String,
     pub format: ObjectPackFormat,
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
+    pub roots: ObjectArchiveRootsMeta,
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
 }
@@ -113,6 +131,7 @@ impl ObjectArchiveMeta {
             time,
             format,
             isolates: vec![],
+            roots: ObjectArchiveRootsMeta::default(),
             object_files: vec![],
             chunk_files: vec![],
         }

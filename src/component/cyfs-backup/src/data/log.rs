@@ -50,21 +50,48 @@ impl BackupLogManager {
         }
     }
 
-    pub fn on_error(&self, isolate_id: &ObjectId, dec_id: &ObjectId, id: &ObjectId, e: BuckyError) {
-        let msg = if self.default_isolate == *isolate_id {
-            format!("[{}] [{}] {}", dec_id, id, e)
-        } else {
-            format!("[{}] [{}] [{}] {}", isolate_id, dec_id, id, e)
+    pub fn on_error(
+        &self,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
+        id: &ObjectId,
+        e: BuckyError,
+    ) {
+        let msg = match isolate_id {
+            Some(isolate_id) => {
+                let dec_id = dec_id.unwrap();
+                if self.default_isolate == *isolate_id {
+                    format!("[{}] [{}] {}", dec_id, id, e)
+                } else {
+                    format!("[{}] [{}] [{}] {}", isolate_id, dec_id, id, e)
+                }
+            }
+            None => {
+                format!("[root] [{}] {}", id, e)
+            }
         };
 
         let _ = self.error.lock().unwrap().output_line(&msg);
     }
 
-    pub fn on_missing(&self, isolate_id: &ObjectId, dec_id: &ObjectId, id: &ObjectId) {
-        let msg = if self.default_isolate == *isolate_id {
-            format!("[{}] [{}]", dec_id, id)
-        } else {
-            format!("[{}] [{}] [{}]", isolate_id, dec_id, id)
+    pub fn on_missing(
+        &self,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
+        id: &ObjectId,
+    ) {
+        let msg = match isolate_id {
+            Some(isolate_id) => {
+                let dec_id = dec_id.unwrap();
+                if self.default_isolate == *isolate_id {
+                    format!("[{}] [{}]", dec_id, id,)
+                } else {
+                    format!("[{}] [{}] [{}]", isolate_id, dec_id, id)
+                }
+            }
+            None => {
+                format!("[root] [{}]", id)
+            }
         };
 
         let _ = self.missing.lock().unwrap().output_line(&msg);

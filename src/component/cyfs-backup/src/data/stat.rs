@@ -13,6 +13,7 @@ pub struct ObjectArchiveStatMeta {
     pub time: String,
     
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
+    pub roots: ObjectArchiveRootsMeta,
 }
 
 impl ObjectArchiveStatMeta {
@@ -24,6 +25,7 @@ impl ObjectArchiveStatMeta {
             id,
             time,
             isolates: vec![],
+            roots: ObjectArchiveRootsMeta::default(),
         }
     }
 
@@ -177,8 +179,8 @@ impl BackupDataWriter for BackupDataStatWriter {
 
     async fn on_error(
         &self,
-        _isolate_id: &ObjectId,
-        _dec_id: &ObjectId,
+        _isolate_id: Option<&ObjectId>,
+        _dec_id: Option<&ObjectId>,
         id: &ObjectId,
         _e: BuckyError,
     ) -> BuckyResult<()> {
@@ -187,8 +189,8 @@ impl BackupDataWriter for BackupDataStatWriter {
 
     async fn on_missing(
         &self,
-        _isolate_id: &ObjectId,
-        _dec_id: &ObjectId,
+        _isolate_id: Option<&ObjectId>,
+        _dec_id: Option<&ObjectId>,
         id: &ObjectId,
     ) -> BuckyResult<()> {
         Self::on_missing(&self, id)

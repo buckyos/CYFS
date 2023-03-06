@@ -25,15 +25,15 @@ pub trait BackupDataWriter: Send + Sync {
 
     async fn on_error(
         &self,
-        isolate_id: &ObjectId,
-        dec_id: &ObjectId,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
         id: &ObjectId,
         e: BuckyError,
     ) -> BuckyResult<()>;
     async fn on_missing(
         &self,
-        isolate_id: &ObjectId,
-        dec_id: &ObjectId,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
         id: &ObjectId,
     ) -> BuckyResult<()>;
 }

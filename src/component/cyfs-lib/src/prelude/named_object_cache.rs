@@ -203,17 +203,17 @@ impl Default for NamedObjectCacheSelectObjectFilter {
 #[derive(Debug, Clone)]
 pub struct NamedObjectCacheSelectObjectOption {
     // The number of readings per page
-    pub page_size: u16,
+    pub page_size: usize,
 
     // The page number currently read, starting from 0
-    pub page_index: u16,
+    pub page_index: usize,
 }
 
 impl Default for NamedObjectCacheSelectObjectOption {
     fn default() -> Self {
         Self {
-            page_size: 256_u16,
-            page_index: 0_u16,
+            page_size: 256,
+            page_index: 0,
         }
     }
 }

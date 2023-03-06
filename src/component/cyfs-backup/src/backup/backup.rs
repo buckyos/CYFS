@@ -1,0 +1,135 @@
+use super::roots::*;
+use super::state::GlobalStateBackup;
+use crate::archive::*;
+use crate::data::*;
+use crate::object_pack::*;
+use cyfs_base::*;
+use cyfs_lib::*;
+
+use std::path::PathBuf;
+
+#[derive(Debug)]
+pub struct GlobalStateIsolateBackupFilter {
+    pub isolate_id: ObjectId,
+    pub dec_list: Vec<ObjectId>,
+}
+
+#[derive(Debug)]
+pub struct GlobalStateBackupFilter {
+    pub isolate_list: Vec<GlobalStateIsolateBackupFilter>,
+}
+
+#[derive(Debug)]
+pub struct GlobalStateBackupParams {
+    pub filter: GlobalStateBackupFilter,
+}
+
+pub struct BackupManager {
+    id: u64,
+    root: PathBuf,
+    format: ObjectPackFormat,
+    default_isolate: ObjectId,
+
+    noc: NamedObjectCacheRef,
+    state_manager: GlobalStateManagerRawProcessorRef,
+    loader: ObjectTraverserLoaderRef,
+    meta_manager: GlobalStateMetaManagerRawProcessorRef,
+}
+
+impl BackupManager {
+    pub fn new(
+        id: u64,
+        root: PathBuf,
+        default_isolate: ObjectId,
+        noc: NamedObjectCacheRef,
+        state_manager: GlobalStateManagerRawProcessorRef,
+        loader: ObjectTraverserLoaderRef,
+        meta_manager: GlobalStateMetaManagerRawProcessorRef,
+    ) -> Self {
+        Self {
+            id,
+            format: ObjectPackFormat::Zip,
+            default_isolate,
+            root,
+            noc,
+            state_manager,
+            loader,
+            meta_manager,
+        }
+    }
+
+    pub async fn backup(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveMeta> {
+        let backup_dir = self.root.join(format!("{}", self.id));
+
+        let data_writer = BackupDataLocalFileWriter::new(
+            self.id,
+            self.default_isolate.clone(),
+            backup_dir,
+            self.format,
+            1024 * 1024 * 128,
+        )?;
+
+        let writer = data_writer.clone().into_writer();
+
+        let root_meta = self.run(params, writer).await?;
+
+        let mut meta = data_writer.finish().await.map_err(|e| {
+            let msg = format!("backup but finish failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
+
+        meta.roots = root_meta;
+
+        Ok(meta)
+    }
+
+    pub async fn stat(
+        &self,
+        params: GlobalStateBackupParams,
+    ) -> BuckyResult<ObjectArchiveStatMeta> {
+        let data_writer = BackupDataStatWriter::new(self.id);
+        let writer = data_writer.clone().into_writer();
+
+        let root_meta = self.run(params, writer).await?;
+
+        let mut meta = data_writer.finish().await.map_err(|e| {
+            let msg = format!("stat global state but finish failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(e.code(), msg)
+        })?;
+
+        meta.roots = root_meta;
+
+        Ok(meta)
+    }
+
+    async fn run(
+        &self,
+        params: GlobalStateBackupParams,
+        data_writer: BackupDataWriterRef,
+    ) -> BuckyResult<ObjectArchiveRootsMeta> {
+        info!("will backup root state: id={}", self.id);
+
+        let state_backup = GlobalStateBackup::new(
+            GlobalStateCategory::RootState,
+            data_writer.clone(),
+            self.state_manager.clone(),
+            self.loader.clone(),
+            self.meta_manager.clone(),
+        );
+        state_backup.run(params).await?;
+        
+        info!("backup root state complete! id={}", self.id);
+
+        info!("will backup all root objects: id={}", self.id);
+
+        let roots_backup =
+            RootObjectBackup::new(self.noc.clone(), data_writer, self.loader.clone());
+        let roots_meta = roots_backup.run().await?;
+
+        info!("backup all root objects complete! id={}", self.id);
+
+        Ok(roots_meta)
+    }
+}
