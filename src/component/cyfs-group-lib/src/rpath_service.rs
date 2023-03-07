@@ -6,11 +6,11 @@ use cyfs_lib::{
     HttpRequestorRef, IsolatePathOpEnvStub, RootStateOpEnvAccess, SharedCyfsStack, SingleOpEnvStub,
 };
 
-use crate::{ExecuteResult, GroupObjectMapProcessor, RPathDelegate};
+use crate::{ExecuteResult, GroupObjectMapProcessor, GroupRequestor, RPathDelegate};
 
 struct RPathServiceRaw {
     rpath: GroupRPath,
-    requestor: HttpRequestorRef,
+    requestor: GroupRequestor,
     delegate: Box<dyn RPathDelegate>,
     stack: SharedCyfsStack,
 }
@@ -20,12 +20,12 @@ pub struct RPathService(Arc<RPathServiceRaw>);
 
 impl RPathService {
     pub fn rpath(&self) -> &GroupRPath {
-        unimplemented!()
+        &self.0.rpath
     }
 
     pub async fn push_proposal(&self, proposal: &GroupProposal) -> BuckyResult<()> {
         // post http
-        unimplemented!()
+        self.0.requestor.push_proposal(proposal).await
     }
 
     pub(crate) fn new(
@@ -35,16 +35,16 @@ impl RPathService {
         stack: SharedCyfsStack,
     ) -> Self {
         Self(Arc::new(RPathServiceRaw {
+            requestor: GroupRequestor::new(rpath.dec_id().clone(), requestor),
             rpath,
-            requestor,
             delegate,
             stack,
         }))
     }
 
-    pub(crate) async fn start(&self) -> BuckyResult<Self> {
+    pub(crate) async fn start(&self) -> BuckyResult<()> {
         // post create command
-        unimplemented!()
+        self.0.requestor.start_group_service(self.rpath()).await
     }
 
     pub(crate) async fn on_execute(

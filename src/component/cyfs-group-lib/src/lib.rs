@@ -1,11 +1,23 @@
 mod delegate;
 mod group_manager;
+mod input_request;
 mod objects;
+mod output_request;
+mod processor;
+mod request;
+mod request_codec;
+mod requestor;
 mod rpath_client;
 mod rpath_service;
 
 pub use delegate::*;
 pub use group_manager::*;
+pub use input_request::*;
 pub use objects::*;
+pub use output_request::*;
+pub use processor::*;
+pub(crate) use request::*;
+pub use request_codec::*;
+pub use requestor::*;
 pub use rpath_client::*;
 pub use rpath_service::*;

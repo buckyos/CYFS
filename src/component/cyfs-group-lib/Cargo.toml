@@ -27,6 +27,7 @@ sha2 = { version = '0.8' }
 async-recursion = '1.0'
 rand = '0.8.5'
 itertools = "0.10.3"
+http-types = '2.12'
 cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
 cyfs-core = { path = '../../component/cyfs-core', version = '0.6' }
 cyfs-debug = { path = "../../component/cyfs-debug" }

@@ -9,6 +9,7 @@ pub trait DelegateFactory: Send + Sync {
         group_id: &ObjectId,
         rpath: &str,
         with_block: Option<&GroupConsensusBlock>,
+        is_new: bool,
     ) -> BuckyResult<Box<dyn RPathDelegate>>;
 }
 
