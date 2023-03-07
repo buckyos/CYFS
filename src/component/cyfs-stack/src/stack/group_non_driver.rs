@@ -42,7 +42,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                         verified: None,
                     },
 
-                    level: to.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
+                    level: from.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
 
                     target: from.map(|remote| remote.clone()),
                     flags: 0,
@@ -72,7 +72,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                         verified: None,
                     },
 
-                    level: to.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
+                    level: NONAPILevel::NOC,
 
                     target: None,
                     flags: 0,

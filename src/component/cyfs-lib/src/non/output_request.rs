@@ -4,7 +4,7 @@ use cyfs_base::*;
 
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NONOutputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
@@ -130,14 +130,22 @@ impl NONUpdateObjectMetaOutputRequest {
         Self::new(NONAPILevel::NOC, object_id, access)
     }
 
-    pub fn new_non(target: Option<DeviceId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+    pub fn new_non(
+        target: Option<DeviceId>,
+        object_id: ObjectId,
+        access: Option<AccessString>,
+    ) -> Self {
         let mut ret = Self::new(NONAPILevel::NON, object_id, access);
         ret.common.target = target.map(|v| v.into());
 
         ret
     }
 
-    pub fn new_router(target: Option<ObjectId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+    pub fn new_router(
+        target: Option<ObjectId>,
+        object_id: ObjectId,
+        access: Option<AccessString>,
+    ) -> Self {
         let mut ret = Self::new(NONAPILevel::Router, object_id, access);
         ret.common.target = target;
 
@@ -243,7 +251,6 @@ impl NONGetObjectOutputRequest {
     }
 }
 
-
 impl fmt::Display for NONGetObjectOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
@@ -338,7 +345,6 @@ impl fmt::Display for NONPostObjectOutputResponse {
     }
 }
 
-
 // select
 #[derive(Clone)]
 pub struct NONSelectObjectOutputRequest {
@@ -391,7 +397,6 @@ impl fmt::Display for NONSelectObjectOutputRequest {
         write!(f, ", opt: {:?}", self.opt)
     }
 }
-
 
 #[derive(Clone)]
 pub struct NONSelectObjectOutputResponse {
@@ -470,7 +475,6 @@ impl fmt::Display for NONDeleteObjectOutputRequest {
     }
 }
 
-
 #[derive(Clone)]
 pub struct NONDeleteObjectOutputResponse {
     pub object: Option<NONObjectInfo>,
@@ -479,7 +483,7 @@ pub struct NONDeleteObjectOutputResponse {
 impl fmt::Display for NONDeleteObjectOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "object: {:?}", self.object)?;
-    
+
         Ok(())
     }
 }
