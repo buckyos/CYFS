@@ -597,7 +597,12 @@ mod build_file_task_test {
         async fn exists_chunks(&self, _req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
             todo!();
         }
+
+        async fn select_chunk(&self, _req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
+            todo!();
+        }
     }
+    
     async fn gen_random_file(local_path: &Path) {
         if local_path.exists() {
             assert!(local_path.is_file());

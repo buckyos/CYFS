@@ -5,3 +5,6 @@ mod data_cache_manager;
 extern crate log;
 
 pub use data_cache_manager::*;
+
+#[cfg(test)]
+mod test;

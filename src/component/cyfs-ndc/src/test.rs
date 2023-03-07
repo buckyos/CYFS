@@ -1,53 +1,40 @@
-mod sqlite;
-mod data_cache_manager;
-
-#[macro_use]
-extern crate log;
-
-pub use data_cache_manager::*;
+use super::data_cache_manager::*;
 
 use cyfs_base::*;
 use cyfs_lib::*;
 use std::str::FromStr;
 
-#[async_std::main]
-async fn main() {
+#[test]
+fn test() {
+    async_std::task::block_on(test_main());
+}
 
+async fn test_main() {
     cyfs_util::init_log("cyfs-ndc", Some("trace"));
 
     let cache = DataCacheManager::create_data_cache("test").unwrap();
-    
+
     //test_lock().await;
     for _ in 0..100 {
         let cache1 = cache.clone();
         async_std::task::spawn(async move {
             test_file(&cache1).await;
-        }).await; 
-    
+        })
+        .await;
+
         let cache1 = cache.clone();
         async_std::task::spawn(async move {
             test_chunk(&cache1).await;
-        }).await; 
+        })
+        .await;
     }
 
-    async_std::task::sleep(std::time::Duration::from_secs(60)).await;
+    // async_std::task::sleep(std::time::Duration::from_secs(60)).await;
 }
 
-async fn monitor_task_block() {
-    loop {
-        async_std::task::spawn(async move {
-            
-        }).await;
-    }
-}
-
-struct TestLocal {
-    
-}
 async fn test_lock() {
     use std::sync::RwLock;
 
-  
     let item = RwLock::new(None);
     let _v1 = item.read().unwrap();
     let _v2 = item.write().unwrap();
@@ -80,7 +67,6 @@ async fn test_lock() {
     let item = Mutex::new(Some(1));
     let _ret = item.lock().unwrap();
     //item.lock();
-    
 }
 
 async fn gen_file_info() -> (HashValue, File, FileId, Dir, DirId) {
@@ -91,28 +77,41 @@ async fn gen_file_info() -> (HashValue, File, FileId, Dir, DirId) {
     hash_value.as_mut_slice()[0] = 0xFF;
 
     let chunk_list = ChunkList::ChunkInList(Vec::new());
-    let file = File::new(owner, 1024 * 1024, hash_value.clone(), chunk_list).option_create_time(None).build();
+    let file = File::new(owner, 1024 * 1024, hash_value.clone(), chunk_list)
+        .option_create_time(None)
+        .build();
     let file_id = file.desc().file_id();
 
     info!("file_id={}", file_id);
 
-
-    let dir = Dir::new(Attributes::new(0), NDNObjectInfo::ObjList(NDNObjectList {
-        parent_chunk: None,
-        object_map: HashMap::new(),
-    }), HashMap::new()).create_time(0).owner(owner.clone()).build();
+    let dir = Dir::new(
+        Attributes::new(0),
+        NDNObjectInfo::ObjList(NDNObjectList {
+            parent_chunk: None,
+            object_map: HashMap::new(),
+        }),
+        HashMap::new(),
+    )
+    .create_time(0)
+    .owner(owner.clone())
+    .build();
     let dir_id = dir.desc().dir_id();
 
     (hash_value, file, file_id, dir, dir_id)
 }
 
 async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
-
     let (_hash_value, _file, file_id, _dir, dir_id) = gen_file_info().await;
 
-    let chunk_id = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).await.unwrap();
-    let chunk_id2 = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]).await.unwrap();
-    let chunk_id3 = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8]).await.unwrap();
+    let chunk_id = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        .await
+        .unwrap();
+    let chunk_id2 = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0])
+        .await
+        .unwrap();
+    let chunk_id3 = ChunkId::calculate(&vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+        .await
+        .unwrap();
 
     let ref_dir = ChunkObjectRef {
         object_id: file_id.clone().into(),
@@ -151,7 +150,7 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         }
     }
 
-    let req= InsertChunkRequest {
+    let req = InsertChunkRequest {
         chunk_id: chunk_id.clone(),
         state: ChunkState::Unknown,
 
@@ -160,7 +159,6 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         flags: 1234,
     };
 
-    
     if let Err(e) = cache.insert_chunk(&req).await {
         error!("add chunk error: {}", e);
         unreachable!();
@@ -168,7 +166,7 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         info!("add chunk success!");
     }
 
-    let req2= InsertChunkRequest {
+    let req2 = InsertChunkRequest {
         chunk_id: chunk_id2.clone(),
         state: ChunkState::NotFound,
 
@@ -177,7 +175,6 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         flags: 4321,
     };
 
-    
     if let Err(e) = cache.insert_chunk(&req2).await {
         error!("add chunk2 error: {}", e);
         unreachable!();
@@ -237,7 +234,7 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         }
     }
 
-    // 测试查询
+    // Test query
     {
         let get_req = GetChunkRequest {
             chunk_id: chunk_id.clone(),
@@ -248,7 +245,7 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         if let Some(data) = ret {
             assert!(data.state == ChunkState::Ready);
             assert!(data.flags == 1234);
-           
+
             let mut ref_objects = data.ref_objects.unwrap();
             assert!(ref_objects.len() == 1);
             let ref_obj = ref_objects.pop().unwrap();
@@ -291,18 +288,22 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         info!("test chunk exists success!");
     }
 
-    // 测试批量查询
+    // Test batch query
     {
-        let get_reqs = vec![GetChunkRequest{
-            chunk_id: chunk_id.clone(),
-            flags: 0,
-        }, GetChunkRequest {
-            chunk_id: chunk_id2.clone(),
-            flags: NDC_CHUNK_REQUEST_FLAG_REF_OBJECTS,
-        }, GetChunkRequest{
-            chunk_id: chunk_id3.clone(),
-            flags: 0,
-        }];
+        let get_reqs = vec![
+            GetChunkRequest {
+                chunk_id: chunk_id.clone(),
+                flags: 0,
+            },
+            GetChunkRequest {
+                chunk_id: chunk_id2.clone(),
+                flags: NDC_CHUNK_REQUEST_FLAG_REF_OBJECTS,
+            },
+            GetChunkRequest {
+                chunk_id: chunk_id3.clone(),
+                flags: 0,
+            },
+        ];
 
         let mut ret = cache.get_chunks(&get_reqs).await.unwrap();
         assert!(ret.len() == 3);
@@ -324,7 +325,7 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         assert!(r3.is_none());
     }
 
-    //测试更新ref_objects
+    // Test Update ref_Objects
     {
         let update_req = UpdateChunkRefsRequest {
             chunk_id: chunk_id.clone(),
@@ -351,15 +352,17 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
         info!("test update ref object success!");
     }
 
-    // 测试查询ref_objects
+    // Test inquiry ref_Objects
     {
-         
         let get_ref_objects_req = GetChunkRefObjectsRequest {
             chunk_id: chunk_id.clone(),
             relation: Some(ChunkObjectRelation::Unknown),
         };
 
-        let ret = cache.get_chunk_ref_objects(&get_ref_objects_req).await.unwrap();
+        let ret = cache
+            .get_chunk_ref_objects(&get_ref_objects_req)
+            .await
+            .unwrap();
         assert!(ret.is_empty());
 
         let get_ref_objects_req = GetChunkRefObjectsRequest {
@@ -367,7 +370,10 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
             relation: Some(ChunkObjectRelation::FileBody),
         };
 
-        let mut ret = cache.get_chunk_ref_objects(&get_ref_objects_req).await.unwrap();
+        let mut ret = cache
+            .get_chunk_ref_objects(&get_ref_objects_req)
+            .await
+            .unwrap();
         assert!(ret.len() == 1);
         let ref_obj = ret.pop().unwrap();
         assert!(ref_obj.object_id == ref_dir2.object_id);
@@ -378,18 +384,33 @@ async fn test_chunk(cache: &Box<dyn NamedDataCache>) {
             relation: None,
         };
 
-        let mut ret = cache.get_chunk_ref_objects(&get_ref_objects_req).await.unwrap();
+        let mut ret = cache
+            .get_chunk_ref_objects(&get_ref_objects_req)
+            .await
+            .unwrap();
         assert!(ret.len() == 1);
         let ref_obj = ret.pop().unwrap();
         assert!(ref_obj.object_id == ref_dir2.object_id);
         assert!(ref_obj.relation == ref_dir2.relation);
     }
+
+    // test select
+    {
+        let req = SelectChunkRequest {
+            filter: SelectChunkFilter {
+                state: Some(ChunkState::Ready),
+            },
+            opt: SelectChunkOption::default(),
+        };
+
+        let resp = cache.select_chunk(&req).await.unwrap();
+        info!("select result: {:?}", resp);
+    }
 }
 
 async fn test_file(cache: &Box<dyn NamedDataCache>) {
-   
     let quick_hash_list = vec!["1111".to_owned(), "2222".to_owned()];
-    
+
     let (hash_value, file, file_id, _dir, dir_id) = gen_file_info().await;
 
     let dir_refs = vec![
@@ -400,7 +421,7 @@ async fn test_file(cache: &Box<dyn NamedDataCache>) {
         FileDirRef {
             dir_id: dir_id.clone(),
             inner_path: "zzzzz".to_owned(),
-        }
+        },
     ];
 
     let req = InsertFileRequest {
@@ -417,13 +438,9 @@ async fn test_file(cache: &Box<dyn NamedDataCache>) {
         info!("add file success!");
     }
 
- 
     {
         let hash = hash_value.to_string();
-        let get_req = GetFileByHashRequest {
-            hash,
-            flags: 0,
-        };
+        let get_req = GetFileByHashRequest { hash, flags: 0 };
 
         let ret = cache.get_file_by_hash(&get_req).await.unwrap();
         assert!(ret.is_some());
@@ -485,9 +502,7 @@ async fn test_file(cache: &Box<dyn NamedDataCache>) {
     }
 
     {
-        let remove_req = RemoveFileRequest {
-            file_id,
-        };
+        let remove_req = RemoveFileRequest { file_id };
 
         let count = cache.remove_file(&remove_req).await.unwrap();
         assert!(count == 1);

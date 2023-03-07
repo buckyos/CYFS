@@ -50,19 +50,17 @@ pub struct RemoveFileRequest {
 // quickhash相关操作
 pub struct FileAddQuickhashRequest {
     pub hash: String,
-    
+
     // TODO 是否支持以file_id为键值来更新？
     // pub file_id: FileId,
-
     pub quick_hash: Vec<String>,
 }
 
 pub struct FileUpdateQuickhashRequest {
     pub hash: String,
-    
+
     // TODO 是否支持以file_id为键值来更新？
     // pub file_id: FileId,
-
     pub add_list: Vec<String>,
     pub remove_list: Vec<String>,
 }
@@ -172,7 +170,7 @@ pub struct ChunkCacheData {
 
     pub state: ChunkState,
     pub flags: u32,
-    
+
     pub insert_time: u64,
     pub update_time: u64,
     pub last_access_time: u64,
@@ -181,13 +179,12 @@ pub struct ChunkCacheData {
     pub ref_objects: Option<Vec<ChunkObjectRef>>,
 }
 
-
 pub struct UpdateChunkStateRequest {
     pub chunk_id: ChunkId,
 
     // 如果指定了当前状态，那么只有在匹配情况下才更新到目标状态
     pub current_state: Option<ChunkState>,
-    
+
     pub state: ChunkState,
 }
 
@@ -224,24 +221,77 @@ pub struct GetChunkRefObjectsResponse {
     pub ref_objects: Option<ChunkObjectRef>,
 }
 
+#[derive(Clone, Debug)]
+pub struct SelectChunkFilter {
+    pub state: Option<ChunkState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectChunkOption {
+    // The number of readings per page
+    pub page_size: usize,
+
+    // The page number currently read, starting from 0
+    pub page_index: usize,
+}
+
+impl Default for SelectChunkOption {
+    fn default() -> Self {
+        Self {
+            page_size: 256,
+            page_index: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectChunkRequest {
+    // filters
+    pub filter: SelectChunkFilter,
+
+    // configs
+    pub opt: SelectChunkOption,
+}
+
+#[derive(Debug)]
+pub struct SelectChunkData {
+    pub chunk_id: ChunkId,
+}
+
+#[derive(Debug)]
+pub struct SelectChunkResponse {
+    pub list: Vec<SelectChunkData>,
+}
+
 #[async_trait]
 pub trait NamedDataCache: Sync + Send + 'static {
-
     fn clone(&self) -> Box<dyn NamedDataCache>;
 
-    // file相关接口
+    // file related interface
     async fn insert_file(&self, req: &InsertFileRequest) -> BuckyResult<()>;
     async fn remove_file(&self, req: &RemoveFileRequest) -> BuckyResult<usize>;
 
     async fn file_update_quick_hash(&self, req: &FileUpdateQuickhashRequest) -> BuckyResult<()>;
 
-    async fn get_file_by_hash(&self, req: &GetFileByHashRequest) -> BuckyResult<Option<FileCacheData>>;
-    async fn get_file_by_file_id(&self, req: &GetFileByFileIdRequest) -> BuckyResult<Option<FileCacheData>>;
-    async fn get_files_by_quick_hash(&self, req: &GetFileByQuickHashRequest) -> BuckyResult<Vec<FileCacheData>>;
-    async fn get_files_by_chunk(&self, req: &GetFileByChunkRequest) -> BuckyResult<Vec<FileCacheData>>;
+    async fn get_file_by_hash(
+        &self,
+        req: &GetFileByHashRequest,
+    ) -> BuckyResult<Option<FileCacheData>>;
+    async fn get_file_by_file_id(
+        &self,
+        req: &GetFileByFileIdRequest,
+    ) -> BuckyResult<Option<FileCacheData>>;
+    async fn get_files_by_quick_hash(
+        &self,
+        req: &GetFileByQuickHashRequest,
+    ) -> BuckyResult<Vec<FileCacheData>>;
+    async fn get_files_by_chunk(
+        &self,
+        req: &GetFileByChunkRequest,
+    ) -> BuckyResult<Vec<FileCacheData>>;
     async fn get_dirs_by_file(&self, req: &GetDirByFileRequest) -> BuckyResult<Vec<FileDirRef>>;
 
-    // chunk相关接口
+    // chunk related interface
     async fn insert_chunk(&self, req: &InsertChunkRequest) -> BuckyResult<()>;
     async fn remove_chunk(&self, req: &RemoveChunkRequest) -> BuckyResult<usize>;
 
@@ -252,7 +302,16 @@ pub trait NamedDataCache: Sync + Send + 'static {
     async fn exists_chunks(&self, req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>>;
 
     async fn get_chunk(&self, req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>>;
-    async fn get_chunks(&self, req: &Vec<GetChunkRequest>) -> BuckyResult<Vec<Option<ChunkCacheData>>>;
+    async fn get_chunks(
+        &self,
+        req: &Vec<GetChunkRequest>,
+    ) -> BuckyResult<Vec<Option<ChunkCacheData>>>;
     //async fn get_chunk_trans_sessions(&self, req: &GetChunkTransSessionsRequest) -> BuckyResult<GetChunkTransSessionsResponse>;
-    async fn get_chunk_ref_objects(&self, req: &GetChunkRefObjectsRequest) -> BuckyResult<Vec<ChunkObjectRef>>;
+    async fn get_chunk_ref_objects(
+        &self,
+        req: &GetChunkRefObjectsRequest,
+    ) -> BuckyResult<Vec<ChunkObjectRef>>;
+
+    // for internal use only
+    async fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse>;
 }

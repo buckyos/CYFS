@@ -350,6 +350,12 @@ pub enum ChunkState {
     Ignore = 5, // 被忽略
 }
 
+impl ChunkState {
+    pub fn as_u8(&self) -> u8 {
+        u8::from(self)
+    }
+}
+
 // impl Into<u8> for ChunkState {
 //     fn into(self) -> u8 {
 //         self as u8

@@ -4,7 +4,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::SqliteConnectionHolder;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, ToSql};
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -1776,6 +1776,88 @@ impl SqliteDBDataCache {
 
         Ok(result_list)
     }
+
+    fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
+        let mut querys = Vec::new();
+
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        if let Some(state) = req.filter.state {
+            params.push(Box::new(state.as_u8()));
+
+            let query = format!("state=?{}", params.len());
+            querys.push(query);
+        }
+
+        let sql = if querys.len() > 0 {
+            "SELECT chunk_id FROM chunk WHERE ".to_owned() + &querys.join(" AND ")
+        } else {
+            "SELECT chunk_id FROM chunk ".to_owned()
+        };
+
+        // Sort by insert_time, decrease
+        let sql = sql + " ORDER BY insert_time DESC ";
+
+        // Add pagination
+        let sql = sql
+            + &format!(
+                " LIMIT {} OFFSET {}",
+                req.opt.page_size,
+                req.opt.page_size * req.opt.page_index
+            );
+
+        info!(
+            "will select chunk from ndc: sql={} filter={:?}, opt={:?}",
+            sql, req.filter, req.opt
+        );
+
+        let (conn, _lock) = self.conn.get_read_conn()?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| {
+            let msg = format!("prepare select chunk sql error: {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::SqliteError, msg)
+        })?;
+
+        let mut rows = stmt
+            .query(
+                params
+                    .iter()
+                    .map(|item| item.as_ref())
+                    .collect::<Vec<&dyn ToSql>>()
+                    .as_slice(),
+            )
+            .map_err(|e| {
+                let msg = format!("exec query select chunk error: {}", e);
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
+
+        let mut list = Vec::new();
+        while let Some(row) = rows.next()? {
+            let chunk_id: String = row.get(0).map_err(|e| {
+                let msg = format!("get chunk_id from query row failed! {}", e);
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
+
+            let ret = ChunkId::from_str(&chunk_id);
+            if ret.is_err() {
+                error!("invalid chunk_id str: {}, {}", chunk_id, ret.unwrap_err());
+                continue;
+            }
+
+            let chunk_id = ret.unwrap();
+            let data = SelectChunkData { chunk_id };
+
+            list.push(data);
+        }
+
+        let resp = SelectChunkResponse { list };
+
+        Ok(resp)
+    }
 }
 
 #[async_trait::async_trait]
@@ -1864,5 +1946,9 @@ impl NamedDataCache for SqliteDBDataCache {
         req: &GetChunkRefObjectsRequest,
     ) -> BuckyResult<Vec<ChunkObjectRef>> {
         SqliteDBDataCache::get_chunk_ref_objects(&self, req)
+    }
+
+    async fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
+        Self::select_chunk(&self, req)
     }
 }
