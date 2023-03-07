@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cyfs_base::{BuckyResult, ObjectId};
-use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupRPath};
+use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_lib::{
     HttpRequestorRef, IsolatePathOpEnvStub, RootStateOpEnvAccess, SharedCyfsStack, SingleOpEnvStub,
 };
@@ -25,7 +25,14 @@ impl RPathService {
 
     pub async fn push_proposal(&self, proposal: &GroupProposal) -> BuckyResult<()> {
         // post http
-        self.0.requestor.push_proposal(proposal).await
+        self.0
+            .requestor
+            .push_proposal(
+                GroupRequestor::make_default_common(proposal.rpath().dec_id().clone()),
+                proposal,
+            )
+            .await
+            .map(|_| {})
     }
 
     pub(crate) fn new(
@@ -44,7 +51,15 @@ impl RPathService {
 
     pub(crate) async fn start(&self) -> BuckyResult<()> {
         // post create command
-        self.0.requestor.start_group_service(self.rpath()).await
+        self.0
+            .requestor
+            .start_service(
+                GroupRequestor::make_default_common(self.0.rpath.dec_id().clone()),
+                self.rpath().group_id(),
+                self.rpath().rpath(),
+            )
+            .await
+            .map(|_| {})
     }
 
     pub(crate) async fn on_execute(
