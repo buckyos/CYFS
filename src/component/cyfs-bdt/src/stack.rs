@@ -330,7 +330,7 @@ impl Stack {
         }
 
         let debug_stub = if stack.config().debug.is_some() {
-            Some(DebugStub::open(stack.to_weak()).await?)
+            Some(DebugStub::open(stack.to_weak(), stack.config().debug.as_ref().unwrap().chunk_store.clone()).await?)
         } else {
             None
         };

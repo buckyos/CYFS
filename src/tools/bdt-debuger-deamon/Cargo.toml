@@ -12,6 +12,7 @@ description = "Rust bdt-debuger-deamon package"
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
+cyfs-util = { path = '../../component/cyfs-util', version = '0.6' }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 clap = "2.34.0"
 log = "0.4"
