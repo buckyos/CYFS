@@ -645,6 +645,7 @@ dependencies = [
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
+ "cyfs-util",
  "log 0.4.17",
  "md5",
 ]
