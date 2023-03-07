@@ -5,7 +5,7 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
     RawConvertTo, RawDecode,
 };
-use cyfs_core::{CoreObjectType, DecAppId, GroupProposalObject, GroupRPath};
+use cyfs_core::{CoreObjectType, DecAppId, GroupConsensusBlock, GroupProposalObject, GroupRPath};
 use cyfs_lib::{
     CyfsStackRequestorType, HttpRequestorRef, NONAPILevel, NONObjectInfo,
     NONPostObjectInputResponse, RouterHandlerAction, RouterHandlerChain,
@@ -195,26 +195,121 @@ impl GroupManager {
     }
 
     async fn on_new_rpath(&self, cmd: GroupCommandNewRPath) -> BuckyResult<()> {
+        self.find_or_restart_service(
+            &cmd.group_id,
+            self.0.stack.dec_id().unwrap(),
+            cmd.rpath.as_str(),
+            &cmd.with_block,
+            true,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn on_execute(&self, cmd: GroupCommandExecute) -> BuckyResult<GroupCommandExecuteResult> {
+        let rpath = cmd.proposal.rpath();
+        let service = self
+            .find_or_restart_service(
+                rpath.group_id(),
+                rpath.dec_id(),
+                rpath.rpath(),
+                &None,
+                false,
+            )
+            .await?;
+
+        let mut result = service
+            .on_execute(&cmd.proposal, &cmd.prev_state_id)
+            .await?;
+
+        Ok(GroupCommandExecuteResult {
+            result_state_id: result.result_state_id.take(),
+            receipt: result.receipt.take(),
+            context: result.context.take(),
+        })
+    }
+
+    async fn on_verify(&self, mut cmd: GroupCommandVerify) -> BuckyResult<()> {
+        let rpath = cmd.proposal.rpath();
+        let service = self
+            .find_or_restart_service(
+                rpath.group_id(),
+                rpath.dec_id(),
+                rpath.rpath(),
+                &None,
+                false,
+            )
+            .await?;
+
+        let result = ExecuteResult {
+            result_state_id: cmd.result_state_id.take(),
+            receipt: cmd.receipt.take(),
+            context: cmd.context.take(),
+        };
+
+        service
+            .on_verify(&cmd.proposal, &cmd.prev_state_id, &result)
+            .await
+    }
+
+    async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
+        let rpath = cmd.proposal.rpath();
+        let service = self
+            .find_or_restart_service(
+                rpath.group_id(),
+                rpath.dec_id(),
+                rpath.rpath(),
+                &None,
+                false,
+            )
+            .await?;
+
+        let result = ExecuteResult {
+            result_state_id: cmd.result_state_id.take(),
+            receipt: cmd.receipt.take(),
+            context: cmd.context.take(),
+        };
+
+        service
+            .on_commited(&cmd.proposal, &cmd.prev_state_id, &result, &cmd.block)
+            .await;
+        Ok(())
+    }
+
+    async fn find_or_restart_service(
+        &self,
+        group_id: &ObjectId,
+        dec_id: &ObjectId,
+        rpath: &str,
+        with_block: &Option<GroupConsensusBlock>,
+        is_new: bool,
+    ) -> BuckyResult<RPathService> {
+        if dec_id != self.0.stack.dec_id().unwrap() {
+            let msg = format!(
+                "try find proposal in different dec {:?}, expected: {:?}",
+                dec_id,
+                self.0.stack.dec_id().unwrap()
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        {
+            let services = self.0.services.read().await;
+            let found = services
+                .get(group_id)
+                .and_then(|by_dec| by_dec.get(dec_id))
+                .and_then(|by_rpath| by_rpath.get(rpath));
+
+            if let Some(found) = found {
+                return Ok(found.clone());
+            }
+        }
+
         match self.0.delegate_factory.as_ref() {
             Some(factory) => {
-                let group_id = &cmd.group_id;
-                let dec_id = self.0.stack.dec_id().unwrap();
-                let rpath = cmd.rpath.as_str();
-
-                {
-                    let services = self.0.services.read().await;
-                    let found = services
-                        .get(group_id)
-                        .and_then(|by_dec| by_dec.get(dec_id))
-                        .and_then(|by_rpath| by_rpath.get(rpath));
-
-                    if found.is_some() {
-                        return Ok(());
-                    }
-                }
-
                 let delegate = factory
-                    .create_rpath_delegate(&cmd.group_id, &cmd.rpath, cmd.with_block.as_ref())
+                    .create_rpath_delegate(group_id, rpath, with_block.as_ref(), is_new)
                     .await?;
 
                 let new_service = {
@@ -245,145 +340,15 @@ impl GroupManager {
                     if is_new {
                         service.clone()
                     } else {
-                        return Ok(());
+                        return Ok(service.clone());
                     }
                 };
 
                 new_service.start().await;
-                Ok(())
+                Ok(new_service.clone())
             }
             None => Err(BuckyError::new(BuckyErrorCode::Reject, "is not service")),
         }
-    }
-
-    async fn on_execute(&self, cmd: GroupCommandExecute) -> BuckyResult<GroupCommandExecuteResult> {
-        let group_id = cmd.proposal.rpath().group_id();
-        let dec_id = self.0.stack.dec_id().unwrap();
-        let rpath = cmd.proposal.rpath().rpath();
-
-        if cmd.proposal.rpath().dec_id() != dec_id {
-            let msg = format!(
-                "try execute proposal in different dec {:?}, expected: {:?}",
-                cmd.proposal.rpath().dec_id(),
-                dec_id
-            );
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
-        let service = {
-            let services = self.0.services.read().await;
-            let found = services
-                .get(group_id)
-                .and_then(|by_dec| by_dec.get(dec_id))
-                .and_then(|by_rpath| by_rpath.get(rpath));
-
-            match found {
-                Some(found) => found.clone(),
-                None => {
-                    let msg = format!("try execute proposal in not exist rpath {}", rpath);
-                    log::warn!("{}", msg);
-                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                }
-            }
-        };
-
-        let mut result = service
-            .on_execute(&cmd.proposal, &cmd.prev_state_id)
-            .await?;
-
-        Ok(GroupCommandExecuteResult {
-            result_state_id: result.result_state_id.take(),
-            receipt: result.receipt.take(),
-            context: result.context.take(),
-        })
-    }
-
-    async fn on_verify(&self, mut cmd: GroupCommandVerify) -> BuckyResult<()> {
-        let group_id = cmd.proposal.rpath().group_id();
-        let dec_id = self.0.stack.dec_id().unwrap();
-        let rpath = cmd.proposal.rpath().rpath();
-
-        if cmd.proposal.rpath().dec_id() != dec_id {
-            let msg = format!(
-                "try verify proposal in different dec {:?}, expected: {:?}",
-                cmd.proposal.rpath().dec_id(),
-                dec_id
-            );
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
-        let service = {
-            let services = self.0.services.read().await;
-            let found = services
-                .get(group_id)
-                .and_then(|by_dec| by_dec.get(dec_id))
-                .and_then(|by_rpath| by_rpath.get(rpath));
-
-            match found {
-                Some(found) => found.clone(),
-                None => {
-                    let msg = format!("try verify proposal in not exist rpath {}", rpath);
-                    log::warn!("{}", msg);
-                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                }
-            }
-        };
-
-        let result = ExecuteResult {
-            result_state_id: cmd.result_state_id.take(),
-            receipt: cmd.receipt.take(),
-            context: cmd.context.take(),
-        };
-
-        service
-            .on_verify(&cmd.proposal, &cmd.prev_state_id, &result)
-            .await
-    }
-
-    async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
-        let group_id = cmd.proposal.rpath().group_id();
-        let dec_id = self.0.stack.dec_id().unwrap();
-        let rpath = cmd.proposal.rpath().rpath();
-
-        if cmd.proposal.rpath().dec_id() != dec_id {
-            let msg = format!(
-                "try commited proposal in different dec {:?}, expected: {:?}",
-                cmd.proposal.rpath().dec_id(),
-                dec_id
-            );
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
-        let service = {
-            let services = self.0.services.read().await;
-            let found = services
-                .get(group_id)
-                .and_then(|by_dec| by_dec.get(dec_id))
-                .and_then(|by_rpath| by_rpath.get(rpath));
-
-            match found {
-                Some(found) => found.clone(),
-                None => {
-                    let msg = format!("try commited proposal in not exist rpath {}", rpath);
-                    log::warn!("{}", msg);
-                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                }
-            }
-        };
-
-        let result = ExecuteResult {
-            result_state_id: cmd.result_state_id.take(),
-            receipt: cmd.receipt.take(),
-            context: cmd.context.take(),
-        };
-
-        service
-            .on_commited(&cmd.proposal, &cmd.prev_state_id, &result, &cmd.block)
-            .await;
-        Ok(())
     }
 }
 
