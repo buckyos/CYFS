@@ -1,6 +1,6 @@
 use super::helper::*;
-use crate::archive::ObjectArchiveRootsMeta;
 use crate::data::*;
+use crate::meta::ObjectArchiveDataSeriesMeta;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
@@ -75,7 +75,7 @@ impl RootObjectBackup {
         }
     }
 
-    pub async fn run(&self) -> BuckyResult<ObjectArchiveRootsMeta> {
+    pub async fn run(&self) -> BuckyResult<ObjectArchiveDataSeriesMeta> {
         let dec_id = ObjectId::default();
         let dec_root = ObjectId::default();
 
@@ -119,12 +119,7 @@ impl RootObjectBackup {
         drop(helper);
 
         let dec_meta = backup_meta.into_inner();
-        let roots_meta = ObjectArchiveRootsMeta {
-            data: dec_meta.data,
-            error: dec_meta.error,
-            missing: dec_meta.missing,
-        };
 
-        Ok(roots_meta)
+        Ok(dec_meta.meta)
     }
 }

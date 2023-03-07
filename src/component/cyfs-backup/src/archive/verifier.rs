@@ -1,4 +1,4 @@
-use super::meta::*;
+use super::index::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -29,7 +29,7 @@ impl ObjectArchiveVerifier {
         Self { root }
     }
 
-    pub async fn verify(&self, meta: &ObjectArchiveMeta) -> BuckyResult<ObjectArchiveVerifyResult> {
+    pub async fn verify(&self, meta: &ObjectArchiveIndex) -> BuckyResult<ObjectArchiveVerifyResult> {
         let objects = self.verify_file_list(&meta.object_files).await?;
         let chunks = self.verify_file_list(&meta.chunk_files).await?;
 

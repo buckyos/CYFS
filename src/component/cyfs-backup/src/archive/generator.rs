@@ -1,5 +1,5 @@
 use super::file_meta::ArchiveInnerFileMeta;
-use super::meta::*;
+use super::index::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 pub struct ObjectArchiveGenerator {
     root: PathBuf,
-    meta: ObjectArchiveMeta,
+    index: ObjectArchiveIndex,
     size_limit: u64,
 
     object_writer: ObjectPackRollWriter,
@@ -33,7 +33,7 @@ impl ObjectArchiveGenerator {
 
         Self {
             root,
-            meta: ObjectArchiveMeta::new(id, format),
+            index: ObjectArchiveIndex::new(id, format),
             size_limit,
 
             object_writer,
@@ -42,13 +42,9 @@ impl ObjectArchiveGenerator {
     }
 
     pub fn clone_empty(&self) -> Self {
-        Self::new(self.meta.id, self.meta.format, self.root.clone(), self.size_limit)
+        Self::new(self.index.id, self.index.format, self.root.clone(), self.size_limit)
     }
-    
-    pub fn add_isolate_meta(&mut self, isolate_meta: ObjectArchiveIsolateMeta) {
-        self.meta.add_isolate(isolate_meta);
-    }
-    
+
     pub async fn add_data(
         &mut self,
         object_id: &ObjectId,
@@ -101,19 +97,19 @@ impl ObjectArchiveGenerator {
         Ok(meta_data)
     }
 
-    pub async fn finish(mut self) -> BuckyResult<ObjectArchiveMeta> {
+    pub async fn finish(mut self) -> BuckyResult<ObjectArchiveIndex> {
         self.object_writer.finish().await?;
         self.chunk_writer.finish().await?;
 
         let object_files = self.object_writer.into_file_list();
         let chunk_files = self.chunk_writer.into_file_list();
 
-        self.meta.object_files = object_files;
-        self.meta.chunk_files = chunk_files;
+        self.index.object_files = object_files;
+        self.index.chunk_files = chunk_files;
 
-        let meta_file = self.root.join("index");
-        self.meta.save(&meta_file).await?;
+        let index_file = self.root.join("index");
+        self.index.save(&index_file).await?;
 
-        Ok(self.meta)
+        Ok(self.index)
     }
 }

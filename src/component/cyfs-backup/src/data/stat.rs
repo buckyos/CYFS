@@ -1,5 +1,6 @@
 use super::writer::*;
 use crate::archive::*;
+use crate::meta::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::AsyncReadWithSeek;
@@ -13,7 +14,7 @@ pub struct ObjectArchiveStatMeta {
     pub time: String,
     
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
-    pub roots: ObjectArchiveRootsMeta,
+    pub roots: ObjectArchiveDataSeriesMeta,
 }
 
 impl ObjectArchiveStatMeta {
@@ -25,7 +26,7 @@ impl ObjectArchiveStatMeta {
             id,
             time,
             isolates: vec![],
-            roots: ObjectArchiveRootsMeta::default(),
+            roots: ObjectArchiveDataSeriesMeta::default(),
         }
     }
 

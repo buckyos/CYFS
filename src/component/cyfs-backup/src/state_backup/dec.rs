@@ -1,9 +1,8 @@
 use super::helper::*;
-use crate::archive::ObjectArchiveDecMeta;
 use crate::data::BackupDataWriterRef;
+use crate::meta::ObjectArchiveDecMeta;
 use cyfs_base::*;
 use cyfs_lib::*;
-
 
 #[derive(Clone)]
 pub struct DecStateBackup {

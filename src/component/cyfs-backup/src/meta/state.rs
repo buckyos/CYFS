@@ -1,56 +1,26 @@
-use crate::object_pack::*;
+use super::data::*;
 use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
+use std::ops::DerefMut;
 use std::path::Path;
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveDataMeta {
-    pub count: u64,
-    pub bytes: u64,
-}
-
-impl Default for ObjectArchiveDataMeta {
-    fn default() -> Self {
-        Self { count: 0, bytes: 0 }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveDataMetas {
-    pub objects: ObjectArchiveDataMeta,
-    pub chunks: ObjectArchiveDataMeta,
-}
-
-impl Default for ObjectArchiveDataMetas {
-    fn default() -> Self {
-        Self {
-            objects: ObjectArchiveDataMeta::default(),
-            chunks: ObjectArchiveDataMeta::default(),
-        }
-    }
-}
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveDecMeta {
     pub dec_id: ObjectId,
     pub dec_root: ObjectId,
 
-    pub data: ObjectArchiveDataMetas,
-    pub missing: ObjectArchiveDataMetas,
-    pub error: ObjectArchiveDataMetas,
+    pub meta: ObjectArchiveDataSeriesMeta,
 }
 
 impl ObjectArchiveDecMeta {
-    pub fn new(dec_id: ObjectId,dec_root: ObjectId,) -> Self {
+    pub fn new(dec_id: ObjectId, dec_root: ObjectId) -> Self {
         Self {
             dec_id,
             dec_root,
 
-            data: ObjectArchiveDataMetas::default(),
-            missing: ObjectArchiveDataMetas::default(),
-            error: ObjectArchiveDataMetas::default(),
+            meta: ObjectArchiveDataSeriesMeta::default(),
         }
     }
 }
@@ -58,13 +28,10 @@ impl ObjectArchiveDecMeta {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveIsolateMeta {
     isolate_id: ObjectId,
-    decs: Vec<ObjectArchiveDecMeta>,
     root: ObjectId,
     revision: u64,
 
-    data: ObjectArchiveDataMetas,
-    missing: ObjectArchiveDataMetas,
-    error: ObjectArchiveDataMetas,
+    decs: Vec<ObjectArchiveDecMeta>,
 }
 
 impl ObjectArchiveIsolateMeta {
@@ -74,10 +41,6 @@ impl ObjectArchiveIsolateMeta {
             decs: vec![],
             root,
             revision,
-
-            data: ObjectArchiveDataMetas::default(),
-            missing: ObjectArchiveDataMetas::default(),
-            error: ObjectArchiveDataMetas::default(),
         }
     }
 
@@ -93,35 +56,16 @@ impl ObjectArchiveIsolateMeta {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveRootsMeta {
-    pub data: ObjectArchiveDataMetas,
-    pub missing: ObjectArchiveDataMetas,
-    pub error: ObjectArchiveDataMetas,
-}
-
-impl Default for ObjectArchiveRootsMeta {
-    fn default() -> Self {
-        Self {
-            data: ObjectArchiveDataMetas::default(),
-            missing: ObjectArchiveDataMetas::default(),
-            error: ObjectArchiveDataMetas::default(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveMeta {
+pub struct ObjectArchiveStateMeta {
     pub id: u64,
     pub time: String,
-    pub format: ObjectPackFormat,
+
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
-    pub roots: ObjectArchiveRootsMeta,
-    pub object_files: Vec<ObjectPackFileInfo>,
-    pub chunk_files: Vec<ObjectPackFileInfo>,
+    pub roots: ObjectArchiveDataSeriesMeta,
 }
 
-impl ObjectArchiveMeta {
-    pub fn new(id: u64, format: ObjectPackFormat) -> Self {
+impl ObjectArchiveStateMeta {
+    pub fn new(id: u64) -> Self {
         let datetime = chrono::offset::Local::now();
         // let time = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
         let time = format!("{:?}", datetime);
@@ -129,11 +73,8 @@ impl ObjectArchiveMeta {
         Self {
             id,
             time,
-            format,
             isolates: vec![],
-            roots: ObjectArchiveRootsMeta::default(),
-            object_files: vec![],
-            chunk_files: vec![],
+            roots: ObjectArchiveDataSeriesMeta::default(),
         }
     }
 
@@ -202,17 +143,34 @@ impl ObjectArchiveMeta {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ObjectArchiveDataType {
-    Object,
-    Chunk,
+#[derive(Clone)]
+pub struct ObjectArchiveStateMetaHolder {
+    meta: Arc<Mutex<ObjectArchiveStateMeta>>,
 }
 
-impl ObjectArchiveDataType {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Object => "object",
-            Self::Chunk => "chunk",
+impl ObjectArchiveStateMetaHolder {
+    pub fn new(id: u64) -> Self {
+        let meta = ObjectArchiveStateMeta::new(id);
+
+        Self {
+            meta: Arc::new(Mutex::new(meta)),
         }
+    }
+
+    pub fn add_isolate_meta(&self, isolate_meta: ObjectArchiveIsolateMeta) {
+        let mut archive = self.meta.lock().unwrap();
+        archive.add_isolate(isolate_meta);
+    }
+
+    pub fn finish(&self) -> ObjectArchiveStateMeta {
+        let meta = {
+            let mut meta = self.meta.lock().unwrap();
+            let mut empty_meta = ObjectArchiveStateMeta::new(meta.id);
+            std::mem::swap(meta.deref_mut(), &mut empty_meta);
+
+            empty_meta
+        };
+
+        meta
     }
 }

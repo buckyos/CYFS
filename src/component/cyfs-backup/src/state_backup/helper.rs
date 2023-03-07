@@ -1,4 +1,4 @@
-use crate::archive::ObjectArchiveDecMeta;
+use crate::meta::ObjectArchiveDecMeta;
 use crate::data::BackupDataWriterRef;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -24,38 +24,22 @@ impl ObjectArchiveDecMetaHolder {
 
     fn on_error(&self, id: &ObjectId) {
         let mut meta = self.meta.lock().unwrap();
-        if id.is_chunk_id() {
-            let chunk_id = id.as_chunk_id();
-            meta.error.chunks.bytes += chunk_id.len() as u64;
-            meta.error.chunks.count += 1;
-        } else {
-            meta.error.objects.count += 1;
-        }
+        meta.meta.on_error(id)
     }
 
     fn on_missing(&self, id: &ObjectId) {
         let mut meta = self.meta.lock().unwrap();
-        if id.is_chunk_id() {
-            let chunk_id = id.as_chunk_id();
-            meta.missing.chunks.bytes += chunk_id.len() as u64;
-            meta.missing.chunks.count += 1;
-        } else {
-            meta.missing.objects.count += 1;
-        }
+        meta.meta.on_missing(id)
     }
 
     fn on_object(&self, object: &NONObjectInfo) {
         let mut meta = self.meta.lock().unwrap();
-
-        meta.data.objects.count += 1;
-        meta.data.objects.bytes += object.object_raw.len() as u64;
+        meta.meta.on_object(object.object_raw.len());
     }
 
     fn on_chunk(&self, chunk_id: &ChunkId) {
         let mut meta = self.meta.lock().unwrap();
-
-        meta.data.chunks.bytes += chunk_id.len() as u64;
-        meta.data.chunks.count += 1;
+        meta.meta.on_chunk(chunk_id)
     }
 }
 

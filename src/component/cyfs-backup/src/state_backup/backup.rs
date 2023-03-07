@@ -2,6 +2,7 @@ use super::roots::*;
 use super::state::GlobalStateBackup;
 use crate::archive::*;
 use crate::data::*;
+use crate::meta::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -24,7 +25,7 @@ pub struct GlobalStateBackupParams {
     pub filter: GlobalStateBackupFilter,
 }
 
-pub struct BackupManager {
+pub struct StateBackupManager {
     id: u64,
     root: PathBuf,
     format: ObjectPackFormat,
@@ -36,7 +37,7 @@ pub struct BackupManager {
     meta_manager: GlobalStateMetaManagerRawProcessorRef,
 }
 
-impl BackupManager {
+impl StateBackupManager {
     pub fn new(
         id: u64,
         root: PathBuf,
@@ -58,10 +59,13 @@ impl BackupManager {
         }
     }
 
-    pub async fn backup(&self, params: GlobalStateBackupParams) -> BuckyResult<ObjectArchiveMeta> {
+    pub async fn backup(
+        &self,
+        params: GlobalStateBackupParams,
+    ) -> BuckyResult<(ObjectArchiveIndex, ObjectArchiveStateMeta)> {
         let backup_dir = self.root.join(format!("{}", self.id));
 
-        let data_writer = BackupDataLocalFileWriter::new(
+        let data_writer = StateBackupDataLocalFileWriter::new(
             self.id,
             self.default_isolate.clone(),
             backup_dir,
@@ -73,7 +77,7 @@ impl BackupManager {
 
         let root_meta = self.run(params, writer).await?;
 
-        let mut meta = data_writer.finish().await.map_err(|e| {
+        let (index, mut meta) = data_writer.finish().await.map_err(|e| {
             let msg = format!("backup but finish failed! {}", e);
             error!("{}", msg);
             BuckyError::new(e.code(), msg)
@@ -81,7 +85,7 @@ impl BackupManager {
 
         meta.roots = root_meta;
 
-        Ok(meta)
+        Ok((index, meta))
     }
 
     pub async fn stat(
@@ -108,7 +112,7 @@ impl BackupManager {
         &self,
         params: GlobalStateBackupParams,
         data_writer: BackupDataWriterRef,
-    ) -> BuckyResult<ObjectArchiveRootsMeta> {
+    ) -> BuckyResult<ObjectArchiveDataSeriesMeta> {
         info!("will backup root state: id={}", self.id);
 
         let state_backup = GlobalStateBackup::new(
@@ -119,7 +123,7 @@ impl BackupManager {
             self.meta_manager.clone(),
         );
         state_backup.run(params).await?;
-        
+
         info!("backup root state complete! id={}", self.id);
 
         info!("will backup all root objects: id={}", self.id);

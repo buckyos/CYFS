@@ -1,5 +1,5 @@
 use super::file_meta::ArchiveInnerFileMeta;
-use super::meta::*;
+use super::index::*;
 use super::verifier::*;
 use crate::object_pack::*;
 use cyfs_base::*;
@@ -14,7 +14,7 @@ pub struct ObjectArchiveInnerFile {
 
 pub struct ObjectArchiveSerializeLoader {
     root: PathBuf,
-    meta: ObjectArchiveMeta,
+    index: ObjectArchiveIndex,
 
     object_reader: ObjectPackSerializeReader,
     chunk_reader: ObjectPackSerializeReader,
@@ -29,16 +29,16 @@ impl ObjectArchiveSerializeLoader {
         }
 
         // First load index into meta
-        let meta_file = root.join("index");
-        let meta = ObjectArchiveMeta::load(&meta_file).await?;
+        let index_file = root.join("index");
+        let index = ObjectArchiveIndex::load(&index_file).await?;
 
         let object_reader =
-            ObjectPackSerializeReader::new(meta.format, root.clone(), meta.object_files.clone());
+            ObjectPackSerializeReader::new(index.format, root.clone(), index.object_files.clone());
         let chunk_reader =
-            ObjectPackSerializeReader::new(meta.format, root.clone(), meta.chunk_files.clone());
+            ObjectPackSerializeReader::new(index.format, root.clone(), index.chunk_files.clone());
         let ret = Self {
             root,
-            meta,
+            index,
             object_reader,
             chunk_reader,
         };
@@ -46,13 +46,13 @@ impl ObjectArchiveSerializeLoader {
         Ok(ret)
     }
 
-    pub fn meta(&self) -> &ObjectArchiveMeta {
-        &self.meta
+    pub fn index(&self) -> &ObjectArchiveIndex {
+        &self.index
     }
 
     pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
         ObjectArchiveVerifier::new(self.root.clone())
-            .verify(&self.meta)
+            .verify(&self.index)
             .await
     }
 
