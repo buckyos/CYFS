@@ -16,6 +16,7 @@ cyfs-bdt-ext = { path = "../../component/cyfs-bdt-ext" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-group = { path = "../../component/cyfs-group" }
+cyfs-group-lib = { path = "../../component/cyfs-group-lib" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
