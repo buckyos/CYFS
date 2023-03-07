@@ -13,6 +13,7 @@ use http_types::{Method, Request, Url};
 use crate::{
     output_request::GroupStartServiceOutputRequest,
     processor::{GroupOutputProcessor, GroupOutputProcessorRef},
+    GroupPushProposalOutputResponse, GroupStartServiceOutputResponse,
 };
 
 #[derive(Clone)]
@@ -37,7 +38,7 @@ impl GroupRequestor {
     }
 
     pub fn clone_processor(&self) -> GroupOutputProcessorRef {
-        Arc::new(self.clone())
+        Arc::new(Box::new(self.clone()))
     }
 
     fn encode_common_headers(
@@ -70,7 +71,7 @@ impl GroupRequestor {
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
     }
 
-    fn make_default_common(dec_id: ObjectId) -> NONOutputRequestCommon {
+    pub(crate) fn make_default_common(dec_id: ObjectId) -> NONOutputRequestCommon {
         NONOutputRequestCommon {
             req_path: None,
             source: None,
@@ -81,21 +82,23 @@ impl GroupRequestor {
         }
     }
 
-    pub async fn start_group_service(&self, rpath: &GroupRPath) -> BuckyResult<()> {
+    pub async fn start_service(
+        &self,
+        req_common: NONOutputRequestCommon,
+        group_id: &ObjectId,
+        rpath: &str,
+    ) -> BuckyResult<GroupStartServiceOutputResponse> {
         log::info!("will start group service: {:?}", rpath);
 
         let url = self.service_url.join("start-service").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
         let req = GroupStartServiceOutputRequest {
-            group_id: rpath.group_id().clone(),
-            rpath: rpath.rpath().to_string(),
+            group_id: group_id.clone(),
+            rpath: rpath.to_string(),
         };
 
-        self.encode_common_headers(
-            &Self::make_default_common(rpath.dec_id().clone()),
-            &mut http_req,
-        );
+        self.encode_common_headers(&req_common, &mut http_req);
         let body = req.encode_string();
         http_req.set_body(body);
 
@@ -123,7 +126,7 @@ impl GroupRequestor {
 
                 log::debug!("group start service success");
 
-                Ok(())
+                Ok(GroupStartServiceOutputResponse {})
             }
             code @ _ => {
                 let e = RequestorHelper::error_from_resp(&mut resp).await;
@@ -138,7 +141,11 @@ impl GroupRequestor {
         }
     }
 
-    pub async fn push_proposal(&self, proposal: &GroupProposal) -> BuckyResult<()> {
+    pub async fn push_proposal(
+        &self,
+        req_common: NONOutputRequestCommon,
+        proposal: &GroupProposal,
+    ) -> BuckyResult<GroupPushProposalOutputResponse> {
         let proposal_id = proposal.desc().object_id();
         log::info!(
             "will push proposal: {:?}, {}",
@@ -149,10 +156,7 @@ impl GroupRequestor {
         let url = self.service_url.join("push-proposal").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
-        self.encode_common_headers(
-            &Self::make_default_common(proposal.rpath().dec_id().clone()),
-            &mut http_req,
-        );
+        self.encode_common_headers(&req_common, &mut http_req);
 
         NONRequestorHelper::encode_object_info(
             &mut http_req,
@@ -189,7 +193,7 @@ impl GroupRequestor {
                     proposal_id
                 );
 
-                Ok(())
+                Ok(GroupPushProposalOutputResponse {})
             }
             code @ _ => {
                 let e = RequestorHelper::error_from_resp(&mut resp).await;
@@ -207,4 +211,20 @@ impl GroupRequestor {
 }
 
 #[async_trait::async_trait]
-impl GroupOutputProcessor for GroupRequestor {}
+impl GroupOutputProcessor for GroupRequestor {
+    async fn start_service(
+        &self,
+        req_common: NONOutputRequestCommon,
+        req: GroupStartServiceOutputRequest,
+    ) -> BuckyResult<GroupStartServiceOutputResponse> {
+        GroupRequestor::start_service(self, req_common, &req.group_id, req.rpath.as_str()).await
+    }
+
+    async fn push_proposal(
+        &self,
+        req_common: NONOutputRequestCommon,
+        req: GroupProposal,
+    ) -> BuckyResult<GroupPushProposalOutputResponse> {
+        GroupRequestor::push_proposal(self, req_common, &req).await
+    }
+}
