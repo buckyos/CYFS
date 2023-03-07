@@ -146,5 +146,6 @@ module.exports = {
     sdk,
     installer,
     metas,
-    misc
+    misc,
+    step_file: "curstep"
 }

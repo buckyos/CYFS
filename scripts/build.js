@@ -1,7 +1,6 @@
 const fs = require('fs')
 const build_util = require('./build_util')
 const build_config = require('./build_config')
-const child_process = require('child_process');
 
 // build_util.reflesh_cargo();
 
@@ -18,25 +17,13 @@ if (!fs.existsSync('Cargo.toml')) {
     console.error('cannot find Cargo.toml in cwd! check working dir')
 }
 
-function prepare_bash(base_path, dirs) {
-    child_process.execSync(`bash -c "rm -rf ${base_path}"`);
-    child_process.execSync(`bash -c "mkdir ${base_path} -p"`);
-    for (const dir of dirs) {
-        child_process.execSync(`bash -c "cp -r -f ${dir} ${base_path}/"`);
-    }
-}
-
 function build(catalogy, need_pack, need_bin) {
-    try{fs.rmSync(`dist/${catalogy}`, {recursive: true, force: true})}catch(error){}
+    fs.rmSync(build_config.step_file, {force: true, maxRetries: 3})
+    fs.rmSync(`dist/${catalogy}`, {recursive: true, force: true})
     if (build_config[catalogy] === undefined) {
         console.error(`build catalogy ${catalogy} not exists in config`)
         return
     }
-    /*
-    if (process.argv[2].includes("unknown-linux")) {
-        // 这里拷贝rust_src下的必要文件到bash的文件夹下
-        prepare_bash("~/workspace/ffs", ["3rd", "component", "service", "tests", "tools", "Cargo.toml", "Cargo.lock"])
-    }*/
 
     for (const prog of build_config[catalogy]) {
         for (const target of targets) {
