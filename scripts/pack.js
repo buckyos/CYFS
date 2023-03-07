@@ -24,7 +24,7 @@ const step_file_name = "curstep"
 
 let processing = {};
 if (fs.existsSync(step_file_name)) {
-    processing = JSON.parse(fs.readFileSync(processing_name))
+    processing = JSON.parse(fs.readFileSync(step_file_name))
 }
 
 function set_step(service_name, step, arg) {
