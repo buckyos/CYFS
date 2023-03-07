@@ -32,6 +32,8 @@ impl RPathClient {
         &self.0.rpath
     }
 
+    // post proposal to the admins, it's same as calling to non.post_object with default parameters;
+    // and you can call the non.post_object with more parameters.
     pub async fn post_proposal(
         &self,
         proposal: &GroupProposal,
