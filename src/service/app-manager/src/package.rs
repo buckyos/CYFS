@@ -51,8 +51,8 @@ impl AppPackage {
         let service_path = target_path.join("service");
         // 下载service文件，/cyfs/tmp/app/{appid}/service.dl
         let service_pkg_path = target_path.join("service").with_extension("dl");
-        let service_file_num = Self::download_service(dir, owner, client, &service_pkg_path).await?;
-        if service_file_num > 0 {
+        let service_exists = Self::download_service(dir, owner, client, &service_pkg_path).await?;
+        if service_exists {
             // 解压service zip文件到tmp目录,/cyfs/tmp/app/{appid}/service
             info!("extract app service {} to {}", service_pkg_path.display(), service_path.display());
             Self::extract(&service_pkg_path, &service_path)?;
@@ -89,24 +89,34 @@ impl AppPackage {
         Ok(())
     }
 
-    pub async fn download_acl(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<usize> {
-        Self::download_files(dir, owner, client, "acl", target_path).await
+    pub async fn download_acl(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<bool> {
+        Self::download_files(dir, owner, client, "acl", target_path).await.map(|size|size > 0)
     }
 
-    pub async fn download_service(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<usize> {
+    pub async fn download_service(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<bool> {
         let system_config = get_system_config();
         let target = system_config.target.clone();
         //拼app service的inner_path，当前为"service/{target}.zip"
         let service_inner_path = format!("service/{}.zip", &target);
-        Self::download_files(dir, owner, client, &service_inner_path, target_path).await
+        Self::download_files(dir, owner, client, &service_inner_path, target_path).await.map(|size|size > 0)
     }
 
-    pub async fn download_web(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<usize> {
-        Self::download_files(dir, owner, client, "web", target_path).await
+    pub async fn download_web(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<bool> {
+        // 先尝试下载web.zip文件
+        let web_zip_tmp_path = get_temp_path().join(format!("{}-web.zip", dir));
+        if Self::download_files(dir, owner, client, "web.zip", &web_zip_tmp_path).await? == 1 {
+            // 如果有，这里解压
+            info!("extract app web {} to {}", web_zip_tmp_path.display(), target_path.display());
+            Self::extract(&web_zip_tmp_path, &target_path)?;
+            Ok(true)
+        } else {
+            Self::download_files(dir, owner, client, "web", target_path).await.map(|size|size > 0)
+        }
+
     }
 
-    pub async fn download_dep(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<usize> {
-        Self::download_files(dir, owner, client, "dependent", target_path).await
+    pub async fn download_dep(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<bool> {
+        Self::download_files(dir, owner, client, "dependent", target_path).await.map(|size|size > 0)
     }
 
     // 下载一个文件夹
@@ -128,22 +138,14 @@ impl AppPackage {
     pub fn extract(pkg_path: &Path, target_folder: &Path) -> BuckyResult<()> {
         if target_folder.is_dir() {
             fs::remove_dir_all(target_folder).map_err(|e| {
-                error!(
-                    "remove target_folder failed! path={}, err={}",
-                    target_folder.display(),
-                    e
-                );
+                error!("remove target_folder failed! path={}, err={}", target_folder.display(), e);
                 e
             })?;
             info!("remove exists target_folder success! dir={}", target_folder.display());
         }
 
         fs::create_dir_all(target_folder).map_err(|e| {
-            error!(
-                "create target_folder failed! path={}, err={}",
-                target_folder.display(),
-                e
-            );
+            error!("create target_folder failed! path={}, err={}", target_folder.display(), e);
             e
         })?;
 
