@@ -9,6 +9,7 @@ use crate::acl::AclManagerRef;
 use crate::app::AuthenticatedAppList;
 use crate::config::StackGlobalConfig;
 use crate::events::RouterEventsManager;
+use crate::group_api::GroupService;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
 use crate::rmeta_api::GlobalStateMetaService;
@@ -18,7 +19,7 @@ use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::{RequestProtocol, BrowserSanboxMode};
+use cyfs_lib::{BrowserSanboxMode, RequestProtocol};
 
 use cyfs_debug::Mutex;
 use std::net::SocketAddr;
@@ -131,6 +132,7 @@ impl ObjectListenerManager {
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
         global_state_meta: &GlobalStateMetaService,
+        group_service: &GroupService,
     ) {
         assert!(self.listeners.is_empty());
 
@@ -151,6 +153,7 @@ impl ObjectListenerManager {
                 global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
+                group_service,
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
@@ -172,18 +175,14 @@ impl ObjectListenerManager {
                 global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
+                group_service,
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
             let http_server = match config.get_stack_params().front.browser_mode {
                 BrowserSanboxMode::None => http_server.into(),
-                mode @ _ => {
-                    BrowserSanboxHttpServer::new(
-                        http_server.into(),
-                        mode,
-                    ).into()
-                }
+                mode @ _ => BrowserSanboxHttpServer::new(http_server.into(), mode).into(),
             };
             self.http_tcp_server = Some(http_server);
         }
@@ -202,6 +201,7 @@ impl ObjectListenerManager {
                 global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
+                group_service,
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());

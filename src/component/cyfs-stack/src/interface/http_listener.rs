@@ -1,6 +1,7 @@
 use crate::acl::AclManagerRef;
 use crate::crypto_api::*;
 use crate::front::{FrontProtocolHandler, FrontRequestHandlerEndpoint};
+use crate::group_api::{GroupRequestHandler, GroupRequestHandlerEndpoint, GroupService};
 use crate::name::NameResolver;
 use crate::ndn_api::*;
 use crate::non_api::*;
@@ -75,6 +76,7 @@ impl ObjectHttpListener {
         global_state_meta: &GlobalStateMetaService,
         name_resolver: &NameResolver,
         zone_manager: &ZoneManagerRef,
+        group_service: &GroupService,
     ) -> Self {
         let mut server = new_server();
 
@@ -219,6 +221,15 @@ impl ObjectHttpListener {
         // trans service
         let handler = TransRequestHandler::new(services.trans_service.clone_processor());
         TransRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            &handler,
+            &mut server,
+        );
+
+        // group manager
+        let handler = GroupRequestHandler::new(group_service.clone_processor());
+        GroupRequestHandlerEndpoint::register_server(
             zone_manager,
             &protocol,
             &handler,

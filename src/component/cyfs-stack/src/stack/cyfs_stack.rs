@@ -10,6 +10,7 @@ use crate::crypto_api::{CryptoService, ObjectCrypto, ObjectVerifier};
 use crate::events::RouterEventsManager;
 use crate::forward::ForwardProcessorManager;
 use crate::front::FrontService;
+use crate::group_api::GroupService;
 use crate::interface::{
     ObjectListenerManager, ObjectListenerManagerParams, ObjectListenerManagerRef,
 };
@@ -105,7 +106,7 @@ pub struct CyfsStackImpl {
     global_state_meta: GlobalStateMetaService,
 
     // group
-    group_manager: GroupManager,
+    group_service: GroupService,
 }
 
 impl CyfsStackImpl {
@@ -434,6 +435,8 @@ impl CyfsStackImpl {
             bdt_stack.clone(),
             global_state_manager.clone_processor(),
         )?;
+        let group_service =
+            GroupService::new(forward_manager.clone(), zone_manager.clone(), group_manager);
 
         let mut stack = Self {
             config,
@@ -471,7 +474,7 @@ impl CyfsStackImpl {
 
             acl_manager,
 
-            group_manager,
+            group_service,
         };
 
         // init an system-dec router-handler processor for later use
@@ -561,6 +564,7 @@ impl CyfsStackImpl {
             &stack.root_state,
             &stack.local_cache,
             &stack.global_state_meta,
+            &stack.group_service,
         );
 
         let interface = Arc::new(interface);
@@ -1160,8 +1164,8 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
-    pub fn group_mgr(&self) -> &GroupManager {
-        &self.stack.group_manager
+    pub fn group_service(&self) -> &GroupService {
+        &self.stack.group_service
     }
 
     // use system dec as default dec
