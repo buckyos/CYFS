@@ -1,6 +1,4 @@
-use super::local::ArchiveLocalFileWriter;
-use super::log::BackupLogManager;
-use super::writer::*;
+use crate::data::*;
 use crate::archive::*;
 use crate::meta::*;
 use crate::object_pack::*;
@@ -35,7 +33,7 @@ impl StateBackupDataLocalFileWriter {
             })?;
         }
 
-        let log = BackupLogManager::new(default_isolate, log_dir);
+        let log = BackupLogManager::new(Some(default_isolate), log_dir);
         let meta = ObjectArchiveStateMetaHolder::new(id);
 
         let archive = ArchiveLocalFileWriter::new(id, root, format, archive_file_max_size)?;

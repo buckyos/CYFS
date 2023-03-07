@@ -1,5 +1,6 @@
 use super::roots::*;
 use super::state::GlobalStateBackup;
+use super::writer::StateBackupDataLocalFileWriter;
 use crate::archive::*;
 use crate::data::*;
 use crate::meta::*;

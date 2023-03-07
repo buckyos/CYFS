@@ -315,3 +315,7 @@ pub trait NamedDataCache: Sync + Send + 'static {
     // for internal use only
     async fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse>;
 }
+
+use std::sync::Arc;
+
+pub type NamedDataCacheRef = Arc<Box<dyn NamedDataCache>>;
