@@ -4,7 +4,7 @@ use cyfs_base::{
     BuckyError, BuckyResult, JsonCodec, NamedObject, ObjectDesc, ObjectId, RawConvertTo,
     CYFS_API_LEVEL,
 };
-use cyfs_core::{GroupProposal, GroupProposalObject, GroupRPath};
+use cyfs_core::{GroupProposal, GroupProposalObject};
 use cyfs_lib::{
     HttpRequestorRef, NONObjectInfo, NONOutputRequestCommon, NONRequestorHelper, RequestorHelper,
 };
@@ -116,7 +116,7 @@ impl GroupRequestor {
                     BuckyError::from(msg)
                 })?;
 
-                // let resp = TransCreateTaskOutputResponse::decode_string(&body).map_err(|e| {
+                // let resp = GroupStartServiceOutputResponse::decode_string(&body).map_err(|e| {
                 //     error!(
                 //         "decode group start service resp from body string error: body={} {}",
                 //         body, e,
@@ -179,9 +179,9 @@ impl GroupRequestor {
                     BuckyError::from(msg)
                 })?;
 
-                // let resp = TransCreateTaskOutputResponse::decode_string(&body).map_err(|e| {
+                // let resp = GroupPushProposalOutputResponse::decode_string(&body).map_err(|e| {
                 //     error!(
-                //         "decode group start service resp from body string error: body={} {}",
+                //         "decode group push proposal resp from body string error: body={} {}",
                 //         body, e,
                 //     );
                 //     e
