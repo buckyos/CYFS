@@ -1,6 +1,7 @@
-use crate::meta::*;
+use crate::{archive::ArchiveInnerFileMeta, meta::*};
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::AsyncReadWithSeek;
 
 use async_std::sync::Arc;
 
@@ -20,6 +21,15 @@ pub trait BackupDataWriter: Send + Sync {
         isolate_id: Option<&ObjectId>,
         dec_id: Option<&ObjectId>,
         chunk_id: &ChunkId,
+    ) -> BuckyResult<()>;
+
+    async fn add_chunk_data(
+        &self,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
+        chunk_id: &ChunkId,
+        data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()>;
 
     async fn on_error(

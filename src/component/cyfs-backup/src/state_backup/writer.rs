@@ -1,11 +1,12 @@
-use crate::data::*;
 use crate::archive::*;
+use crate::data::*;
 use crate::meta::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::AsyncReadWithSeek;
 
-use async_std::sync::{Arc};
+use async_std::sync::Arc;
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -86,9 +87,28 @@ impl BackupDataWriter for StateBackupDataLocalFileWriter {
                     .add_chunk(chunk_id.to_owned(), data, None)
                     .await
             }
-            Ok(None) => self.on_missing(isolate_id, dec_id, chunk_id.as_object_id()).await,
-            Err(e) => self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e).await,
+            Ok(None) => {
+                self.on_missing(isolate_id, dec_id, chunk_id.as_object_id())
+                    .await
+            }
+            Err(e) => {
+                self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e)
+                    .await
+            }
         }
+    }
+
+    async fn add_chunk_data(
+        &self,
+        _isolate_id: Option<&ObjectId>,
+        _dec_id: Option<&ObjectId>,
+        chunk_id: &ChunkId,
+        data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        meta: Option<ArchiveInnerFileMeta>,
+    ) -> BuckyResult<()> {
+        self.archive
+            .add_chunk(chunk_id.to_owned(), data, meta)
+            .await
     }
 
     async fn on_error(

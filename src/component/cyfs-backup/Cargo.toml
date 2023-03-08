@@ -31,6 +31,7 @@ prost = { version = '0.9.0' }
 protobuf = { version = '2', features = ['with-bytes'] }
 file-rotate = "0.7"
 chrono = '0.4'
+walkdir = "2.3"
 
 [dev-dependencies]
 rand = "0.8"

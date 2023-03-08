@@ -1,7 +1,8 @@
 use super::writer::*;
-use crate::meta::*;
+use crate::{meta::*, archive::ArchiveInnerFileMeta};
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::AsyncReadWithSeek;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -170,6 +171,17 @@ impl BackupDataWriter for BackupDataStatWriter {
         _isolate_id: Option<&ObjectId>,
         _dec_id: Option<&ObjectId>,
         chunk_id: &ChunkId,
+    ) -> BuckyResult<()> {
+        Self::add_chunk(&self, chunk_id).await
+    }
+
+    async fn add_chunk_data(
+        &self,
+        _isolate_id: Option<&ObjectId>,
+        _dec_id: Option<&ObjectId>,
+        chunk_id: &ChunkId,
+        _data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        _meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
         Self::add_chunk(&self, chunk_id).await
     }
