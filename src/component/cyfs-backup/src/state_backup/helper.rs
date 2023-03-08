@@ -1,5 +1,5 @@
-use crate::meta::ObjectArchiveDecMeta;
 use crate::data::BackupDataWriterRef;
+use crate::meta::ObjectArchiveDecMeta;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -144,13 +144,17 @@ impl ObjectTraverserHandler for ObjectTraverserHelper {
     async fn on_error(&self, id: &ObjectId, e: BuckyError) -> BuckyResult<()> {
         self.backup_meta.on_error(id);
 
-        self.data_writer.on_error(self.isolate_id.as_ref(), self.dec_id.as_ref(), id, e).await
+        self.data_writer
+            .on_error(self.isolate_id.as_ref(), self.dec_id.as_ref(), id, e)
+            .await
     }
 
     async fn on_missing(&self, id: &ObjectId) -> BuckyResult<()> {
         self.backup_meta.on_missing(id);
 
-        self.data_writer.on_missing(self.isolate_id.as_ref(), self.dec_id.as_ref(), id).await
+        self.data_writer
+            .on_missing(self.isolate_id.as_ref(), self.dec_id.as_ref(), id)
+            .await
     }
 
     async fn on_object(
@@ -168,14 +172,8 @@ impl ObjectTraverserHandler for ObjectTraverserHelper {
     async fn on_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
         self.backup_meta.on_chunk(chunk_id);
 
-        match self.loader.get_chunk(chunk_id).await {
-            Ok(Some(data)) => {
-                self.data_writer
-                    .add_chunk(chunk_id.to_owned(), data, None)
-                    .await
-            }
-            Ok(None) => self.on_missing(chunk_id.as_object_id()).await,
-            Err(e) => self.on_error(chunk_id.as_object_id(), e).await,
-        }
+        self.data_writer
+            .add_chunk(self.isolate_id.as_ref(), self.dec_id.as_ref(), chunk_id)
+            .await
     }
 }

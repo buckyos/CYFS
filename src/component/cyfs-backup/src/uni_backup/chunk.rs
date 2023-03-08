@@ -51,22 +51,6 @@ impl UniChunkBackup {
     }
 
     async fn on_chunk(&self, chunk_id: ChunkId) -> BuckyResult<()> {
-        let ret = self.loader.get_chunk(&chunk_id).await.map_err(|e| {
-            let msg = format!("backup load chunk failed! id={}, {}", chunk_id, e);
-            error!("{}", msg);
-            BuckyError::new(e.code(), msg)
-        })?;
-
-        if ret.is_none() {
-            warn!("backup chunk missing! root={}", chunk_id);
-            self.data_writer
-                .on_missing(None, None, chunk_id.as_object_id())
-                .await?;
-
-            return Ok(());
-        }
-
-        let data = ret.unwrap();
-        self.data_writer.add_chunk(chunk_id, data, None).await
+        self.data_writer.add_chunk(None, None, &chunk_id).await
     }
 }
