@@ -30,7 +30,7 @@ pub struct StateBackupManager {
     id: u64,
     root: PathBuf,
     format: ObjectPackFormat,
-    default_isolate: ObjectId,
+    state_default_isolate: ObjectId,
 
     noc: NamedObjectCacheRef,
     state_manager: GlobalStateManagerRawProcessorRef,
@@ -42,7 +42,7 @@ impl StateBackupManager {
     pub fn new(
         id: u64,
         root: PathBuf,
-        default_isolate: ObjectId,
+        state_default_isolate: ObjectId,
         noc: NamedObjectCacheRef,
         state_manager: GlobalStateManagerRawProcessorRef,
         loader: ObjectTraverserLoaderRef,
@@ -51,7 +51,7 @@ impl StateBackupManager {
         Self {
             id,
             format: ObjectPackFormat::Zip,
-            default_isolate,
+            state_default_isolate,
             root,
             noc,
             state_manager,
@@ -68,7 +68,7 @@ impl StateBackupManager {
 
         let data_writer = StateBackupDataLocalFileWriter::new(
             self.id,
-            self.default_isolate.clone(),
+            self.state_default_isolate.clone(),
             backup_dir,
             self.format,
             1024 * 1024 * 128,

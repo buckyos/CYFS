@@ -34,7 +34,8 @@ pub struct UniBackupParams {
 }
 
 pub struct BackupManager {
-    default_isolate: ObjectId,
+    isolate: String,
+    state_default_isolate: ObjectId,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
     state_manager: GlobalStateManagerRawProcessorRef,
@@ -44,7 +45,8 @@ pub struct BackupManager {
 
 impl BackupManager {
     pub fn new(
-        default_isolate: ObjectId,
+        isolate: &str,
+        state_default_isolate: ObjectId,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         state_manager: GlobalStateManagerRawProcessorRef,
@@ -53,7 +55,8 @@ impl BackupManager {
     ) -> Self {
         let loader = ObjectTraverserLocalLoader::new(noc.clone(), chunk_reader).into_reader();
         Self {
-            default_isolate,
+            isolate: isolate.to_owned(),
+            state_default_isolate,
             noc,
             ndc,
             state_manager,
@@ -100,7 +103,7 @@ impl BackupManager {
         }
 
         let keydata_meta = {
-            let keydata = KeyDataManager::new_uni();
+            let keydata = KeyDataManager::new_uni(&self.isolate);
             let keydata_backup = KeyDataBackupManager::new(keydata, data_writer);
 
             keydata_backup.run().await.map_err(|e| {
@@ -113,10 +116,10 @@ impl BackupManager {
         let (index, uni_meta) = uni_data_writer.finish().await?;
 
         let backup_meta = ObjectArchiveMetaForUniBackup::new(params.id, uni_meta, keydata_meta);
-        
+
         index.save(&backup_dir).await?;
         backup_meta.save(&backup_dir).await?;
-        
+
         Ok(())
     }
 }

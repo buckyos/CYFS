@@ -30,13 +30,13 @@ impl BackupLogFile {
 }
 
 pub struct BackupLogManager {
-    default_isolate: Option<ObjectId>,
+    state_default_isolate: Option<ObjectId>,
     error: Mutex<BackupLogFile>,
     missing: Mutex<BackupLogFile>,
 }
 
 impl BackupLogManager {
-    pub fn new(default_isolate: Option<ObjectId>, dir: PathBuf) -> Self {
+    pub fn new(state_default_isolate: Option<ObjectId>, dir: PathBuf) -> Self {
         let file = dir.join("error.log");
         let error = BackupLogFile::new(file);
 
@@ -44,7 +44,7 @@ impl BackupLogManager {
         let missing = BackupLogFile::new(file);
 
         Self {
-            default_isolate,
+            state_default_isolate,
             error: Mutex::new(error),
             missing: Mutex::new(missing),
         }
@@ -60,7 +60,7 @@ impl BackupLogManager {
         let msg = match isolate_id {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
-                if self.default_isolate == Some(*isolate_id) {
+                if self.state_default_isolate == Some(*isolate_id) {
                     format!("[{}] [{}] {}", dec_id, id, e)
                 } else {
                     format!("[{}] [{}] [{}] {}", isolate_id, dec_id, id, e)
@@ -83,7 +83,7 @@ impl BackupLogManager {
         let msg = match isolate_id {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
-                if self.default_isolate == Some(*isolate_id) {
+                if self.state_default_isolate == Some(*isolate_id) {
                     format!("[{}] [{}]", dec_id, id,)
                 } else {
                     format!("[{}] [{}] [{}]", isolate_id, dec_id, id)

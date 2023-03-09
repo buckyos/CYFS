@@ -20,7 +20,7 @@ pub struct StateBackupDataLocalFileWriter {
 impl StateBackupDataLocalFileWriter {
     pub fn new(
         id: u64,
-        default_isolate: ObjectId,
+        state_default_isolate: ObjectId,
         root: PathBuf,
         format: ObjectPackFormat,
         archive_file_max_size: u64,
@@ -35,7 +35,7 @@ impl StateBackupDataLocalFileWriter {
             })?;
         }
 
-        let log = BackupLogManager::new(Some(default_isolate), log_dir);
+        let log = BackupLogManager::new(Some(state_default_isolate), log_dir);
         let meta = ObjectArchiveStateMetaHolder::new(id);
 
         let archive = ArchiveLocalFileWriter::new(id, root, format, archive_file_max_size)?;

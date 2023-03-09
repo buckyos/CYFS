@@ -8,5 +8,7 @@ mod object_pack;
 mod state_backup;
 mod uni_backup;
 
+pub use backup::*;
+
 #[macro_use]
 extern crate log;

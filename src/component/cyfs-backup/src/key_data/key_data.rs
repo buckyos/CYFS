@@ -1,5 +1,6 @@
 use crate::meta::KeyDataType;
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
@@ -9,16 +10,16 @@ pub struct KeyData {
 }
 
 impl KeyData {
-    pub fn new_file(path: &str) -> Self {
+    pub fn new_file(local_path: impl Into<String>) -> Self {
         Self {
-            local_path: path.to_owned(),
+            local_path: local_path.into(),
             data_type: KeyDataType::File,
         }
     }
 
-    pub fn new_dir(path: &str) -> Self {
+    pub fn new_dir(local_path: impl Into<String>) -> Self {
         Self {
-            local_path: path.to_owned(),
+            local_path: local_path.into(),
             data_type: KeyDataType::Dir,
         }
     }
@@ -30,27 +31,39 @@ pub struct KeyDataManager {
 }
 
 impl KeyDataManager {
-    pub fn new_uni() -> Self {
+    pub fn new_uni(isolate: &str) -> Self {
         let mut list = vec![];
         let data = KeyData::new_dir("etc");
         list.push(data);
 
-        let data = KeyData::new_file("data/named-object-cache/meta.db");
+        let data_dir = if isolate.is_empty() {
+            Cow::Borrowed("data")
+        } else {
+            Cow::Owned(format!("data/{}", isolate))
+        };
+
+        let data = KeyData::new_file(format!("{}/named-object-cache/meta.db", data_dir));
         list.push(data);
 
-        let data = KeyData::new_file("data/named-data-cache/data.db");
+        let data = KeyData::new_file(format!("{}/named-data-cache/data.db", data_dir));
         list.push(data);
 
-        let data = KeyData::new_file("data/task-manager/data.db");
+        let data = KeyData::new_file(format!("{}/task-manager/data.db", data_dir));
         list.push(data);
 
-        let data = KeyData::new_file("data/tracker-cache/data.db");
+        let data = KeyData::new_file(format!("{}/tracker-cache/data.db", data_dir));
         list.push(data);
 
-        let data = KeyData::new_file("data/tracker-cache/trans.db");
+        let data = KeyData::new_file(format!("{}/tracker-cache/trans.db", data_dir));
         list.push(data);
 
-        let data = KeyData::new_file("data/chunk-cache/default/cache.meta");
+        let chunk_cache_dir = if isolate.is_empty() {
+            "default"
+        } else {
+            isolate
+        };
+
+        let data = KeyData::new_file(format!("data/chunk-cache/{}/cache.meta", chunk_cache_dir));
         list.push(data);
 
         let cyfs_root = cyfs_util::get_cyfs_root_path();
