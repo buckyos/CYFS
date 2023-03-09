@@ -1,4 +1,3 @@
-use bollard::{API_DEFAULT_VERSION, Docker};
 use cyfs_base::*;
 use cyfs_util::*;
 use flate2::write::GzEncoder;
@@ -6,20 +5,14 @@ use flate2::Compression;
 use futures_util::stream::StreamExt;
 use log::*;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use bollard::image::BuildImageOptions;
 use tar::Header;
-// use bollard::container::*;
 use crate::docker_network_manager::*;
-use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions,
-    StartContainerOptions, StopContainerOptions,
-};
-use bollard::image::{BuildImageOptions, ListImagesOptions};
-use bollard::models::*;
-use bollard::volume::{CreateVolumeOptions, RemoveVolumeOptions};
 
 #[derive(Debug)]
 pub struct RunConfig {
@@ -90,8 +83,8 @@ fg %1"#;
 /// RUN apt update -y && apt install -y nodejs
 const BASE_DOCKER_FILE: &'static str = "
 FROM alexsunxl/cyfs-base
-ADD app /opt/app
-ADD start.sh /opt/start.sh
+ADD ${app_path} /opt/app
+ADD ${start_sh_path} /opt/start.sh
 ENTRYPOINT [\"bash\", \"/opt/start.sh\"]";
 
 /// ---
@@ -187,9 +180,22 @@ pub fn prepare(id: &str, version: &str, executable: Option<Vec<String>>) -> Buck
     Ok(())
 }
 
-fn get_dockerfile_gz_path(id: &str, version: &str) -> BuckyResult<PathBuf> {
+fn run_docker(args: Vec<&str>) -> BuckyResult<Child> {
+    let args_str = args.join(" ".as_ref()).to_string_lossy();
+    info!("will spawn cmd: docker {}", args_str);
+    let mut cmd = Command::new("docker");
+    cmd.args(args);
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+
+    return Ok(cmd.spawn().map_err(|e| {
+        error!("spawn cmd: docker {} err {}", args_str, e);
+        e
+    })?);
+}
+
+fn get_dockerfile_gz_path(id: &str, version: &str) -> PathBuf {
     let target = get_app_dockerfile_dir(&id).join(format!("Dockerfile_{}.tar.gz", version));
-    Ok(target)
+    target
 }
 
 fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
@@ -282,34 +288,22 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
 }
 
 pub struct DockerApi {
-    docker: Docker,
+
 }
 
 impl DockerApi {
     pub fn new() -> DockerApi {
-        #[cfg(unix)]
-            let path = "unix:///var/run/docker.sock";
-        #[cfg(windows)]
-            let path = "npipe:////./pipe/docker_engine";
-        let docker = Docker::connect_with_socket(path, 300, API_DEFAULT_VERSION).unwrap();
-        DockerApi { docker }
+        DockerApi { }
     }
 
     /// # get_network_id
     /// 获取network id. container 的启动config里，除了network的名字还需要id
     pub fn get_network_id(network_name: &str) -> BuckyResult<String> {
         let name_filter = format!("name={}", network_name);
-        info!(
-            "get_network_id cmd: docker network network ls --filter {:?}  --no-trunc",
-            name_filter
-        );
-        let output = Command::new("docker")
-            .args(["network", "ls", "--filter", &name_filter, "--no-trunc"])
-            .output()
-            .map_err(|e| {
-                error!("get_network_id cmd error {:?}", e);
-                BuckyError::new(BuckyErrorCode::Failed, "get_network_id cmd error")
-            })?;
+        let output = run_docker(vec!["network", "ls", "--filter", &name_filter, "--no-trunc"])?.wait_with_output().map_err(|e| {
+            error!("get_network_id cmd error {:?}", e);
+            e
+        })?;
 
         if output.status.success() {
             let stdout = String::from_utf8(output.stdout).unwrap();
@@ -325,24 +319,17 @@ impl DockerApi {
                 "docker ls network get id failed",
             ))
         }
-        // Ok("".to_string())
     }
 
     pub fn get_network_gateway_ip() -> BuckyResult<String> {
         // docker network inspect --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' cyfs_br
-        info!("get_network_id cmd: docker network inspect --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' {:?}", CYFS_BRIDGE_NAME);
-        let output = Command::new("docker")
-            .args([
-                "network",
-                "inspect",
-                "--format='{{range .IPAM.Config}}{{.Gateway}}{{end}}'",
-                CYFS_BRIDGE_NAME,
-            ])
-            .output()
-            .map_err(|e| {
-                error!("get_network_id cmd error {:?}", e);
-                BuckyError::new(BuckyErrorCode::Failed, "get_network_id cmd error")
-            })?;
+        let output = run_docker(vec!["network",
+                                     "inspect",
+                                     "--format='{{range .IPAM.Config}}{{.Gateway}}{{end}}'",
+                                     CYFS_BRIDGE_NAME])?.wait_with_output().map_err(|e| {
+            error!("get_network_gateway_ip cmd error {:?}", e);
+            e
+        })?;
 
         if output.status.success() {
             let stdout = String::from_utf8(output.stdout).unwrap();
@@ -375,9 +362,10 @@ impl DockerApi {
     // 安装 镜像
     async fn _install(&self, id: &str, version: &str) -> BuckyResult<()> {
         info!("docker build image start {} {}", id, version);
-
         // build options
         let name = format!("decapp-{}:{}", id.to_lowercase(), version);
+        // docker build -f Dockerfile --force-rm --rm -t {name}
+
         let build_image_options = BuildImageOptions {
             dockerfile: "Dockerfile",
             t: &name,
@@ -387,7 +375,7 @@ impl DockerApi {
             ..Default::default()
         };
 
-        let dockerfile_gz_path = get_dockerfile_gz_path(&id, &version)?;
+        let dockerfile_gz_path = get_dockerfile_gz_path(&id, &version);
         let mut file = File::open(dockerfile_gz_path)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap(); // 这里阻塞的去全量读取buffer可能有点性能问题，不过先不管了
