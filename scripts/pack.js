@@ -2,7 +2,7 @@ const fs = require('fs')
 const child_process = require('child_process');
 const targets = process.argv[2].split(";")
 const type = process.argv[3].split(";")
-const { apps, services } = require('./build_config')
+const { apps, services, step_file } = require('./build_config')
 const path = require('path');
 const assert = require('assert');
 
@@ -20,16 +20,14 @@ const PublishStep = {
     Finish: 4
 }
 
-const step_file_name = "curstep"
-
 let processing = {};
-if (fs.existsSync(step_file_name)) {
-    processing = JSON.parse(fs.readFileSync(processing_name))
+if (fs.existsSync(step_file)) {
+    processing = JSON.parse(fs.readFileSync(step_file))
 }
 
 function set_step(service_name, step, arg) {
     processing[service_name] = {step: step, arg: arg};
-    fs.writeFileSync(step_file_name, JSON.stringify(processing))
+    fs.writeFileSync(step_file, JSON.stringify(processing))
 }
 
 function get_step_arg(service_name, step) {
@@ -229,7 +227,7 @@ async function run() {
 }
 
 run().then(() => {
-    fs.rmSync(step_file_name, {force: true, maxRetries: 3})
+    fs.rmSync(step_file, {force: true, maxRetries: 3})
     process.exit(0)
 })
 
