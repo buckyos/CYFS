@@ -140,6 +140,7 @@ impl LocalTransService {
                     source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
+                    flags: 0,
                 })
                 .await?
             {
@@ -199,6 +200,7 @@ impl LocalTransService {
                     source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
+                    flags: 0,
                 })
                 .await?
             {
@@ -545,6 +547,7 @@ impl LocalTransService {
             source: source.clone(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {

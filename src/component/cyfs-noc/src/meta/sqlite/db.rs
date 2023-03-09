@@ -654,14 +654,16 @@ impl SqliteMetaStorage {
                     )
                     .await?;
 
-                // Update the last access info
-                let update_req = NamedObjectMetaUpdateLastAccessRequest {
-                    object_id: req.object_id.clone(),
-                    last_access_time: bucky_time_now(),
-                    last_access_rpath: req.last_access_rpath.clone(),
-                };
+                if !req.is_no_update_last_access() {
+                    // Update the last access info
+                    let update_req = NamedObjectMetaUpdateLastAccessRequest {
+                        object_id: req.object_id.clone(),
+                        last_access_time: bucky_time_now(),
+                        last_access_rpath: req.last_access_rpath.clone(),
+                    };
 
-                let _ = self.update_last_access(&update_req);
+                    let _ = self.update_last_access(&update_req);
+                }
 
                 Ok(Some(data))
             }

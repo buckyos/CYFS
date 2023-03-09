@@ -764,6 +764,7 @@ impl ZoneManager {
             object_id: object_id.clone(),
             source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
+            flags: 0,
         };
         if let Ok(Some(obj)) = self.noc.get_object(&req).await {
             debug!("get object from noc: {}", object_id);

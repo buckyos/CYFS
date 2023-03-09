@@ -94,6 +94,7 @@ async fn test_noc() {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         last_access_rpath: Some("/test/dec1".to_owned()),
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await.unwrap();
@@ -126,6 +127,7 @@ async fn test_noc() {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await.unwrap();
@@ -158,6 +160,7 @@ async fn test_noc() {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     if let Err(e) = noc.get_object(&get_req).await {
@@ -182,6 +185,7 @@ async fn test_noc() {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await;
@@ -258,6 +262,7 @@ async fn test_error_blob() {
         source,
         object_id: object_id.clone(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let resp = noc.get_object(&get_req).await.unwrap();

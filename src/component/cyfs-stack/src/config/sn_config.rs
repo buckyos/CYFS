@@ -219,6 +219,7 @@ impl SNConfigManager {
             source: RequestSourceInfo::new_local_system(),
             object_id: id.clone(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {

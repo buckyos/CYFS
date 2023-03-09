@@ -61,13 +61,13 @@ impl BackupLogManager {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
                 if self.state_default_isolate == Some(*isolate_id) {
-                    format!("[{}] [{}] {}", dec_id, id, e)
+                    format!("[{}] [{}] {}\n", dec_id, id, e)
                 } else {
-                    format!("[{}] [{}] [{}] {}", isolate_id, dec_id, id, e)
+                    format!("[{}] [{}] [{}] {}\n", isolate_id, dec_id, id, e)
                 }
             }
             None => {
-                format!("[{}] {}", id, e)
+                format!("[{}] {}\n", id, e)
             }
         };
 
@@ -84,13 +84,13 @@ impl BackupLogManager {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
                 if self.state_default_isolate == Some(*isolate_id) {
-                    format!("[{}] [{}]", dec_id, id,)
+                    format!("[{}] [{}]\n", dec_id, id,)
                 } else {
-                    format!("[{}] [{}] [{}]", isolate_id, dec_id, id)
+                    format!("[{}] [{}] [{}]\n", isolate_id, dec_id, id)
                 }
             }
             None => {
-                format!("[{}]", id)
+                format!("[{}]\n", id)
             }
         };
 

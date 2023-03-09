@@ -283,6 +283,7 @@ impl DeviceInfoManagerImpl {
             object_id: device_id.object_id().clone(),
             source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&req).await? {

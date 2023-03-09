@@ -361,6 +361,7 @@ impl ZoneContainer {
                 source: RequestSourceInfo::new_local_system(),
                 object_id: zone_id,
                 last_access_rpath: None,
+                flags: 0,
             };
 
             match self.noc.get_object(&req).await {

@@ -27,12 +27,14 @@ impl ObjectTraverserLoader for ObjectTraverserLocalLoader {
         &self,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<ObjectTraverserLoaderObjectData>> {
-        let req = NamedObjectCacheGetObjectRequest {
+        let mut req = NamedObjectCacheGetObjectRequest {
             source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
-
+        req.set_no_update_last_access();
+        
         match self.noc.get_object(&req).await {
             Ok(Some(data)) => {
                 let ret = ObjectTraverserLoaderObjectData {

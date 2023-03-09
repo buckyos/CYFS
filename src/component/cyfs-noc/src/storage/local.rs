@@ -310,6 +310,7 @@ impl NamedObjectLocalStorage {
             source: req.source.clone(),
             object_id: req.object_id.clone(),
             last_access_rpath: req.last_access_rpath.clone(),
+            flags: req.flags,
         };
 
         let meta_ret = self.meta.get_object(&meta_req).await?;

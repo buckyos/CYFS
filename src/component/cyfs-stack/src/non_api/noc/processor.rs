@@ -219,6 +219,7 @@ impl NOCLevelInputProcessor {
             source: req.common.source,
             object_id: req.object_id.clone(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {

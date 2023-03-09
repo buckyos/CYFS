@@ -329,6 +329,7 @@ impl BuildFileTask {
                     last_access_rpath: None,
                     source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
                     object_id: query_ret.unwrap().file_id.object_id().clone(),
+                    flags: 0,
                 })
                 .await?;
             if let Some(file) = file {
@@ -602,7 +603,7 @@ mod build_file_task_test {
             todo!();
         }
     }
-    
+
     async fn gen_random_file(local_path: &Path) {
         if local_path.exists() {
             assert!(local_path.is_file());

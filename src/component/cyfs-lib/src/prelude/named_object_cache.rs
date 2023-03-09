@@ -87,6 +87,8 @@ impl NamedObjectCacheUpdateObjectMetaRequest {
     }
 }
 
+pub const NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS: u32 = 0x01;
+
 // get_object
 #[derive(Clone)]
 pub struct NamedObjectCacheGetObjectRequest {
@@ -95,6 +97,18 @@ pub struct NamedObjectCacheGetObjectRequest {
     pub object_id: ObjectId,
 
     pub last_access_rpath: Option<String>,
+
+    pub flags: u32,
+}
+
+impl NamedObjectCacheGetObjectRequest {
+    pub fn set_no_update_last_access(&mut self) {
+        self.flags |= NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS;
+    }
+    
+    pub fn is_no_update_last_access(&self) -> bool {
+        self.flags & NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS == NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS
+    }
 }
 
 #[derive(Clone, Debug)]

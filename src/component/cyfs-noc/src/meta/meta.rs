@@ -98,7 +98,16 @@ pub struct NamedObjectMetaGetObjectRequest {
     pub object_id: ObjectId,
 
     pub last_access_rpath: Option<String>,
+
+    pub flags: u32,
 }
+
+impl NamedObjectMetaGetObjectRequest {
+    pub fn is_no_update_last_access(&self) -> bool {
+        self.flags & NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS == NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS
+    }
+}
+
 // update_last_access
 #[derive(Clone, Debug)]
 pub struct NamedObjectMetaUpdateLastAccessRequest {

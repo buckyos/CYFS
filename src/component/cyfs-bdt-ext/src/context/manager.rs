@@ -200,6 +200,7 @@ impl ContextManager {
             object_id: id.to_owned(),
             source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {
