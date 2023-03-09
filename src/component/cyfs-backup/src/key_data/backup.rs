@@ -1,6 +1,7 @@
 use super::key_data::*;
 use super::zip_helper::ZipHelper;
 use crate::data::*;
+use crate::meta::{KeyDataMeta, KeyDataType};
 use cyfs_base::*;
 use cyfs_util::AsyncReadWithSeek;
 

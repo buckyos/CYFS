@@ -78,3 +78,16 @@ impl ObjectArchiveDataSeriesMeta {
         self.data.chunks.count += 1;
     }
 }
+
+#[derive(Clone, Debug, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum KeyDataType {
+    File,
+    Dir,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KeyDataMeta {
+    pub local_path: String,
+    pub data_type: KeyDataType,
+    pub chunk_id: ChunkId,
+}

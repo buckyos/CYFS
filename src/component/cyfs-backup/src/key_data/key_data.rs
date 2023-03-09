@@ -1,13 +1,5 @@
-use cyfs_base::*;
+use crate::meta::KeyDataType;
 
-use serde::{Deserialize, Serialize};
-
-
-#[derive(Clone, Debug, Copy, Eq, PartialEq, Serialize, Deserialize)]
-pub enum KeyDataType {
-    File,
-    Dir,
-}
 
 #[derive(Clone, Debug)]
 pub struct KeyData {
@@ -63,11 +55,4 @@ impl KeyDataManager {
             list,
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct KeyDataMeta {
-    pub local_path: String,
-    pub data_type: KeyDataType,
-    pub chunk_id: ChunkId,
 }
