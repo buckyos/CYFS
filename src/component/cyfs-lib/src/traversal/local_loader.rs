@@ -4,6 +4,8 @@ use cyfs_base::*;
 use cyfs_bdt::ChunkReaderRef;
 use cyfs_util::AsyncReadWithSeek;
 
+use std::sync::Arc;
+
 pub struct ObjectTraverserLocalLoader {
     noc: NamedObjectCacheRef,
     chunk_store: ChunkReaderRef,
@@ -12,6 +14,10 @@ pub struct ObjectTraverserLocalLoader {
 impl ObjectTraverserLocalLoader {
     pub fn new(noc: NamedObjectCacheRef, chunk_store: ChunkReaderRef) -> Self {
         Self { noc, chunk_store }
+    }
+
+    pub fn into_reader(self) -> ObjectTraverserLoaderRef {
+        Arc::new(Box::new(self))
     }
 }
 

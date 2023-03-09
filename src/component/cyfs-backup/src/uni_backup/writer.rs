@@ -1,4 +1,3 @@
-
 use crate::archive::ArchiveInnerFileMeta;
 use crate::archive::ObjectArchiveIndex;
 use crate::data::*;
@@ -8,7 +7,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::AsyncReadWithSeek;
 
-use async_std::sync::{Arc};
+use async_std::sync::Arc;
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -73,6 +72,7 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         object_raw: &[u8],
         meta: Option<&NamedObjectMetaData>,
     ) -> BuckyResult<()> {
+        self.meta.on_object(object_raw.len());
         self.archive.add_object(object_id, object_raw, meta).await
     }
 
@@ -84,12 +84,21 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
     ) -> BuckyResult<()> {
         match self.loader.get_chunk(chunk_id).await {
             Ok(Some(data)) => {
+                self.meta.on_chunk(chunk_id);
                 self.archive
                     .add_chunk(chunk_id.to_owned(), data, None)
                     .await
             }
-            Ok(None) => self.on_missing(isolate_id, dec_id, chunk_id.as_object_id()).await,
-            Err(e) => self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e).await,
+            Ok(None) => {
+                self.meta.on_missing(chunk_id.as_object_id());
+                self.on_missing(isolate_id, dec_id, chunk_id.as_object_id())
+                    .await
+            }
+            Err(e) => {
+                self.meta.on_error(chunk_id.as_object_id());
+                self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e)
+                    .await
+            }
         }
     }
 
@@ -101,11 +110,12 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
+        self.meta.on_chunk(chunk_id);
         self.archive
             .add_chunk(chunk_id.to_owned(), data, meta)
             .await
     }
-    
+
     async fn on_error(
         &self,
         isolate_id: Option<&ObjectId>,
@@ -113,6 +123,7 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         id: &ObjectId,
         e: BuckyError,
     ) -> BuckyResult<()> {
+        self.meta.on_error(id);
         self.log.on_error(isolate_id, dec_id, id, e);
 
         Ok(())
@@ -124,6 +135,7 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         dec_id: Option<&ObjectId>,
         id: &ObjectId,
     ) -> BuckyResult<()> {
+        self.meta.on_missing(id);
         self.log.on_missing(isolate_id, dec_id, id);
 
         Ok(())

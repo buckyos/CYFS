@@ -29,13 +29,14 @@ impl ObjectArchiveIndex {
         }
     }
 
-    pub async fn load(meta_file: &Path) -> BuckyResult<Self> {
-        let s = async_std::fs::read_to_string(meta_file)
+    pub async fn load(dir: &Path) -> BuckyResult<Self> {
+        let index_file = dir.join("index");
+        let s = async_std::fs::read_to_string(&index_file)
             .await
             .map_err(|e| {
                 let msg = format!(
                     "load meta info from file failed! file={}, {}",
-                    meta_file.display(),
+                    index_file.display(),
                     e
                 );
                 error!("{}", msg);
@@ -45,7 +46,7 @@ impl ObjectArchiveIndex {
         let ret: Self = serde_json::from_str(&s).map_err(|e| {
             let msg = format!(
                 "invalid meta info format! file={}, meta={}, {}",
-                meta_file.display(),
+                index_file.display(),
                 s,
                 e,
             );
@@ -56,12 +57,13 @@ impl ObjectArchiveIndex {
         Ok(ret)
     }
 
-    pub async fn save(&self, meta_file: &Path) -> BuckyResult<()> {
-        let meta = serde_json::to_string_pretty(&self).unwrap();
-        async_std::fs::write(&meta_file, meta).await.map_err(|e| {
+    pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
+        let index_file = dir.join("index");
+        let data = serde_json::to_string_pretty(&self).unwrap();
+        async_std::fs::write(&index_file, data).await.map_err(|e| {
             let msg = format!(
-                "write meta info to file failed! file={}, {}",
-                meta_file.display(),
+                "write backup index info to file failed! file={}, {}",
+                index_file.display(),
                 e
             );
             error!("{}", msg);

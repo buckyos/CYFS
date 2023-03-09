@@ -1,9 +1,8 @@
+use super::{data::KeyDataMeta, state::ObjectArchiveStateMeta, ObjectArchiveUniMeta};
 use cyfs_base::*;
-use super::data::KeyDataMeta;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
@@ -11,27 +10,28 @@ pub struct ObjectArchiveMeta<T> {
     pub time: String,
 
     pub object: T,
-    pub key_data: Vec<KeyDataMeta>
+    pub key_data: Vec<KeyDataMeta>,
 }
 
 impl<T> ObjectArchiveMeta<T>
 where
-    T: Default + std::fmt::Debug + Serialize + for<'de> Deserialize<'de>,
+    T: std::fmt::Debug + Serialize + for<'de> Deserialize<'de>,
 {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: u64, object: T, key_data: Vec<KeyDataMeta>) -> Self {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 
         Self {
             id,
             time,
-            object: T::default(),
-            key_data: vec![],
+            object,
+            key_data,
         }
     }
 
-    pub async fn load(meta_file: &Path) -> BuckyResult<Self> {
-        let s = async_std::fs::read_to_string(meta_file)
+    pub async fn load(dir: &Path) -> BuckyResult<Self> {
+        let meta_file = dir.join("meta");
+        let s = async_std::fs::read_to_string(&meta_file)
             .await
             .map_err(|e| {
                 let msg = format!(
@@ -57,11 +57,12 @@ where
         Ok(ret)
     }
 
-    pub async fn save(&self, meta_file: &Path) -> BuckyResult<()> {
+    pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
+        let meta_file = dir.join("meta");
         let meta = serde_json::to_string_pretty(&self).unwrap();
         async_std::fs::write(&meta_file, meta).await.map_err(|e| {
             let msg = format!(
-                "write meta info to file failed! file={}, {}",
+                "write backup meta info to file failed! file={}, {}",
                 meta_file.display(),
                 e
             );
@@ -72,3 +73,6 @@ where
         Ok(())
     }
 }
+
+pub type ObjectArchiveMetaForUniBackup = ObjectArchiveMeta<ObjectArchiveUniMeta>;
+pub type ObjectArchiveMetaForStateBackup = ObjectArchiveMeta<ObjectArchiveStateMeta>;

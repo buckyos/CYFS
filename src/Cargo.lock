@@ -1483,6 +1483,7 @@ dependencies = [
  "byteorder",
  "chrono",
  "cyfs-base",
+ "cyfs-bdt",
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",

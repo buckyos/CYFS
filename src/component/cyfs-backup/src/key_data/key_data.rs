@@ -1,5 +1,6 @@
 use crate::meta::KeyDataType;
 
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub struct KeyData {
@@ -24,6 +25,7 @@ impl KeyData {
 }
 
 pub struct KeyDataManager {
+    pub cyfs_root: PathBuf,
     pub list: Vec<KeyData>,
 }
 
@@ -51,8 +53,7 @@ impl KeyDataManager {
         let data = KeyData::new_file("data/chunk-cache/default/cache.meta");
         list.push(data);
 
-        Self {
-            list,
-        }
+        let cyfs_root = cyfs_util::get_cyfs_root_path();
+        Self { cyfs_root, list }
     }
 }

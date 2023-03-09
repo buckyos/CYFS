@@ -7,17 +7,17 @@ use cyfs_util::AsyncReadWithSeek;
 
 use std::path::PathBuf;
 
-pub struct KeyDataBackup {
+pub struct KeyDataBackupManager {
     cyfs_root: PathBuf,
     list: Vec<KeyData>,
     data_writer: BackupDataWriterRef,
 }
 
-impl KeyDataBackup {
-    pub fn new(cyfs_root: PathBuf, list: Vec<KeyData>, data_writer: BackupDataWriterRef) -> Self {
+impl KeyDataBackupManager {
+    pub fn new(keydata: KeyDataManager, data_writer: BackupDataWriterRef) -> Self {
         Self {
-            cyfs_root,
-            list,
+            cyfs_root: keydata.cyfs_root,
+            list: keydata.list,
             data_writer,
         }
     }
