@@ -73,7 +73,9 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         meta: Option<&NamedObjectMetaData>,
     ) -> BuckyResult<()> {
         self.meta.on_object(object_raw.len());
-        self.archive.add_object(object_id, object_raw, meta).await
+        self.archive.add_object(object_id, object_raw, meta).await?;
+
+        Ok(())
     }
 
     async fn add_chunk(
@@ -85,9 +87,17 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
         match self.loader.get_chunk(chunk_id).await {
             Ok(Some(data)) => {
                 self.meta.on_chunk(chunk_id);
-                self.archive
+                match self
+                    .archive
                     .add_chunk(chunk_id.to_owned(), data, None)
-                    .await
+                    .await?
+                {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e)
+                            .await
+                    }
+                }
             }
             Ok(None) => {
                 self.meta.on_missing(chunk_id.as_object_id());
@@ -104,16 +114,24 @@ impl BackupDataWriter for UniBackupDataLocalFileWriter {
 
     async fn add_chunk_data(
         &self,
-        _isolate_id: Option<&ObjectId>,
-        _dec_id: Option<&ObjectId>,
+        isolate_id: Option<&ObjectId>,
+        dec_id: Option<&ObjectId>,
         chunk_id: &ChunkId,
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
     ) -> BuckyResult<()> {
         self.meta.on_chunk(chunk_id);
-        self.archive
+        match self
+            .archive
             .add_chunk(chunk_id.to_owned(), data, meta)
-            .await
+            .await?
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.on_error(isolate_id, dec_id, chunk_id.as_object_id(), e)
+                    .await
+            }
+        }
     }
 
     async fn on_error(

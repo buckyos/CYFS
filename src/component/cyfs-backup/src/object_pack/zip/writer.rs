@@ -85,7 +85,7 @@ impl ZipObjectPackWriter {
         object_id: &ObjectId,
         data: &mut impl Read,
         meta: Option<Vec<u8>>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let writer = self.writer.as_mut().unwrap();
 
         let full_file_path = Self::zip_inner_path(object_id);
@@ -152,6 +152,39 @@ impl ZipObjectPackWriter {
             }
         }
 
+        let mut total = 0;
+        let mut buf = Vec::with_capacity(1024 * 256);
+        loop {
+            match data.read(&mut buf) {
+                Ok(n) => {
+                    if n == 0 {
+                        break;
+                    }
+
+                    total += n;
+                    writer.write_all(&buf).map_err(|e| {
+                        let msg = format!(
+                            "write chunk to zip failed! id={}, file={}, len={}, {}",
+                            object_id, full_file_path, n, e
+                        );
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::IoError, msg)
+                    })?;
+                }
+                Err(e) => {
+                    match e.kind() {
+                        std::io::ErrorKind::Interrupted => {
+                            continue;
+                        }
+                        _ => {
+                            return Ok(Err(e.into()));
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
         let bytes = std::io::copy(data, writer).map_err(|e| {
             let msg = format!(
                 "write file to zip failed! id={}, file={}, {}",
@@ -160,10 +193,11 @@ impl ZipObjectPackWriter {
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
+        */
 
-        self.total_bytes_added += bytes;
+        self.total_bytes_added += total as u64;
 
-        Ok(bytes)
+        Ok(Ok(total as u64))
     }
 
     pub async fn flush(&mut self) -> BuckyResult<u64> {
@@ -207,6 +241,11 @@ impl ZipObjectPackWriter {
     }
 }
 
+pub enum ObjectPackAddDataResult {
+    Ok(u64),
+    Err(BuckyError),
+
+}
 #[async_trait::async_trait]
 impl ObjectPackWriter for ZipObjectPackWriter {
     async fn open(&mut self) -> BuckyResult<()> {
@@ -226,7 +265,7 @@ impl ObjectPackWriter for ZipObjectPackWriter {
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<Vec<u8>>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let mut data = cyfs_util::async_read_to_sync(data);
         self.add_data(object_id, &mut data, meta)
     }
@@ -236,7 +275,7 @@ impl ObjectPackWriter for ZipObjectPackWriter {
         object_id: &ObjectId,
         data: &[u8],
         meta: Option<Vec<u8>>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let mut data = std::io::Cursor::new(data);
         self.add_data(object_id, &mut data, meta)
     }

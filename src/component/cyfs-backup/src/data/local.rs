@@ -45,13 +45,14 @@ impl ArchiveLocalFileWriter {
         object_id: &ObjectId,
         object_raw: &[u8],
         meta: Option<&NamedObjectMetaData>,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<u64> {
         let meta = meta.map(|item| item.into());
 
         let mut archive = self.archive.lock().await;
-        archive.add_data_buf(object_id, object_raw, meta).await?;
+        let ret = archive.add_data_buf(object_id, object_raw, meta).await?;
 
-        Ok(())
+        // For memory buffers, never fail
+        Ok(ret.unwrap())
     }
 
     pub async fn add_chunk(
@@ -59,14 +60,12 @@ impl ArchiveLocalFileWriter {
         chunk_id: ChunkId,
         data: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
         meta: Option<ArchiveInnerFileMeta>,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let reader = AsyncReadWithSeekAdapter::new(data).into_reader();
         let mut archive = self.archive.lock().await;
         archive
             .add_data(chunk_id.as_object_id(), reader, meta)
-            .await?;
-
-        Ok(())
+            .await
     }
 
     pub async fn finish(&self) -> BuckyResult<ObjectArchiveIndex> {

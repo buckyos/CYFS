@@ -56,18 +56,20 @@ impl ObjectPackRollWriter {
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<Vec<u8>>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         if self.current.is_none() {
             self.open().await?;
         }
 
         let writer = self.current.as_mut().unwrap();
-        let bytes = writer.add_data(object_id, data, meta).await?;
+        let ret = writer.add_data(object_id, data, meta).await?;
         drop(writer);
 
-        self.on_add_bytes(bytes).await?;
+        if let Ok(bytes) = &ret {
+            self.on_add_bytes(*bytes).await?;
+        }
 
-        Ok(bytes)
+        Ok(ret)
     }
 
     pub async fn add_data_buf(
@@ -75,18 +77,20 @@ impl ObjectPackRollWriter {
         object_id: &ObjectId,
         data: &[u8],
         meta: Option<Vec<u8>>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         if self.current.is_none() {
             self.open().await?;
         }
 
         let writer = self.current.as_mut().unwrap();
-        let bytes = writer.add_data_buf(object_id, data, meta).await?;
+        let ret = writer.add_data_buf(object_id, data, meta).await?;
         drop(writer);
 
-        self.on_add_bytes(bytes).await?;
+        if let Ok(bytes) = &ret {
+            self.on_add_bytes(*bytes).await?;
+        }
 
-        Ok(bytes)
+        Ok(ret)
     }
 
     async fn on_add_bytes(&mut self, bytes: u64) -> BuckyResult<()> {

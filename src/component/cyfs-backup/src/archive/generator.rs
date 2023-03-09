@@ -50,7 +50,7 @@ impl ObjectArchiveGenerator {
         object_id: &ObjectId,
         data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<ArchiveInnerFileMeta>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let meta_data = Self::encode_meta(object_id, meta)?;
 
         match object_id.obj_type_code() {
@@ -68,7 +68,7 @@ impl ObjectArchiveGenerator {
         object_id: &ObjectId,
         data: &[u8],
         meta: Option<ArchiveInnerFileMeta>,
-    ) -> BuckyResult<u64> {
+    ) -> BuckyResult<BuckyResult<u64>> {
         let meta_data = Self::encode_meta(object_id, meta)?;
 
         match object_id.obj_type_code() {
