@@ -7,6 +7,7 @@ use cyfs_bdt::ChunkReaderRef;
 use cyfs_lib::*;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub struct LocalFileBackupParam {
     // Backup file storage directory
@@ -28,9 +29,9 @@ impl Default for LocalFileBackupParam {
 }
 
 pub struct UniBackupParams {
-    id: u64,
+    pub id: u64,
 
-    file: LocalFileBackupParam,
+    pub file: LocalFileBackupParam,
 }
 
 pub struct BackupManager {
@@ -65,7 +66,7 @@ impl BackupManager {
         }
     }
 
-    pub async fn uni_backup(&self, params: UniBackupParams) -> BuckyResult<()> {
+    pub async fn run_uni_backup(&self, params: UniBackupParams) -> BuckyResult<()> {
         let backup_dir = match params.file.dir {
             Some(dir) => dir,
             None => cyfs_util::get_app_data_dir("backup").join(format!("{}", params.id)),
@@ -123,3 +124,5 @@ impl BackupManager {
         Ok(())
     }
 }
+
+pub type BackupManagerRef = Arc<BackupManager>;

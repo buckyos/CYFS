@@ -38,6 +38,7 @@ use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
+use cyfs_backup::{BackupManager, BackupManagerRef};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -101,6 +102,9 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
+
+    // backup manager
+    backup_manager: BackupManagerRef,
 }
 
 impl CyfsStackImpl {
@@ -418,6 +422,21 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
+        // init backup manager
+        let ndc = Arc::new(named_data_components.ndc.clone());
+        let reader = Arc::new(named_data_components.new_chunk_reader());
+        let backup_manager = BackupManager::new(
+            isolate,
+            device_id.object_id().to_owned(),
+            noc.clone(),
+            ndc,
+            global_state_manager.clone_processor(),
+            global_state_meta.clone_manager_raw_processor(),
+            reader,
+        );
+        
+        let backup_manager = Arc::new(backup_manager);
+
         let mut stack = Self {
             config,
 
@@ -453,6 +472,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            backup_manager,
         };
 
         // init an system-dec router-handler processor for later use
@@ -557,6 +578,7 @@ impl CyfsStackImpl {
             unreachable!();
         }
 
+        
         // finally start interface
         stack.interface.get().unwrap().start().await?;
 
@@ -1172,5 +1194,9 @@ impl CyfsStack {
 
     pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
         self.stack.open_uni_stack(dec_id).await
+    }
+
+    pub fn backup_manager(&self) -> &BackupManagerRef {
+        &self.stack.backup_manager
     }
 }
