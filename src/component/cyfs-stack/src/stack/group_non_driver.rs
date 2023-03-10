@@ -42,7 +42,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                         verified: None,
                     },
 
-                    level: from.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
+                    level: NONAPILevel::Router, // from.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
 
                     target: from.map(|remote| remote.clone()),
                     flags: 0,
@@ -72,7 +72,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                         verified: None,
                     },
 
-                    level: NONAPILevel::NOC,
+                    level: NONAPILevel::Router,
 
                     target: None,
                     flags: 0,
@@ -90,10 +90,13 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         obj: NONObjectInfo,
         to: Option<&ObjectId>,
     ) -> BuckyResult<Option<NONObjectInfo>> {
+        let obj_type_code = obj.object_id.obj_type_code();
+        let obj_type = obj.object.as_ref().map(|obj| obj.obj_type());
+
         self.non_service
             .post_object(NONPostObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: None,
+                    req_path: Some("group-inner".to_string()),
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {
@@ -105,7 +108,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
                         verified: None,
                     },
 
-                    level: to.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
+                    level: NONAPILevel::Router, // to.map_or(NONAPILevel::NOC, |_| NONAPILevel::Router),
 
                     target: to.cloned(),
                     flags: 0,
@@ -114,5 +117,15 @@ impl cyfs_group::NONDriver for GroupNONDriver {
             })
             .await
             .map(|resp| resp.object)
+            .map_err(|err| {
+                log::warn!(
+                    "group post object(type={:?}/{:?}) to {:?} failed {:?}",
+                    obj_type_code,
+                    obj_type,
+                    to,
+                    err
+                );
+                err
+            })
     }
 }
