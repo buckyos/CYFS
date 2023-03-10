@@ -7,7 +7,7 @@ use cyfs_base::{
 };
 use cyfs_core::{CoreObjectType, DecAppId, GroupConsensusBlock, GroupProposalObject, GroupRPath};
 use cyfs_lib::{
-    CyfsStackRequestorType, HttpRequestorRef, NONAPILevel, NONObjectInfo,
+    CyfsStackRequestorType, DeviceZoneCategory, HttpRequestorRef, NONObjectInfo,
     NONPostObjectInputResponse, RouterHandlerAction, RouterHandlerChain,
     RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult,
     SharedCyfsStack,
@@ -68,10 +68,13 @@ impl GroupManager {
 
         // TODO: other filters? only local zone
         let filter = format!(
-            "obj_type == {} && dec_id == {}",
+            "obj_type == {} && source.dec_id == {} && source.zone_category == {}",
             CoreObjectType::GroupCommand as u16,
             dec_id,
+            DeviceZoneCategory::CurrentZone.to_string(),
         );
+
+        // let filter = "*".to_string();
 
         router_handler_manager
             .post_object()
@@ -80,7 +83,7 @@ impl GroupManager {
                 format!("group-cmd-{}", dec_id).as_str(),
                 0,
                 Some(filter),
-                None,
+                Some("group-inner".to_string()),
                 RouterHandlerAction::Pass,
                 Some(Box::new(mgr.clone())),
             )
@@ -120,7 +123,38 @@ impl GroupManager {
         rpath: String,
         delegate: Box<dyn RPathDelegate>,
     ) -> BuckyResult<RPathService> {
-        unimplemented!()
+        let dec_id = self.0.stack.dec_id().unwrap().clone();
+
+        {
+            let services = self.0.services.read().await;
+            let found = services
+                .get(&group_id)
+                .and_then(|by_dec| by_dec.get(&dec_id))
+                .and_then(|by_rpath| by_rpath.get(rpath.as_str()));
+
+            if let Some(found) = found {
+                return Ok(found.clone());
+            }
+        }
+
+        {
+            let mut services = self.0.services.write().await;
+            let service = services
+                .entry(group_id.clone())
+                .or_insert_with(HashMap::new)
+                .entry(dec_id.into())
+                .or_insert_with(HashMap::new)
+                .entry(rpath.to_string())
+                .or_insert_with(|| {
+                    RPathService::new(
+                        GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
+                        self.0.requestor.clone(),
+                        delegate,
+                        self.0.stack.clone(),
+                    )
+                });
+            Ok(service.clone())
+        }
     }
 
     pub async fn find_rpath_service(
@@ -128,7 +162,20 @@ impl GroupManager {
         group_id: &ObjectId,
         rpath: &str,
     ) -> BuckyResult<RPathService> {
-        unimplemented!()
+        let dec_id = self.0.stack.dec_id().unwrap();
+        let services = self.0.services.read().await;
+        let found = services
+            .get(&group_id)
+            .and_then(|by_dec| by_dec.get(dec_id))
+            .and_then(|by_rpath| by_rpath.get(rpath));
+
+        found.map_or(
+            Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                "please start the service first",
+            )),
+            |service| Ok(service.clone()),
+        )
     }
 
     pub async fn rpath_client(
@@ -204,6 +251,16 @@ impl GroupManager {
         )
         .await
         .map(|_| ())
+        .map_err(|err| {
+            log::warn!(
+                "group on_new_rpath {}-{:?}-{} failed, err: {:?}",
+                cmd.group_id,
+                self.0.stack.dec_id(),
+                cmd.rpath,
+                err
+            );
+            err
+        })
     }
 
     async fn on_execute(&self, cmd: GroupCommandExecute) -> BuckyResult<GroupCommandExecuteResult> {
@@ -216,11 +273,27 @@ impl GroupManager {
                 &None,
                 false,
             )
-            .await?;
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "group on_execute find service {:?} failed, err: {:?}",
+                    cmd.proposal.rpath(),
+                    err
+                );
+                err
+            })?;
 
         let mut result = service
             .on_execute(&cmd.proposal, &cmd.prev_state_id)
-            .await?;
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "group on_execute {:?} failed, err: {:?}",
+                    cmd.proposal.rpath(),
+                    err
+                );
+                err
+            })?;
 
         Ok(GroupCommandExecuteResult {
             result_state_id: result.result_state_id.take(),
@@ -239,7 +312,15 @@ impl GroupManager {
                 &None,
                 false,
             )
-            .await?;
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "group on_verify find service {:?} failed, err: {:?}",
+                    cmd.proposal.rpath(),
+                    err
+                );
+                err
+            })?;
 
         let result = ExecuteResult {
             result_state_id: cmd.result_state_id.take(),
@@ -250,6 +331,14 @@ impl GroupManager {
         service
             .on_verify(&cmd.proposal, &cmd.prev_state_id, &result)
             .await
+            .map_err(|err| {
+                log::warn!(
+                    "group on_verify {:?} failed, err: {:?}",
+                    cmd.proposal.rpath(),
+                    err
+                );
+                err
+            })
     }
 
     async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
@@ -262,7 +351,15 @@ impl GroupManager {
                 &None,
                 false,
             )
-            .await?;
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "group on_commited find service {:?} failed, err: {:?}",
+                    cmd.proposal.rpath(),
+                    err
+                );
+                err
+            })?;
 
         let result = ExecuteResult {
             result_state_id: cmd.result_state_id.take(),
@@ -361,27 +458,38 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
         param: &RouterHandlerPostObjectRequest,
     ) -> BuckyResult<RouterHandlerPostObjectResult> {
         let req_common = &param.request.common;
-        if req_common.level != NONAPILevel::NOC
-            || req_common.source.zone.zone != self.0.local_zone
+        let obj = &param.request.object;
+
+        log::debug!(
+            "group-command handle, level = {:?}, zone = {:?}, local-zone = {:?}, dec-id = {:?}, obj_type = {:?}",
+            req_common.level,
+            req_common.source.zone,
+            self.0.local_zone,
+            self.0.stack.dec_id(),
+            obj.object.as_ref().map(|o| o.obj_type())
+        );
+
+        if !req_common.source.zone.is_current_zone()
             || self.0.local_zone.is_none()
+            // || req_common.source.zone.zone != self.0.local_zone
             || self.0.stack.dec_id().is_none()
         {
             log::warn!(
-                "there should no group-command from other zone, level = {:?}, zone = {:?}, local-zone = {:?}, dec-id = {:?}",
+                "there should no group-command from other zone, level = {:?}, zone = {:?}, local-zone = {:?}, dec-id = {:?}, obj_type = {:?}",
                 req_common.level,
                 req_common.source.zone,
                 self.0.local_zone,
-                self.0.stack.dec_id()
+                self.0.stack.dec_id(),
+                obj.object.as_ref().map(|o| o.obj_type())
             );
 
             return Ok(RouterHandlerPostObjectResult {
-                action: RouterHandlerAction::Reject,
+                action: RouterHandlerAction::Pass,
                 request: None,
                 response: None,
             });
         }
 
-        let obj = &param.request.object;
         match obj.object.as_ref() {
             None => {
                 return Ok(RouterHandlerPostObjectResult {
