@@ -1,3 +1,4 @@
+use crate::backup::BackupStatusManager;
 use crate::data::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -6,6 +7,7 @@ pub struct UniChunkBackup {
     ndc: NamedDataCacheRef,
     data_writer: BackupDataWriterRef,
     loader: ObjectTraverserLoaderRef,
+    status_manager: BackupStatusManager,
 }
 
 impl UniChunkBackup {
@@ -13,11 +15,13 @@ impl UniChunkBackup {
         ndc: NamedDataCacheRef,
         data_writer: BackupDataWriterRef,
         loader: ObjectTraverserLoaderRef,
+        status_manager: BackupStatusManager,
     ) -> Self {
         Self {
             ndc,
             data_writer,
             loader,
+            status_manager,
         }
     }
 
@@ -51,6 +55,8 @@ impl UniChunkBackup {
     }
 
     async fn on_chunk(&self, chunk_id: ChunkId) -> BuckyResult<()> {
+        self.status_manager.on_chunk();
+
         self.data_writer.add_chunk(None, None, &chunk_id).await
     }
 }

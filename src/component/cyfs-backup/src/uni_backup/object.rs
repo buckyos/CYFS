@@ -1,3 +1,4 @@
+use crate::backup::BackupStatusManager;
 use crate::data::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -6,6 +7,7 @@ pub struct UniObjectBackup {
     noc: NamedObjectCacheRef,
     data_writer: BackupDataWriterRef,
     loader: ObjectTraverserLoaderRef,
+    status_manager: BackupStatusManager,
 }
 
 impl UniObjectBackup {
@@ -13,11 +15,13 @@ impl UniObjectBackup {
         noc: NamedObjectCacheRef,
         data_writer: BackupDataWriterRef,
         loader: ObjectTraverserLoaderRef,
+        status_manager: BackupStatusManager,
     ) -> Self {
         Self {
             noc,
             data_writer,
             loader,
+            status_manager,
         }
     }
 
@@ -49,6 +53,8 @@ impl UniObjectBackup {
     }
 
     async fn on_object(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        self.status_manager.on_object();
+
         let ret = self.loader.get_object(&object_id).await.map_err(|e| {
             let msg = format!("backup load object failed! id={}, {}", object_id, e);
             error!("{}", msg);
