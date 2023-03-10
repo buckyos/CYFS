@@ -1,17 +1,18 @@
 use super::super::pack::*;
 use cyfs_base::*;
 
-use async_std::io::Read as AsyncRead;
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use async_std::io::{Read as AsyncRead, ReadExt};
 use byteorder::{LittleEndian, WriteBytesExt};
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 pub const META_EXTRA_FIELD_ID: u16 = 0x6D65;
 
 pub struct ZipObjectPackWriter {
     path: PathBuf,
     writer: Option<zip::ZipWriter<File>>,
+    cache_buf: Vec<u8>,
     options: zip::write::FileOptions,
     total_bytes_added: u64,
 }
@@ -24,6 +25,7 @@ impl ZipObjectPackWriter {
         Self {
             path,
             writer: None,
+            cache_buf: Vec::with_capacity(1024 * 1024 * 4),
             options,
             total_bytes_added: 0,
         }
@@ -83,9 +85,11 @@ impl ZipObjectPackWriter {
     pub fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: &mut impl Read,
+        data: Option<&[u8]>,
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<BuckyResult<u64>> {
+        let data = data.unwrap_or(&self.cache_buf);
+
         let writer = self.writer.as_mut().unwrap();
 
         let full_file_path = Self::zip_inner_path(object_id);
@@ -102,24 +106,28 @@ impl ZipObjectPackWriter {
                         error!("{}", msg);
                         BuckyError::new(BuckyErrorCode::Failed, msg)
                     })?;
-                
-                writer.write_u16::<LittleEndian>(META_EXTRA_FIELD_ID).map_err(|e|{
-                    let msg = format!(
-                        "add meta data id to zip failed! id={}, file={}, {}",
-                        object_id, full_file_path, e
-                    );
-                    error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
-                })?;
 
-                writer.write_u16::<LittleEndian>(meta.len() as u16).map_err(|e|{
-                    let msg = format!(
-                        "add meta data len to zip failed! id={}, file={}, {}",
-                        object_id, full_file_path, e
-                    );
-                    error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
-                })?;
+                writer
+                    .write_u16::<LittleEndian>(META_EXTRA_FIELD_ID)
+                    .map_err(|e| {
+                        let msg = format!(
+                            "add meta data id to zip failed! id={}, file={}, {}",
+                            object_id, full_file_path, e
+                        );
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::Failed, msg)
+                    })?;
+
+                writer
+                    .write_u16::<LittleEndian>(meta.len() as u16)
+                    .map_err(|e| {
+                        let msg = format!(
+                            "add meta data len to zip failed! id={}, file={}, {}",
+                            object_id, full_file_path, e
+                        );
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::Failed, msg)
+                    })?;
 
                 writer.write_all(&meta).map_err(|e| {
                     let msg = format!(
@@ -152,37 +160,15 @@ impl ZipObjectPackWriter {
             }
         }
 
-        let mut total = 0;
-        let mut buf = Vec::with_capacity(1024 * 256);
-        loop {
-            match data.read(&mut buf) {
-                Ok(n) => {
-                    if n == 0 {
-                        break;
-                    }
-
-                    total += n;
-                    writer.write_all(&buf).map_err(|e| {
-                        let msg = format!(
-                            "write chunk to zip failed! id={}, file={}, len={}, {}",
-                            object_id, full_file_path, n, e
-                        );
-                        error!("{}", msg);
-                        BuckyError::new(BuckyErrorCode::IoError, msg)
-                    })?;
-                }
-                Err(e) => {
-                    match e.kind() {
-                        std::io::ErrorKind::Interrupted => {
-                            continue;
-                        }
-                        _ => {
-                            return Ok(Err(e.into()));
-                        }
-                    }
-                }
-            }
-        }
+        let total = data.len();
+        writer.write_all(&data).map_err(|e| {
+            let msg = format!(
+                "write chunk to zip failed! id={}, file={}, len={}, {}",
+                object_id, full_file_path, total, e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
         /*
         let bytes = std::io::copy(data, writer).map_err(|e| {
@@ -244,7 +230,6 @@ impl ZipObjectPackWriter {
 pub enum ObjectPackAddDataResult {
     Ok(u64),
     Err(BuckyError),
-
 }
 #[async_trait::async_trait]
 impl ObjectPackWriter for ZipObjectPackWriter {
@@ -263,11 +248,18 @@ impl ObjectPackWriter for ZipObjectPackWriter {
     async fn add_data(
         &mut self,
         object_id: &ObjectId,
-        data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
+        mut data: Box<dyn AsyncRead + Unpin + Send + Sync + 'static>,
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<BuckyResult<u64>> {
-        let mut data = cyfs_util::async_read_to_sync(data);
-        self.add_data(object_id, &mut data, meta)
+        unsafe {
+            self.cache_buf.set_len(0);
+        }
+
+        if let Err(e) = data.read_to_end(&mut self.cache_buf).await {
+            return Ok(Err(e.into()));
+        }
+
+        self.add_data(object_id, None, meta)
     }
 
     async fn add_data_buf(
@@ -276,8 +268,7 @@ impl ObjectPackWriter for ZipObjectPackWriter {
         data: &[u8],
         meta: Option<Vec<u8>>,
     ) -> BuckyResult<BuckyResult<u64>> {
-        let mut data = std::io::Cursor::new(data);
-        self.add_data(object_id, &mut data, meta)
+        self.add_data(object_id, Some(&data), meta)
     }
 
     async fn flush(&mut self) -> BuckyResult<u64> {
