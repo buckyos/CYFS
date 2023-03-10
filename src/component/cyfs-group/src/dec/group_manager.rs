@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_std::sync::RwLock;
 use cyfs_base::{
     BuckyErrorCode, BuckyResult, GroupId, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
-    RawConvertTo, RsaCPUObjectSigner,
+    RawConvertTo, RawFrom, RsaCPUObjectSigner, TypelessCoreObject,
 };
 use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
@@ -488,6 +488,10 @@ impl GroupManager {
         };
 
         let cmd = GroupCommand::from(cmd);
+        let object_raw_buf = cmd.to_vec()?;
+        let any_obj = cyfs_base::AnyNamedObject::Core(TypelessCoreObject::clone_from_slice(
+            object_raw_buf.as_slice(),
+        )?);
         let result = self
             .local_info()
             .non_driver
@@ -495,8 +499,8 @@ impl GroupManager {
                 dec_id,
                 NONObjectInfo {
                     object_id: cmd.desc().object_id(),
-                    object_raw: cmd.to_vec()?,
-                    object: None,
+                    object_raw: object_raw_buf,
+                    object: Some(Arc::new(any_obj)),
                 },
                 None,
             )
