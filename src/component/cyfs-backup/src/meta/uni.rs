@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveUniMeta {
     pub id: u64,
     pub time: String,

@@ -3,7 +3,7 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveDataMeta {
     pub count: u64,
     pub bytes: u64,
@@ -15,7 +15,7 @@ impl Default for ObjectArchiveDataMeta {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveDataMetas {
     pub objects: ObjectArchiveDataMeta,
     pub chunks: ObjectArchiveDataMeta,
@@ -30,7 +30,7 @@ impl Default for ObjectArchiveDataMetas {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveDataSeriesMeta {
     pub data: ObjectArchiveDataMetas,
     pub missing: ObjectArchiveDataMetas,
@@ -85,7 +85,7 @@ pub enum KeyDataType {
     Dir,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KeyDataMeta {
     pub local_path: String,
     pub data_type: KeyDataType,

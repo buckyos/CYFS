@@ -4,7 +4,7 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
     pub id: u64,
     pub time: String,

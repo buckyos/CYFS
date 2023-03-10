@@ -1991,6 +1991,6 @@ impl NamedDataCache for SqliteDBDataCache {
     }
 
     async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
-        Self::stat(&self)
+        Self::stat(&self).await
     }
 }
