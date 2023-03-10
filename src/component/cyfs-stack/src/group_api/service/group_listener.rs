@@ -49,14 +49,14 @@ impl GroupRequestHandlerEndpoint {
         handler: &GroupRequestHandler,
         server: &mut tide::Server<()>,
     ) {
-        server.at("/group/start-service").post(Self::new(
+        server.at("/group/start-service").put(Self::new(
             zone_manager.clone(),
             protocol.to_owned(),
             GroupRequestType::StartService,
             handler.clone(),
         ));
 
-        server.at("group/push-proposal").post(Self::new(
+        server.at("group/push-proposal").put(Self::new(
             zone_manager.clone(),
             protocol.to_owned(),
             GroupRequestType::PushProposal,

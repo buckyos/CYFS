@@ -23,9 +23,9 @@ cyfs-core = { path = '../../component/cyfs-core' }
 cyfs-bdt = { path = '../../component/cyfs-bdt' }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = '../../component/cyfs-lib' }
-cyfs-chunk-lib = { path = '../../component/cyfs-chunk-lib' }
-cyfs-group = { path = '../../component/cyfs-group' }
 cyfs-stack = { path = '../../component/cyfs-stack' }
+cyfs-chunk-lib = { path = '../../component/cyfs-chunk-lib' }
+cyfs-group-lib = { path = '../../component/cyfs-group-lib' }
 cyfs-meta-lib = { path = '../../component/cyfs-meta-lib' }
 cyfs-bdt-ext = { path = '../../component/cyfs-bdt-ext' }
 cyfs-util = { path = '../../component/cyfs-util' }
