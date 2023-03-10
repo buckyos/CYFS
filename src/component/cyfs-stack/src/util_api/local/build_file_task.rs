@@ -602,6 +602,10 @@ mod build_file_task_test {
         async fn select_chunk(&self, _req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
             todo!();
         }
+
+        async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
+            todo!();
+        }
     }
 
     async fn gen_random_file(local_path: &Path) {

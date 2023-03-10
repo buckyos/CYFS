@@ -1858,6 +1858,44 @@ impl SqliteDBDataCache {
 
         Ok(resp)
     }
+
+    async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
+        let sql = "SELECT COUNT(*) FROM chunk";
+        let ret = {
+            let (conn, _lock) = self.conn.get_read_conn()?;
+
+            conn.query_row(&sql, [], |row| {
+                let count: i64 = row.get(0).unwrap();
+                Ok(count)
+            })
+            .map_err(|e| {
+                let msg = format!("ndc count chunks error! sql={}, {}", sql, e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
+
+        debug!("ndc count chunks {}", ret);
+
+        let meta = async_std::fs::metadata(&self.data_file)
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "get metadata of db file error! file={}, err={}",
+                    self.data_file.display(),
+                    e
+                );
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
+
+        let stat = NamedDataCacheStat {
+            count: ret as u64,
+            storage_size: meta.len(),
+        };
+
+        Ok(stat)
+    }
 }
 
 #[async_trait::async_trait]
@@ -1950,5 +1988,9 @@ impl NamedDataCache for SqliteDBDataCache {
 
     async fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
         Self::select_chunk(&self, req)
+    }
+
+    async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
+        Self::stat(&self)
     }
 }

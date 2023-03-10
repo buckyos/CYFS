@@ -263,6 +263,14 @@ pub struct SelectChunkResponse {
     pub list: Vec<SelectChunkData>,
 }
 
+#[derive(Debug, Clone)]
+pub struct NamedDataCacheStat {
+    // chunks count
+    pub count: u64,
+
+    pub storage_size: u64,
+}
+
 #[async_trait]
 pub trait NamedDataCache: Sync + Send + 'static {
     fn clone(&self) -> Box<dyn NamedDataCache>;
@@ -314,6 +322,7 @@ pub trait NamedDataCache: Sync + Send + 'static {
 
     // for internal use only
     async fn select_chunk(&self, req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse>;
+    async fn stat(&self) -> BuckyResult<NamedDataCacheStat>;
 }
 
 use std::sync::Arc;
