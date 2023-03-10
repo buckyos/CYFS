@@ -26,6 +26,7 @@ members = [
     "./component/cyfs-chunk-lib",
     "./component/cyfs-mobile-stack",
     "./component/cyfs-bdt-ext",
+    "./component/cyfs-group-lib",
     "./component/cyfs-group",
 
     "./service/ood-control",
