@@ -69,8 +69,10 @@ impl BackupManager {
     pub async fn run_uni_backup(&self, params: UniBackupParams) -> BuckyResult<()> {
         let backup_dir = match params.file.dir {
             Some(dir) => dir,
-            None => cyfs_util::get_app_data_dir("backup").join(format!("{}", params.id)),
+            None => cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id)),
         };
+
+        info!("backup local dir is: {}", backup_dir.display());
 
         std::fs::create_dir_all(&backup_dir).map_err(|e| {
             let msg = format!(

@@ -60,7 +60,7 @@ where
     pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
         let meta_file = dir.join("meta");
         let meta = serde_json::to_string_pretty(&self).unwrap();
-        async_std::fs::write(&meta_file, meta).await.map_err(|e| {
+        async_std::fs::write(&meta_file, &meta).await.map_err(|e| {
             let msg = format!(
                 "write backup meta info to file failed! file={}, {}",
                 meta_file.display(),
@@ -69,6 +69,8 @@ where
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
+
+        info!("save backup meta success! meta={}, file={}", meta, meta_file.display());
 
         Ok(())
     }

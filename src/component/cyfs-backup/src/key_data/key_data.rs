@@ -33,7 +33,12 @@ pub struct KeyDataManager {
 impl KeyDataManager {
     pub fn new_uni(isolate: &str) -> Self {
         let mut list = vec![];
-        let data = KeyData::new_dir("etc");
+        let data = if isolate.is_empty() {
+            KeyData::new_dir("etc")
+        } else {
+            KeyData::new_dir(format!("etc/{}", isolate))
+        };
+    
         list.push(data);
 
         let data_dir = if isolate.is_empty() {

@@ -59,8 +59,9 @@ impl ObjectArchiveIndex {
 
     pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
         let index_file = dir.join("index");
+        
         let data = serde_json::to_string_pretty(&self).unwrap();
-        async_std::fs::write(&index_file, data).await.map_err(|e| {
+        async_std::fs::write(&index_file, &data).await.map_err(|e| {
             let msg = format!(
                 "write backup index info to file failed! file={}, {}",
                 index_file.display(),
@@ -70,6 +71,7 @@ impl ObjectArchiveIndex {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
+        info!("save backup index success! index={}, file={}", data, index_file.display());
         Ok(())
     }
 }

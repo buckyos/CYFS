@@ -107,9 +107,6 @@ impl ObjectArchiveGenerator {
         self.index.object_files = object_files;
         self.index.chunk_files = chunk_files;
 
-        let index_file = self.root.join("index");
-        self.index.save(&index_file).await?;
-
         Ok(self.index)
     }
 }
