@@ -30,3 +30,4 @@ hex = '0.4'
 chrono = '0.4'
 protobuf = { version = '2', features = ['with-bytes'] }
 semver = '1.0'
+sha2 = { version = '0.8' }
