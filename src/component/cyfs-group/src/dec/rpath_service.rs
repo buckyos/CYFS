@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cyfs_base::{BuckyResult, ObjectId, RsaCPUObjectSigner};
+use cyfs_base::{BuckyResult, NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner};
 use cyfs_core::{GroupProposal, GroupRPath};
 use cyfs_group_lib::RPathDelegate;
 
@@ -66,6 +66,11 @@ impl RPathService {
     }
 
     pub async fn push_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
+        log::info!(
+            "group({:?}) push proposal {}",
+            self.rpath(),
+            proposal.desc().object_id()
+        );
         self.0.pending_proposal_handle.on_proposal(proposal).await
     }
 

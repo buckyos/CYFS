@@ -6,7 +6,8 @@ use cyfs_base::{
 };
 use cyfs_core::{GroupProposal, GroupProposalObject};
 use cyfs_lib::{
-    HttpRequestorRef, NONObjectInfo, NONOutputRequestCommon, NONRequestorHelper, RequestorHelper,
+    HttpRequestorRef, NONAction, NONObjectInfo, NONOutputRequestCommon, NONRequestorHelper,
+    RequestorHelper,
 };
 use http_types::{Method, Request, Url};
 
@@ -43,7 +44,7 @@ impl GroupRequestor {
 
     fn encode_common_headers(
         &self,
-        // action: NONAction,
+        action: NONAction,
         com_req: &NONOutputRequestCommon,
         http_req: &mut Request,
     ) {
@@ -56,7 +57,7 @@ impl GroupRequestor {
             com_req.req_path.as_deref(),
         );
 
-        // http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
+        http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
         http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
 
@@ -98,7 +99,7 @@ impl GroupRequestor {
             rpath: rpath.to_string(),
         };
 
-        self.encode_common_headers(&req_common, &mut http_req);
+        self.encode_common_headers(NONAction::PutObject, &req_common, &mut http_req);
         let body = req.encode_string();
         http_req.set_body(body);
 
@@ -156,7 +157,7 @@ impl GroupRequestor {
         let url = self.service_url.join("push-proposal").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
-        self.encode_common_headers(&req_common, &mut http_req);
+        self.encode_common_headers(NONAction::PutObject, &req_common, &mut http_req);
 
         NONRequestorHelper::encode_object_info(
             &mut http_req,

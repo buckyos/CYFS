@@ -652,7 +652,25 @@ impl ZoneManager {
                                 owner_id, work_mode, list
                             );
 
-                            return Ok((work_mode, list.to_owned()));
+                            if obj_type == ObjectTypeCode::People {
+                                return Ok((work_mode, list.to_owned()));
+                            } else if obj_type == ObjectTypeCode::Group {
+                                let group = owner_object.into_group();
+                                // TODO: 先简单处理，找最近的OOD，后面可能要依据具体操作向不同身份发起请求；
+                                // 比如：读操作向任意member请求即可
+                                let list = group
+                                    .ood_list_with_distance(
+                                        self.get_current_device_id().object_id(),
+                                    )
+                                    .into_iter()
+                                    .filter(|id| id.obj_type_code() == ObjectTypeCode::Device)
+                                    .map(|id| DeviceId::try_from(id).unwrap())
+                                    .collect();
+                                return Ok((work_mode, list));
+                            } else {
+                                unreachable!()
+                            }
+
                             /*
                             let ood_device_id = list[0].clone();
                             let obj_type = ood_device_id.object_id().obj_type_code();
