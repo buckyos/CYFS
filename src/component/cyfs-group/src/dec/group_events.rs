@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId,
-    ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef, RawConvertTo, RawDecode,
+    ObjectMapIsolatePathOpEnvRef, ObjectMapSingleOpEnvRef, RawConvertTo, RawDecode, RawFrom,
+    TypelessCoreObject,
 };
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_group_lib::{
@@ -32,13 +35,18 @@ impl RPathEventNotifier {
         };
 
         let cmd = GroupCommand::from(cmd);
+        let object_raw_buf = cmd.to_vec()?;
+        let any_obj = cyfs_base::AnyNamedObject::Core(TypelessCoreObject::clone_from_slice(
+            object_raw_buf.as_slice(),
+        )?);
+
         let result = self
             .non_driver
             .post_object(
                 NONObjectInfo {
                     object_id: cmd.desc().object_id(),
-                    object_raw: cmd.to_vec()?,
-                    object: None,
+                    object_raw: object_raw_buf,
+                    object: Some(Arc::new(any_obj)),
                 },
                 None,
             )
@@ -78,13 +86,18 @@ impl RPathEventNotifier {
         };
 
         let cmd = GroupCommand::from(cmd);
+        let object_raw_buf = cmd.to_vec()?;
+        let any_obj = cyfs_base::AnyNamedObject::Core(TypelessCoreObject::clone_from_slice(
+            object_raw_buf.as_slice(),
+        )?);
+
         let result = self
             .non_driver
             .post_object(
                 NONObjectInfo {
                     object_id: cmd.desc().object_id(),
-                    object_raw: cmd.to_vec()?,
-                    object: None,
+                    object_raw: object_raw_buf,
+                    object: Some(Arc::new(any_obj)),
                 },
                 None,
             )
@@ -111,16 +124,26 @@ impl RPathEventNotifier {
         };
 
         let cmd = GroupCommand::from(cmd);
+        let object_raw_buf = cmd
+            .to_vec()
+            .expect(format!("on_commited {} failed for encode", self.non_driver.dec_id()).as_str());
+        let any_obj = cyfs_base::AnyNamedObject::Core(
+            TypelessCoreObject::clone_from_slice(object_raw_buf.as_slice()).expect(
+                format!(
+                    "on_commited {} failed for convert to any",
+                    self.non_driver.dec_id()
+                )
+                .as_str(),
+            ),
+        );
+
         let result = self
             .non_driver
             .post_object(
                 NONObjectInfo {
                     object_id: cmd.desc().object_id(),
-                    object_raw: cmd.to_vec().expect(
-                        format!("on_commited {} failed for encode", self.non_driver.dec_id())
-                            .as_str(),
-                    ),
-                    object: None,
+                    object_raw: object_raw_buf,
+                    object: Some(Arc::new(any_obj)),
                 },
                 None,
             )

@@ -1,36 +1,43 @@
-use std::{clone, sync::Arc, time::Duration};
+use std::{clone, collections::HashSet, sync::Arc, time::Duration};
 
+use async_std::sync::Mutex;
 use cyfs_base::{
     AccessString, AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom,
     TypelessCoreObject,
 };
 use cyfs_core::{DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath};
-use cyfs_group::IsCreateRPath;
+use cyfs_group_lib::GroupManager;
 use cyfs_lib::{
-    DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo, NamedObjectCachePutObjectRequest,
-    NamedObjectStorageCategory, RequestProtocol, RequestSourceInfo,
+    DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo, NONOutputRequestCommon,
+    NONPutObjectOutputRequest, NamedObjectCachePutObjectRequest, NamedObjectStorageCategory,
+    RequestProtocol, RequestSourceInfo, SharedCyfsStack,
 };
 use cyfs_stack::CyfsStack;
 use Common::{create_stack, EXAMPLE_RPATH};
 use GroupDecService::DecService;
 
-use crate::Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME, EXAMPLE_VALUE_PATH};
+use crate::{
+    Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME, EXAMPLE_VALUE_PATH},
+    GroupDecService::MyRPathDelegate,
+};
 
 mod Common {
-    use std::{fmt::format, io::ErrorKind, sync::Arc};
+    use std::{
+        fmt::format, io::ErrorKind, net::SocketAddrV4, sync::Arc, thread::sleep, time::Duration,
+    };
 
-    use async_std::{fs, stream::StreamExt};
+    use async_std::fs;
     use cyfs_base::{
         AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, EndpointArea, Group,
         GroupMember, IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo,
-        RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, StandardObject,
+        RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, SocketAddr, StandardObject,
         TypelessCoreObject, UniqueId, NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT,
         SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
     use cyfs_bdt_ext::BdtStackParams;
     use cyfs_chunk_lib::ChunkMeta;
-    use cyfs_core::{DecApp, DecAppId, DecAppObj};
-    use cyfs_lib::{BrowserSanboxMode, NONObjectInfo};
+    use cyfs_core::{DecApp, DecAppId};
+    use cyfs_lib::{BrowserSanboxMode, NONObjectInfo, SharedCyfsStack};
     use cyfs_meta_lib::MetaMinerTarget;
     use cyfs_stack::{
         CyfsStack, CyfsStackConfigParams, CyfsStackFrontParams, CyfsStackInterfaceParams,
@@ -348,6 +355,8 @@ mod Common {
         members: Vec<(People, Device)>,
         group: &Group,
         dec_app: &DecApp,
+        rpc_port: u16,
+        ws_port: u16,
     ) -> Box<(BdtStackParams, CyfsStackParams, CyfsStackKnownObjects)> {
         log::info!("init_stack_params");
 
@@ -369,13 +378,19 @@ mod Common {
             config: CyfsStackConfigParams {
                 isolate: Some(device.desc().object_id().to_string()),
                 sync_service: false,
-                shared_stack: false,
+                shared_stack: true,
             },
             noc: CyfsStackNOCParams {},
             interface: CyfsStackInterfaceParams {
                 bdt_listeners: vec![NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT],
-                tcp_listeners: vec![],
-                ws_listener: None,
+                tcp_listeners: vec![SocketAddr::V4(SocketAddrV4::new(
+                    std::net::Ipv4Addr::new(127, 0, 0, 1),
+                    rpc_port,
+                ))],
+                ws_listener: Some(SocketAddr::V4(SocketAddrV4::new(
+                    std::net::Ipv4Addr::new(127, 0, 0, 1),
+                    ws_port,
+                ))),
             },
             meta: CyfsStackMetaParams {
                 target: MetaMinerTarget::Dev,
@@ -454,9 +469,20 @@ mod Common {
         members: Vec<(People, Device)>,
         group: &Group,
         dec_app: &DecApp,
-    ) -> CyfsStack {
-        let params =
-            init_stack_params(people, private_key, device, admins, members, group, dec_app);
+        rpc_port: u16,
+        ws_port: u16,
+    ) -> (CyfsStack, SharedCyfsStack) {
+        let params = init_stack_params(
+            people,
+            private_key,
+            device,
+            admins,
+            members,
+            group,
+            dec_app,
+            rpc_port,
+            ws_port,
+        );
 
         log::info!("cyfs-stack.open");
 
@@ -468,14 +494,23 @@ mod Common {
             })
             .unwrap();
 
-        stack
+        async_std::task::sleep(Duration::from_millis(1000)).await;
+
+        let shared_stack =
+            SharedCyfsStack::open_with_port(Some(dec_app.desc().object_id()), rpc_port, ws_port)
+                .await
+                .unwrap();
+
+        shared_stack.wait_online(None).await.unwrap();
+
+        (stack, shared_stack)
     }
 }
 
 mod Client {
     // use cyfs_base::ObjectId;
     // use cyfs_core::GroupProposal;
-    // use cyfs_group::RPathClient;
+    // use cyfs_group_lib::RPathClient;
 
     // pub struct DecClient {}
 
@@ -505,12 +540,14 @@ mod GroupDecService {
         DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
-    use cyfs_group::RPathService;
-    use cyfs_lib::{
-        DelegateFactory, ExecuteResult, GroupObjectMapProcessor, NONPostObjectInputRequest,
-        NONPostObjectInputResponse, RPathDelegate, RequestSourceInfo, RouterHandlerChain,
+    use cyfs_group_lib::{
+        DelegateFactory, ExecuteResult, GroupManager, GroupObjectMapProcessor, RPathDelegate,
+        RPathService,
     };
-    use cyfs_stack::CyfsStack;
+    use cyfs_lib::{
+        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestSourceInfo,
+        RouterHandlerChain, SharedCyfsStack,
+    };
     use cyfs_util::EventListenerAsyncRoutine;
 
     use crate::Common::{EXAMPLE_VALUE_PATH, STATE_PATH_SEPARATOR};
@@ -518,16 +555,18 @@ mod GroupDecService {
     pub struct DecService {}
 
     impl DecService {
-        pub async fn run(cyfs_stack: &CyfsStack, local_name: String, dec_app_id: DecAppId) {
-            let group_mgr = cyfs_stack.group_mgr();
-
-            group_mgr
-                .register(
-                    dec_app_id.clone(),
-                    Box::new(GroupRPathDelegateFactory { local_name }),
-                )
-                .await
-                .unwrap();
+        pub async fn run(
+            cyfs_stack: &SharedCyfsStack,
+            local_name: String,
+            dec_app_id: DecAppId,
+        ) -> GroupManager {
+            let group_mgr = GroupManager::open(
+                cyfs_stack.clone(),
+                Box::new(GroupRPathDelegateFactory { local_name }),
+                &cyfs_lib::CyfsStackRequestorType::Http,
+            )
+            .await
+            .unwrap();
 
             // let source = RequestSourceInfo {
             //     protocol: todo!(),
@@ -541,6 +580,8 @@ mod GroupDecService {
             //     .handlers(&RouterHandlerChain::PostRouter)
             //     .post_object()
             //     .add_handler(RouterHandler::new());
+
+            group_mgr
         }
     }
 
@@ -570,7 +611,7 @@ mod GroupDecService {
     impl GroupRPathDelegateFactory {
         pub fn is_accept(
             &self,
-            group: &Group,
+            group_id: &ObjectId,
             rpath: &str,
             with_block: Option<&GroupConsensusBlock>,
         ) -> bool {
@@ -583,26 +624,17 @@ mod GroupDecService {
     impl DelegateFactory for GroupRPathDelegateFactory {
         async fn create_rpath_delegate(
             &self,
-            group: &Group,
+            group_id: &ObjectId,
             rpath: &str,
             with_block: Option<&GroupConsensusBlock>,
+            is_new: bool,
         ) -> BuckyResult<Box<dyn RPathDelegate>> {
-            if self.is_accept(group, rpath, with_block) {
+            if self.is_accept(group_id, rpath, with_block) {
                 // 如果接受，就提供该rpath的处理响应对象
                 Ok(Box::new(MyRPathDelegate::new(self.local_name.clone())))
             } else {
                 Err(BuckyError::new(BuckyErrorCode::Reject, ""))
             }
-        }
-
-        async fn on_state_changed(
-            &self,
-            group_id: &ObjectId,
-            rpath: &str,
-            state_id: Option<ObjectId>,
-            pre_state_id: Option<ObjectId>,
-        ) {
-            unimplemented!()
         }
     }
 
@@ -621,73 +653,19 @@ mod GroupDecService {
     }
 
     impl MyRPathDelegate {
-        // pub async fn get_value_from_state_tree_with_single_op_envs(
-        //     pre_state_id: Option<cyfs_base::ObjectId>,
-        //     object_map_processor: &dyn GroupObjectMapProcessor,
-        // ) -> BuckyResult<(
-        //     Option<ObjectId>,
-        //     Vec<(ObjectMapSingleOpEnvRef, &str, Option<ObjectId>)>,
-        // )> {
-        //     let mut single_op_envs = vec![];
-        //     let mut parent_map_id = pre_state_id;
-        //     for folder in EXAMPLE_VALUE_PATH.split(STATE_PATH_SEPARATOR.as_str()) {
-        //         let single_op_env = object_map_processor.create_single_op_env().await.expect(
-        //             format!(
-        //                 "create_single_op_env load folder {} with obj_id {:?} failed",
-        //                 folder, parent_map_id
-        //             )
-        //             .as_str(),
-        //         );
-        //         parent_map_id = match parent_map_id {
-        //             Some(parent_map_id) => {
-        //                 single_op_env.load(&parent_map_id).await.expect(
-        //                     format!(
-        //                         "load folder {} parent with obj_id {:?} failed",
-        //                         folder, parent_map_id
-        //                     )
-        //                     .as_str(),
-        //                 );
-        //                 single_op_env.get_by_key(folder).await.expect(
-        //                     format!(
-        //                         "load folder {} with obj_id {:?} failed",
-        //                         folder, parent_map_id
-        //                     )
-        //                     .as_str(),
-        //                 )
-        //             }
-        //             None => {
-        //                 single_op_env
-        //                     .create_new(ObjectMapSimpleContentType::Map)
-        //                     .await
-        //                     .expect(
-        //                         format!(
-        //                             "create folder {} with obj_id {:?} failed",
-        //                             folder, parent_map_id
-        //                         )
-        //                         .as_str(),
-        //                     );
-        //                 None
-        //             }
-        //         };
-        //         single_op_envs.push((single_op_env, folder, parent_map_id));
-        //     }
-
-        //     Ok((parent_map_id, single_op_envs))
-        // }
-
         pub async fn execute(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: Option<cyfs_base::ObjectId>,
+            prev_state_id: &Option<cyfs_base::ObjectId>,
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
             let state_op_env = object_map_processor
-                .create_sub_tree_op_env()
+                .create_sub_tree_op_env(None)
                 .await
                 .expect(format!("create_sub_tree_op_env failed").as_str());
-            let pre_value = match pre_state_id {
-                Some(pre_state_id) => {
-                    state_op_env.load(&pre_state_id).await?;
+            let prev_value = match prev_state_id {
+                Some(prev_state_id) => {
+                    state_op_env.load(prev_state_id.to_owned()).await?;
                     state_op_env
                         .get_by_path(EXAMPLE_VALUE_PATH.as_str())
                         .await
@@ -708,13 +686,13 @@ mod GroupDecService {
 
             let result_value = {
                 /**
-                 * pre_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
+                 * prev_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
                  */
-                let pre_value = pre_value.map_or(0, |pre_value| {
-                    let buf = pre_value.data();
-                    let mut pre_value = [0u8; 8];
-                    pre_value.copy_from_slice(&buf[..8]);
-                    u64::from_be_bytes(pre_value)
+                let prev_value = prev_value.map_or(0, |prev_value| {
+                    let buf = prev_value.data();
+                    let mut prev_value = [0u8; 8];
+                    prev_value.copy_from_slice(&buf[..8]);
+                    u64::from_be_bytes(prev_value)
                 });
 
                 let delta_buf = proposal.params().as_ref().unwrap().as_slice();
@@ -722,7 +700,7 @@ mod GroupDecService {
                 delta.copy_from_slice(delta_buf);
                 let delta = u64::from_be_bytes(delta);
 
-                let value = pre_value + delta;
+                let value = prev_value + delta;
                 ObjectIdDataBuilder::new()
                     .data(&value.to_be_bytes())
                     .build()
@@ -731,13 +709,13 @@ mod GroupDecService {
 
             let result_state_id = {
                 state_op_env
-                    .set_with_path(EXAMPLE_VALUE_PATH.as_str(), &result_value, &pre_value, true)
+                    .set_with_path(EXAMPLE_VALUE_PATH.as_str(), &result_value, prev_value, true)
                     .await
                     .expect(
                         format!(
                             "set_with_path {:?} from {:?} to {} failed",
                             EXAMPLE_VALUE_PATH.as_str(),
-                            pre_value,
+                            prev_value,
                             result_value
                         )
                         .as_str(),
@@ -746,34 +724,11 @@ mod GroupDecService {
                     format!(
                         "commit {:?} from {:?} to {} failed",
                         EXAMPLE_VALUE_PATH.as_str(),
-                        pre_value,
+                        prev_value,
                         result_value
                     )
                     .as_str(),
                 )
-                // let mut sub_folder_value = result_value;
-                // for (parent_single_op_env, folder, sub_folder_prev_value) in
-                //     single_op_envs.into_iter().rev()
-                // {
-                //     parent_single_op_env
-                //         .set_with_key(folder, &sub_folder_value, &sub_folder_prev_value, true)
-                //         .await
-                //         .expect(
-                //             format!(
-                //                 "update folder {} value from {:?} to {:?} failed",
-                //                 folder, sub_folder_prev_value, sub_folder_value
-                //             )
-                //             .as_str(),
-                //         );
-                //     sub_folder_value = parent_single_op_env.commit().await.expect(
-                //         format!(
-                //             "commit folder {} value from {:?} to {:?} failed",
-                //             folder, sub_folder_prev_value, sub_folder_value
-                //         )
-                //         .as_str(),
-                //     );
-                // }
-                // sub_folder_value
             };
 
             let receipt = {
@@ -791,11 +746,11 @@ mod GroupDecService {
             };
 
             /**
-             * (result_state_id, return_object) = pre_value + proposal + context
+             * (result_state_id, return_object) = prev_value + proposal + context
              */
             Ok(ExecuteResult {
                 context,
-                result_state_id: Some(result_state_id),
+                result_state_id: Some(result_state_id.root),
                 receipt,
             })
         }
@@ -803,21 +758,21 @@ mod GroupDecService {
         pub async fn verify(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: Option<cyfs_base::ObjectId>,
+            prev_state_id: &Option<cyfs_base::ObjectId>,
             object_map_processor: &dyn GroupObjectMapProcessor,
             execute_result: &ExecuteResult,
-        ) -> BuckyResult<bool> {
+        ) -> BuckyResult<()> {
             /**
              * let is_same = (execute_result.result_state_id, execute_result.return_object)
-             *  == pre_state_id + proposal + execute_result.context
+             *  == prev_state_id + proposal + execute_result.context
              */
             let result = self
-                .execute(proposal, pre_state_id, object_map_processor)
+                .execute(proposal, prev_state_id, object_map_processor)
                 .await?;
 
             log::info!(
                 "verify expect: prev-state: {:?}, {:?}/{}/{}, got: {:?}/{}/{}",
-                pre_state_id,
+                prev_state_id,
                 execute_result.result_state_id,
                 execute_result.context.is_none(),
                 execute_result.receipt.is_none(),
@@ -830,7 +785,11 @@ mod GroupDecService {
                 && execute_result.context.is_none()
                 && execute_result.receipt.is_none();
 
-            Ok(is_ok)
+            if is_ok {
+                Ok(())
+            } else {
+                Err(BuckyError::new(BuckyErrorCode::Reject, "result unmatch"))
+            }
         }
     }
 
@@ -839,31 +798,36 @@ mod GroupDecService {
         async fn on_execute(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: Option<cyfs_base::ObjectId>,
+            prev_state_id: &Option<cyfs_base::ObjectId>,
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
-            self.execute(proposal, pre_state_id, object_map_processor)
+            self.execute(proposal, prev_state_id, object_map_processor)
                 .await
         }
 
         async fn on_verify(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: Option<cyfs_base::ObjectId>,
-            object_map_processor: &dyn GroupObjectMapProcessor,
+            prev_state_id: &Option<cyfs_base::ObjectId>,
             execute_result: &ExecuteResult,
-        ) -> BuckyResult<bool> {
-            self.verify(proposal, pre_state_id, object_map_processor, execute_result)
-                .await
+            object_map_processor: &dyn GroupObjectMapProcessor,
+        ) -> BuckyResult<()> {
+            self.verify(
+                proposal,
+                prev_state_id,
+                object_map_processor,
+                execute_result,
+            )
+            .await
         }
 
         async fn on_commited(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: Option<cyfs_base::ObjectId>,
-            object_map_processor: &dyn GroupObjectMapProcessor,
+            prev_state_id: &Option<cyfs_base::ObjectId>,
             execute_result: &ExecuteResult,
             block: &GroupConsensusBlock,
+            object_map_processor: &dyn GroupObjectMapProcessor,
         ) {
             // 提交到共识链上了，可能有些善后事宜
 
@@ -872,16 +836,16 @@ mod GroupDecService {
             delta.copy_from_slice(delta_buf);
             let delta = u64::from_be_bytes(delta);
 
-            let pre_value = match pre_state_id {
-                Some(pre_state_id) => {
+            let prev_value = match prev_state_id {
+                Some(prev_state_id) => {
                     let state_op_env = object_map_processor
-                        .create_sub_tree_op_env()
+                        .create_sub_tree_op_env(None)
                         .await
                         .expect(format!("create_sub_tree_op_env failed").as_str());
                     state_op_env
-                        .load(&pre_state_id)
+                        .load(*prev_state_id)
                         .await
-                        .expect(format!("load {} failed", pre_state_id).as_str());
+                        .expect(format!("load {} failed", prev_state_id).as_str());
                     state_op_env
                         .get_by_path(EXAMPLE_VALUE_PATH.as_str())
                         .await
@@ -892,21 +856,21 @@ mod GroupDecService {
                 }
                 None => None,
             }
-            .map_or(0, |pre_state_id| {
-                let buf = pre_state_id.data();
-                let mut pre_value = [0u8; 8];
-                pre_value.copy_from_slice(&buf[..8]);
-                u64::from_be_bytes(pre_value)
+            .map_or(0, |prev_state_id| {
+                let buf = prev_state_id.data();
+                let mut prev_value = [0u8; 8];
+                prev_value.copy_from_slice(&buf[..8]);
+                u64::from_be_bytes(prev_value)
             });
 
             let result_value = match execute_result.result_state_id {
                 Some(result_state_id) => {
                     let state_op_env = object_map_processor
-                        .create_sub_tree_op_env()
+                        .create_sub_tree_op_env(None)
                         .await
                         .expect(format!("create_sub_tree_op_env failed").as_str());
                     state_op_env
-                        .load(&result_state_id)
+                        .load(result_state_id)
                         .await
                         .expect(format!("load {} failed", result_state_id).as_str());
                     state_op_env
@@ -932,7 +896,7 @@ mod GroupDecService {
                 "proposal commited: height: {}/{}, delta: {}, result: {} -> {}, proposal: {}, block: {}, local: {}",
                 block.height(), block.round(),
                 delta,
-                pre_value,
+                prev_value,
                 result_value,
                 proposal_id,
                 block.block_id(),
@@ -941,10 +905,6 @@ mod GroupDecService {
 
             let is_new_finished = self.finished_proposals.lock().await.insert(proposal_id);
             assert!(is_new_finished);
-        }
-
-        async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
-            unimplemented!()
         }
     }
 }
@@ -982,6 +942,7 @@ async fn main_run() {
 
     cyfs_debug::PanicBuilder::new(EXAMPLE_APP_NAME.as_str(), EXAMPLE_APP_NAME.as_str())
         .exit_on_panic(true)
+        .dingtalk_bug_report("any value to disable")
         .build()
         .start();
 
@@ -1004,9 +965,12 @@ async fn main_run() {
     );
     let dec_app_id = DecAppId::try_from(dec_app.desc().object_id()).unwrap();
 
-    let mut admin_stacks: Vec<CyfsStack> = vec![];
+    let mut admin_stacks: Vec<(CyfsStack, SharedCyfsStack)> = vec![];
+    let mut group_mgrs: Vec<GroupManager> = vec![];
+    let mut rpc_port = 32217_u16;
+    let mut ws_port = 33217_u16;
     for ((admin, _), (device, private_key)) in admins.iter() {
-        let cyfs_stack = create_stack(
+        let (cyfs_stack, shared_stack) = create_stack(
             admin,
             private_key,
             device,
@@ -1020,33 +984,34 @@ async fn main_run() {
                 .collect(),
             &group,
             &dec_app,
+            rpc_port,
+            ws_port,
         )
         .await;
-        admin_stacks.push(cyfs_stack);
+        admin_stacks.push((cyfs_stack, shared_stack));
+        rpc_port += 1;
+        ws_port += 1;
     }
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
 
     for i in 0..admin_stacks.len() {
-        let stack = admin_stacks.get(i).unwrap();
+        let (_, shared_stack) = admin_stacks.get(i).unwrap();
         let ((admin, _), _) = admins.get(i).unwrap();
-        DecService::run(
-            &stack,
-            admin.name().unwrap().to_string(),
-            dec_app_id.clone(),
-        )
-        .await;
+        let local_name = admin.name().unwrap();
+        let group_mgr =
+            DecService::run(&shared_stack, local_name.to_string(), dec_app_id.clone()).await;
 
-        let service = stack
-            .group_mgr()
-            .find_rpath_service(
-                &group.desc().object_id(),
-                dec_app_id.object_id(),
-                &EXAMPLE_RPATH,
-                IsCreateRPath::Yes,
+        let service = group_mgr
+            .start_rpath_service(
+                group.desc().object_id(),
+                EXAMPLE_RPATH.to_string(),
+                Box::new(MyRPathDelegate::new(local_name.to_string())),
             )
             .await
             .unwrap();
+
+        group_mgrs.push(group_mgr);
     }
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
@@ -1057,7 +1022,8 @@ async fn main_run() {
 
     let PROPOSAL_COUNT = 20usize;
     for i in 1..PROPOSAL_COUNT {
-        let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
+        let (_, stack) = admin_stacks.get(i % admin_stacks.len()).unwrap();
+        let group_mgr = group_mgrs.get(i % group_mgrs.len()).unwrap();
         let owner = &admins.get(i % admins.len()).unwrap().0 .0;
         let proposal = create_proposal(
             i as u64,
@@ -1066,42 +1032,31 @@ async fn main_run() {
             dec_app_id.object_id().clone(),
         );
 
-        let service = stack
-            .group_mgr()
-            .find_rpath_service(
-                &group_id,
-                dec_app_id.object_id(),
-                &EXAMPLE_RPATH,
-                IsCreateRPath::Yes,
-            )
+        let service = group_mgr
+            .find_rpath_service(&group_id, &EXAMPLE_RPATH)
             .await
             .unwrap();
 
-        let noc = stack.noc_manager().clone();
+        let noc = stack.non_service().clone();
 
         let buf = proposal.to_vec().unwrap();
         let proposal_any = Arc::new(AnyNamedObject::Core(
             TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
         ));
 
-        let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo {
-                protocol: RequestProtocol::DatagramBdt,
-                zone: DeviceZoneInfo {
-                    device: None,
-                    zone: None,
-                    zone_category: DeviceZoneCategory::CurrentDevice,
-                },
-                dec: dec_app_id.object_id().clone(),
-                verified: None,
+        let req = NONPutObjectOutputRequest {
+            common: NONOutputRequestCommon {
+                req_path: None,
+                source: None,
+                dec_id: None,
+                level: cyfs_lib::NONAPILevel::NOC,
+                target: None,
+                flags: 0,
             },
             object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
-            storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: Some(AccessString::full().value()),
+            access: Some(AccessString::full()),
         };
-        noc.put_object(&req).await;
+        noc.put_object(req).await;
         proposals.push(proposal);
     }
 
@@ -1112,20 +1067,15 @@ async fn main_run() {
     for i in 1..PROPOSAL_COUNT {
         let proposal = proposals.get(i - 1).unwrap().clone();
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
+        let group_mgr = group_mgrs.get(i % group_mgrs.len()).unwrap();
 
-        let service = stack
-            .group_mgr()
-            .find_rpath_service(
-                &group_id,
-                dec_app_id.object_id(),
-                &EXAMPLE_RPATH,
-                IsCreateRPath::Yes,
-            )
+        let service = group_mgr
+            .find_rpath_service(&group_id, &EXAMPLE_RPATH)
             .await
             .unwrap();
 
         async_std::task::spawn(async move {
-            service.push_proposal(proposal).await.unwrap();
+            service.push_proposal(&proposal).await.unwrap();
         });
 
         if i % 10 == 0 {
@@ -1136,27 +1086,25 @@ async fn main_run() {
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
 
-    let client = admin_stacks
-        .get(0)
-        .unwrap()
-        .group_mgr()
-        .rpath_client(
-            &group.desc().object_id(),
-            dec_app_id.object_id(),
-            &EXAMPLE_RPATH,
-        )
-        .await
-        .unwrap();
+    // let client = group_mgrs
+    //     .get(0)
+    //     .unwrap()
+    //     .rpath_client(
+    //         &group.desc().object_id(),
+    //         dec_app_id.object_id(),
+    //         &EXAMPLE_RPATH,
+    //     )
+    //     .await;
 
-    let value_obj = client
-        .get_by_path(EXAMPLE_VALUE_PATH.as_str())
-        .await
-        .unwrap();
-    let buf = value_obj.as_ref().unwrap().object_id.data();
-    let mut value = [0u8; 8];
-    value.copy_from_slice(&buf[..8]);
+    // let value_obj = client
+    //     .get_by_path(EXAMPLE_VALUE_PATH.as_str())
+    //     .await
+    //     .unwrap();
+    // let buf = value_obj.as_ref().unwrap().object_id.data();
+    // let mut value = [0u8; 8];
+    // value.copy_from_slice(&buf[..8]);
 
-    log::info!("value from client is: {}", u64::from_be_bytes(value));
+    // log::info!("value from client is: {}", u64::from_be_bytes(value));
 }
 
 fn main() {
