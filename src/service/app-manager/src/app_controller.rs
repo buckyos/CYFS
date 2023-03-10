@@ -140,7 +140,7 @@ impl AppController {
             );
             SubErrorCode::DownloadFailed
         })?;
-        let owner_id = self.get_owner_id(&app_id).await.map_err(|e| {
+        let owner_id = self.get_owner_id(&app_id).await.map_err(|_e| {
             error!("get app {} owner id failed", &app_id);
             SubErrorCode::LoadFailed
         })?;
