@@ -1,12 +1,13 @@
-use cyfs_base_meta::*;
-use crate::state_storage::{StateRef, StateWeakRef};
 use super::context;
-use crate::archive_storage::*;
+use crate::State;
 use crate::executor::context::AccountMethods;
 use crate::helper::ArcWeakHelper;
 use crate::meta_backend::MetaBackend;
-use evm::executor::{MemoryStackState, StackSubstateMetadata, StackExecutor};
 use crate::stat::Stat;
+use crate::state_storage::{StateRef, StateWeakRef};
+use cyfs_base::{BuckyResult, RawConvertTo};
+use cyfs_base_meta::*;
+use evm::executor::{MemoryStackState, StackExecutor, StackSubstateMetadata};
 
 struct ViewExecuteContext {}
 
@@ -20,8 +21,13 @@ pub struct ViewMethodExecutor<M: ViewMethod> {
     evm_config: evm::Config,
 }
 
-impl <M: ViewMethod> ViewMethodExecutor<M> {
-    pub fn new(block: &BlockDesc, ref_state: &StateRef, stat: Option<Stat>, method: M) -> ViewMethodExecutor<M> {
+impl<M: ViewMethod> ViewMethodExecutor<M> {
+    pub fn new(
+        block: &BlockDesc,
+        ref_state: &StateRef,
+        stat: Option<Stat>,
+        method: M,
+    ) -> ViewMethodExecutor<M> {
         ViewMethodExecutor {
             method,
             ref_state: StateRef::downgrade(ref_state),
@@ -86,26 +92,22 @@ impl ViewMethodExecutor<ViewNameMethod> {
 impl ViewMethodExecutor<ViewRawMethod> {
     pub async fn exec(&self) -> BuckyResult<<ViewRawMethod as ViewMethod>::Result> {
         let ret = match self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await {
-            Ok(obj) => {
-                match obj {
-                    SavedMetaObject::Device(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::People(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::UnionAccount(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::Group(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::File(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::Data(obj) => Ok(obj.data),
-                    SavedMetaObject::MinerGroup(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::SNService(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::Contract(obj) => Ok(obj.to_vec()?),
-                    SavedMetaObject::SimpleGroup => {
-                        panic!("SimpleGroup is deprecated, you can use the Group.")
-                    }
-                    SavedMetaObject::Org => panic!("Org is deprecated, you can use the Group."),
+            Ok(obj) => match obj {
+                SavedMetaObject::Device(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::People(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::UnionAccount(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::Group(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::File(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::Data(obj) => Ok(obj.data),
+                SavedMetaObject::MinerGroup(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::SNService(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::Contract(obj) => Ok(obj.to_vec()?),
+                SavedMetaObject::SimpleGroup => {
+                    panic!("SimpleGroup is deprecated, you can use the Group.")
                 }
-            }
-            Err(e) => {
-                Err(e)
-            }
+                SavedMetaObject::Org => panic!("Org is deprecated, you can use the Group."),
+            },
+            Err(e) => Err(e),
         };
         if let Some(stat) = &self.stat {
             stat.query_desc(&self.method.id, ret.is_ok());

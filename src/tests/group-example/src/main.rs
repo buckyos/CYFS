@@ -34,7 +34,7 @@ mod Common {
         TypelessCoreObject, UniqueId, NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT,
         SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
-    use cyfs_bdt_ext::BdtStackParams;
+    use cyfs_bdt_ext::{BdtStackParams, SNMode};
     use cyfs_chunk_lib::ChunkMeta;
     use cyfs_core::{DecApp, DecAppId};
     use cyfs_lib::{BrowserSanboxMode, NONObjectInfo, SharedCyfsStack};
@@ -372,6 +372,7 @@ mod Common {
             known_device,
             known_passive_pn: vec![],
             udp_sn_only: None,
+            sn_mode: SNMode::Normal,
         };
 
         let stack_param = CyfsStackParams {
@@ -379,6 +380,7 @@ mod Common {
                 isolate: Some(device.desc().object_id().to_string()),
                 sync_service: false,
                 shared_stack: true,
+                perf_service: false,
             },
             noc: CyfsStackNOCParams {},
             interface: CyfsStackInterfaceParams {
