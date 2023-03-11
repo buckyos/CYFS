@@ -232,7 +232,7 @@ impl Daemon {
     }
 
     fn start_check_active(&self) {
-        const ACTIVE_TIMEOUT: u64 = 1000 * 1000 * 60 * 30;
+        const ACTIVE_TIMEOUT: u64 = 1000 * 1000 * 60 * 30 * 3;
 
         let this = self.clone();
         task::spawn(async move {
