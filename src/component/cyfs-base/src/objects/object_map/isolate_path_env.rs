@@ -14,10 +14,6 @@ pub struct ObjectMapIsolatePathOpEnv {
     // 每个root下的op_env都有唯一的一个sid
     sid: u64,
 
-    // 用以创建objectmap
-    owner: Option<ObjectId>,
-    dec_id: Option<ObjectId>,
-
     // 当前op_env的所属root
     root_holder: ObjectMapRootHolder,
 
@@ -38,8 +34,6 @@ impl ObjectMapIsolatePathOpEnv {
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         root_cache: &ObjectMapRootCacheRef,
-        owner: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
         access: Option<OpEnvPathAccess>,
     ) -> Self {
         debug!("new isolate_path_op_env: sid={},", sid);
@@ -50,8 +44,6 @@ impl ObjectMapIsolatePathOpEnv {
             root_holder: root_holder.clone(),
             path: OnceCell::new(),
             cache,
-            owner,
-            dec_id,
             write_lock: AsyncMutex::new(()),
             access,
         }
@@ -79,11 +71,11 @@ impl ObjectMapIsolatePathOpEnv {
     }
 
     // init methods
-    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType) -> BuckyResult<()> {
+    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType, owner: Option<ObjectId>, dec_id: Option<ObjectId>,) -> BuckyResult<()> {
         let obj = ObjectMap::new(
             content_type.clone(),
-            self.owner.clone(),
-            self.dec_id.clone(),
+            owner,
+            dec_id,
         )
         .no_create_time()
         .build();

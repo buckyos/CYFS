@@ -72,6 +72,28 @@ impl GlobalStateLocalService {
             None => Ok(&common.source.dec),
         }
     }
+
+    fn select_owner(
+        dec_root_manager: &ObjectMapRootManagerRef,
+        owner: Option<ObjectMapField>,
+    ) -> Option<ObjectId> {
+        match owner {
+            None | Some(ObjectMapField::Default) => dec_root_manager.owner().clone(),
+            Some(ObjectMapField::None) => None,
+            Some(ObjectMapField::Specific(id)) => Some(id),
+        }
+    }
+
+    fn select_dec(
+        dec_root_manager: &ObjectMapRootManagerRef,
+        dec: Option<ObjectMapField>,
+    ) -> Option<ObjectId> {
+        match dec {
+            None | Some(ObjectMapField::Default) => dec_root_manager.dec_id().clone(),
+            Some(ObjectMapField::None) => None,
+            Some(ObjectMapField::Specific(id)) => Some(id),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -305,7 +327,11 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                         }
                         None => op_env.create_new_with_path(&key, req.content_type).await?,
                     },
-                    None => op_env.create_new(req.content_type).await?,
+                    None => {
+                        let owner = Self::select_owner(&dec_root_manager, req.owner);
+                        let dec = Self::select_dec(&dec_root_manager, req.dec);
+                        op_env.create_new(req.content_type, owner, dec).await?
+                    }
                 }
             }
             ObjectMapOpEnvType::Single => {
@@ -313,7 +339,9 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     .managed_envs()
                     .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
-                op_env.create_new(req.content_type).await?
+                let owner = Self::select_owner(&dec_root_manager, req.owner);
+                let dec = Self::select_dec(&dec_root_manager, req.dec);
+                op_env.create_new(req.content_type, owner, dec).await?
             }
         };
 

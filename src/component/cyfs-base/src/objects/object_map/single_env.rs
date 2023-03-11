@@ -12,10 +12,6 @@ use std::sync::Arc;
 pub struct ObjectMapSingleOpEnv {
     sid: u64,
 
-    // 用以创建objectmap
-    owner: Option<ObjectId>,
-    dec_id: Option<ObjectId>,
-
     // 所属dec的root
     root_holder: ObjectMapRootHolder,
 
@@ -36,16 +32,12 @@ impl ObjectMapSingleOpEnv {
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         root_cache: &ObjectMapRootCacheRef,
-        owner: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
         access: Option<OpEnvPathAccess>,
     ) -> Self {
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         Self {
             sid,
-            owner,
-            dec_id,
             root_holder: root_holder.clone(),
             root: AsyncMutex::new(None),
             cache,
@@ -86,11 +78,11 @@ impl ObjectMapSingleOpEnv {
     }
 
     // 创建一个新的object_map
-    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType) -> BuckyResult<()> {
+    pub async fn create_new(&self, content_type: ObjectMapSimpleContentType, owner: Option<ObjectId>, dec_id: Option<ObjectId>,) -> BuckyResult<()> {
         let obj = ObjectMap::new(
             content_type.clone(),
-            self.owner.clone(),
-            self.dec_id.clone(),
+            owner,
+            dec_id,
         )
         .no_create_time()
         .build();
