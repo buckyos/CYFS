@@ -74,7 +74,7 @@ $1"#;
 ///
 /// # Arguments
 /// - DecAppId decapp的id
-pub fn prepare(id: &str, version: &str, executable: Option<Vec<String>>) -> BuckyResult<()> {
+pub fn prepare(id: &str, version: &str) -> BuckyResult<()> {
     info!("prepare docker build start {} {}", id, version);
 
     // dockerfile  目录
@@ -88,30 +88,8 @@ pub fn prepare(id: &str, version: &str, executable: Option<Vec<String>>) -> Buck
     let gateway_ip = DockerApi::get_network_gateway_ip()?;
     info!("get docker start shell 's gateway ip: {}", gateway_ip);
 
-    // 用可执行命令运行的app，需要在容器内执行一下 chmod +x (e.g.  app.service.type:rust)
-    let (chmod_executable, executable_relative_path) = {
-        if executable.is_some() {
-            let executable = executable.unwrap();
-            let result = executable
-                .into_iter()
-                .map(|exec| format!("chmod +x {}", exec))
-                .collect::<Vec<String>>()
-                .join(" && ");
-            (result, "./".to_string())
-        } else {
-            ("".to_string(), "".to_string())
-        }
-    };
-
-    info!(
-        "get docker start shell 's chmod executable: {}",
-        chmod_executable
-    );
-
     // network的 gateway_ip是manager启动后生成的。这里需要根据名字（名字是固定的）需要获取后替换进去启动脚本里
     let shell = START_SHELL
-        .replace("{executable}", &chmod_executable)
-        .replace("{executable_relative_path}", &executable_relative_path)
         .replace("{gateway_ip}", &gateway_ip);
     info!("docker start shell content: {}", &shell);
     std::fs::write(&start_sh_path, shell)?;
@@ -260,9 +238,45 @@ impl DockerApi {
         &self,
         id: &str,
         version: &str,
-        executable: Option<Vec<String>>,
+        install_cmd: Vec<String>,
     ) -> BuckyResult<()> {
-        prepare(id, version, executable)?;
+        prepare(id, version)?;
+        // TODO 在容器内执行install命令
+        for cmd in install_cmd {
+            info!("start app {} install cmd {} in docker", id, cmd);
+            let container_name = format!("decapp-{}-install", id.to_lowercase());
+            let mut create_args = vec![
+                "run".to_string(),
+                "--name".to_string(), container_name.clone(),
+                "--cap-add".to_string(), "NET_ADMIN".to_string(),
+                "--cap-add".to_string(), "NET_RAW".to_string(),
+                "--rm".to_string(), "--init".to_string(),
+                "--network".to_string(), "bridge".to_string(),
+                "--entrypoint=\"\"".to_string()
+            ];
+
+            // 容器启动的host配置
+            let mut mounts = get_hostconfig_mounts(id);
+            // 将app service目录mount到/opt/app, app install的时候service目录为可写
+            add_bind_volume(&mut mounts, get_app_dir(id), "/opt/app", false);
+            create_args.append(&mut mounts);
+
+            create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG));
+            create_args.push(cmd.clone());
+
+            let output = run_docker_only_status(create_args).map_err(|e| {
+                error!("run container {} err {}", container_name, e);
+                e
+            })?;
+
+            if output.success() {
+                info!("run container {} success", container_name);
+                Ok(())
+            } else {
+                error!("run container {} fail, exit code {}", container_name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
+                Err(BuckyError::from(BuckyErrorCode::Failed))
+            }
+        }
         Ok(())
     }
 

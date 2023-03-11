@@ -204,11 +204,6 @@ impl AppController {
                 );
                 SubErrorCode::LoadFailed
             })?;
-            let ret = dapp.install();
-            if ret.is_err() || !ret.unwrap() {
-                warn!("exec install command failed. app:{}", app_id);
-                return Err(SubErrorCode::CommondFailed);
-            }
 
             //run docker install -> build image
             let use_docker = self.config.app_use_docker(app_id);
@@ -216,22 +211,6 @@ impl AppController {
             if use_docker {
                 info!("run docker install!");
                 let id = app_id.to_string();
-
-                // 可执行命令，如果有，需要在docker里 chmod +x
-                let executable = {
-                    let res = dapp.get_executable_binary().map_err(|e| {
-                        error!(
-                            "get executable failed when install. app:{} failed, err:,{}",
-                            app_id, e
-                        );
-                        SubErrorCode::LoadFailed
-                    })?;
-                    if res.len() == 0 {
-                        None
-                    } else {
-                        Some(res)
-                    }
-                };
                 self.docker_api
                     .install(&id, version, executable)
                     .await
@@ -239,6 +218,12 @@ impl AppController {
                         error!("docker install failed. app:{} failed, {}", app_id, e);
                         SubErrorCode::DockerFailed
                     })?;
+            } else {
+                let ret = dapp.install();
+                if ret.is_err() || !ret.unwrap() {
+                    warn!("exec install command failed. app:{}", app_id);
+                    return Err(SubErrorCode::CommondFailed);
+                }
             }
         }
 

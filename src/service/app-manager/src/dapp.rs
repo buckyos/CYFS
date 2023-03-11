@@ -516,6 +516,10 @@ impl DApp {
         Ok(())
     }
 
+    pub fn get_install_cmd(&self) -> Vec<String> {
+        self.info.install.clone()
+    }
+
     pub fn install(&self) -> BuckyResult<bool> {
         let mut cmd_index = 0;
         for cmd in &self.info.install {
