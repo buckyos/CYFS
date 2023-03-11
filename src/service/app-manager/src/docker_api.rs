@@ -41,15 +41,6 @@ const APP_BASE_TAG: &str = "v1";
 // iptables: alternative set the corret iptables version which defined by host kenel mod
 const START_SHELL: &'static str = r#"
 #!/bin/bash
-set -m
-
-# workdir 
-cd /opt/app
-
-{executable}
-
-{executable_relative_path}$1 &
-
 container_ip=`hostname -i`
 result=$(iptables -L 2>&1)
 if [[ "$result" == *"iptables-legacy tables present"* ]]; then
@@ -66,7 +57,7 @@ iptables -t nat -A POSTROUTING -s 127.0.0.1 -p tcp -j SNAT --to-source $containe
 # sysctl -w net.ipv4.conf.eth0.route_localnet=1
 
 # now the primary process back into the foreground
-fg %1"#;
+$1"#;
 
 /// 基础镜像
 /// cyfs-base 镜像处理好前置需要网络安装和更新 Dockfile:
@@ -74,6 +65,7 @@ fg %1"#;
 /// RUN apt update -y && apt install -y iptables net-tools telnet curl procps
 /// RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
 /// RUN apt update -y && apt install -y nodejs
+/// WORKDIR /opt/app
 /// ENTRYPOINT [\"bash\", \"/opt/start.sh\"]
 
 /// ---
@@ -194,9 +186,8 @@ fn get_hostconfig_mounts(id: &str) -> Vec<String> {
         } else {
             info!("resolv.conf file contain 127.0.0.53, use systemd resolv.conf instead");
             let systemd_resolve = Path::new("/run/systemd/resolve/resolv.conf");
-            let systemd_resolve_exist = systemd_resolve.is_file();
-            if systemd_resolve_exist {
-                add_bind_volume(&mut mounts, "/etc/resolv.conf", systemd_resolve, true);
+            if systemd_resolve.is_file() {
+                add_bind_volume(&mut mounts, systemd_resolve, "/etc/resolv.conf", true);
             }
         }
     } else {
@@ -215,7 +206,7 @@ impl DockerApi {
         Self { }
     }
 
-    pub fn update_image() -> BuckyResult<bool> {
+    pub async fn update_image() -> BuckyResult<()> {
         let output = String::from_utf8(run_docker(vec![
             "images",
             "--format", "{{.Tag}}",
@@ -224,42 +215,18 @@ impl DockerApi {
         for line in output.lines() {
             if line == APP_BASE_TAG {
                 info!("app image tag {} exists", line);
-                return Ok(true);
+                return Ok(());
             }
         }
 
         info!("cannot found app image tag {}, pull it", APP_BASE_TAG);
 
-        async_std::task::spawn(async {
-            run_docker_only_status(vec!["pull".to_string(), format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG)])?;
-        });
+        let ret = run_docker_only_status(vec!["pull".to_string(), format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG)])?;
+        if !ret.success() {
+            return Err(BuckyError::new(BuckyErrorCode::Failed, format!("docker pull image failed")));
+        };
 
-        Ok(false)
-    }
-
-    /// # get_network_id
-    /// 获取network id. container 的启动config里，除了network的名字还需要id
-    pub fn get_network_id(network_name: &str) -> BuckyResult<String> {
-        let name_filter = format!("name={}", network_name);
-        let output = run_docker(vec!["network", "ls", "--filter", &name_filter, "--no-trunc"])?.wait_with_output().map_err(|e| {
-            error!("get_network_id cmd error {:?}", e);
-            e
-        })?;
-
-        if output.status.success() {
-            let stdout = String::from_utf8(output.stdout).unwrap();
-            // 第二行的第一个
-            let result = stdout.lines().nth(1).unwrap();
-            info!("get network id {}", result);
-            let id = result.split_whitespace().nth(0).unwrap();
-
-            Ok(id.to_string())
-        } else {
-            Err(BuckyError::new(
-                BuckyErrorCode::Failed,
-                "docker ls network get id failed",
-            ))
-        }
+        Ok(())
     }
 
     pub fn get_network_gateway_ip() -> BuckyResult<String> {
@@ -320,17 +287,17 @@ impl DockerApi {
         &self,
         id: &str,
         config: RunConfig,
-        command: Option<Vec<String>>,
+        command: String,
     ) -> BuckyResult<()> {
         info!("docker run dec app:{}, config {:?}", id, config);
         if self.is_running(id).await.unwrap() {
-            info!("docker container is alreay running   {}", id);
+            info!("docker container is alreay running {}", id);
             return Ok(());
         }
         // check image
 
         // build options
-        // docker create --name ${container_name} --network none ${mounts} --cap-add NET_ADMIN --cap-add NET_RAW --sysctl net.ipv4.conf.eth0.route_localnet=1 --log-driver json-file --log-opt max-size=100m --log-opt max-file=3
+        // docker run --name ${container_name} --network none ${mounts} --cap-add NET_ADMIN --cap-add NET_RAW --sysctl net.ipv4.conf.eth0.route_localnet=1 --log-driver json-file --log-opt max-size=100m --log-opt max-file=3
         let container_name = format!("decapp-{}", id.to_lowercase());
         let mut create_args = vec![
             "run".to_string(),
@@ -341,7 +308,7 @@ impl DockerApi {
             "--log-driver".to_string(), "json-file".to_string(),
             "--log-opt".to_string(), "max-size=100m".to_string(),
             "--log-opt".to_string(), "max-file=3".to_string(),
-            "--rm".to_string()
+            "--rm".to_string(), "-d".to_string(), "--init".to_string()
         ];
 
         // 容器启动的host配置
@@ -375,9 +342,8 @@ impl DockerApi {
         // ip和network 配置
         // 通过docker network inspect cyfs_br 可以快速查看container的ip是否配置正确
         if config.ip.is_some() && config.network.is_some() {
-            let network_id = DockerApi::get_network_id(&config.network.unwrap())?;
             create_args.push("--network".to_string());
-            create_args.push(network_id);
+            create_args.push(config.network.unwrap());
 
             create_args.push("--ip".to_string());
             create_args.push(config.ip.unwrap());
@@ -386,10 +352,8 @@ impl DockerApi {
             create_args.push("none".to_string());
         }
 
-        create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG)).to_owned());
-        if let Some(command) = command {
-            create_args.append(&mut command.clone());
-        }
+        create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG));
+        create_args.push(command);
 
         info!("dapp start: run container, {}", id);
         let output = run_docker_only_status(create_args).map_err(|e| {
@@ -406,7 +370,7 @@ impl DockerApi {
         }
     }
 
-    pub async fn stop(&self, id: &str) -> BuckyResult<()> {
+    pub fn stop(&self, id: &str) -> BuckyResult<()> {
         let container_name = format!("decapp-{}", id.to_lowercase());
         info!("try to stop container[{}]", container_name);
 
@@ -428,9 +392,13 @@ impl DockerApi {
 
     pub async fn is_running(&self, id: &str) -> BuckyResult<bool> {
         let container_name = format!("decapp-{}", id.to_lowercase());
-
-        // TODO: 通过命令行返回查找container状态
-        unimplemented!()
+        let output = run_docker(vec!["container", "inspect", &container_name, "--format", "{{.State.Status}}"])?.wait_with_output()?;
+        if output.status.success() {
+            let status = String::from_utf8(output.stdout).unwrap();
+            Ok(status == "running")
+        } else {
+            Ok(false)
+        }
     }
 }
 
@@ -489,7 +457,7 @@ mod tests {
                 id,
                 config,
                 //Some(vec!["tail".to_string(), "-f".to_string(), "/dev/null".to_string(),])
-                Some(vec!["tail -f /dev/null".to_string()]),
+                "tail -f /dev/null".to_string(),
             )
             .await;
 
@@ -515,7 +483,7 @@ mod tests {
                 id,
                 config,
                 //Some(vec!["tail".to_string(), "-f".to_string(), "/dev/null".to_string(),])
-                Some(vec!["tail -f /dev/null".to_string()]),
+                "tail -f /dev/null".to_string(),
             )
             .await;
 
@@ -530,18 +498,9 @@ mod tests {
         let resp = docker_api.stop(id).await;
         info!("remove result {:?}", resp);
 
-        let output = Command::new("docker").args(["ps", "-a"]).output().unwrap();
-        let stdout = String::from_utf8(output.stdout).unwrap();
+        let exist = docker_api.is_running(&name).unwrap();
 
-        let mut is_exited = false;
-        let mut lines = stdout.lines();
-        let re = regex::Regex::new(&name).unwrap();
-        while let Some(line) = lines.next() {
-            if re.is_match(&line[..]) {
-                is_exited = true;
-            }
-        }
-        assert!(!is_exited);
+        assert!(!exist);
     }
 
     #[async_std::test]

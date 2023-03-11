@@ -10,7 +10,6 @@ use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, 
 use cyfs_client::NamedCacheClient;
 use cyfs_core::DecAppId;
 use ood_daemon::get_system_config;
-use crate::dapp::DApp;
 
 /**
  AppPackage是无状态的辅助类，用于准备DApp文件，并将其拷贝到指定位置

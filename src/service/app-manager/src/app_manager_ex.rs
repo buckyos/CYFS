@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use version_compare::Version;
 use app_manager_lib::{AppManagerConfig, AppSource};
+use crate::docker_api::DockerApi;
 
 //pub const USER_APP_LIST: &str = "user_app";
 
@@ -114,6 +115,12 @@ impl AppManager {
     }
 
     pub async fn start(manager: Arc<AppManager>) {
+        if manager.config.use_docker() {
+            info!("check dec app base docker image");
+            let _ = DockerApi::update_image().await.map_err(|_| {
+                error!("update docker image failed");
+            });
+        }
         let listener = EventListener {
             app_manager: manager.clone(),
         };

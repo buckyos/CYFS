@@ -294,11 +294,10 @@ impl AppController {
                 warn!("load app failed, appId: {}, err:{}", id, e);
                 SubErrorCode::LoadFailed
             })?;
-            let cmd = dapp.get_start_cmd().unwrap();
-            let cmd_param = Some(vec![cmd.to_string()]);
-            info!("service cmd: {}", cmd);
+            let cmd = dapp.get_start_cmd();
+            info!("service cmd: {}", &cmd);
             self.docker_api
-                .start(&id, config, cmd_param)
+                .start(&id, config, cmd)
                 .await
                 .map_err(|e| {
                     warn!("docker start failed, appId: {}, {}", app_id, e);
@@ -327,7 +326,7 @@ impl AppController {
         let use_docker = self.config.app_use_docker(app_id);
         info!("app {} use docker stop: {}", app_id, use_docker);
         if use_docker {
-            match self.docker_api.stop(&id).await {
+            match self.docker_api.stop(&id) {
                 Ok(_) => {
                     info!("stop docker container success!, app:{}", id);
                 }

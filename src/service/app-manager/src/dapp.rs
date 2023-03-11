@@ -222,8 +222,8 @@ impl DApp {
         }
     }
 
-    pub fn get_start_cmd(&self) -> BuckyResult<&str> {
-        Ok(&self.info.start)
+    pub fn get_start_cmd(&self) -> String {
+        self.info.start.clone()
     }
 
     pub fn get_executable_binary(&self) -> BuckyResult<Vec<String>> {
