@@ -3,7 +3,7 @@ use cyfs_util::*;
 use log::*;
 use std::ffi::OsStr;
 use std::path::{Path};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use crate::docker_network_manager::*;
 use itertools::Itertools;
 
@@ -32,7 +32,8 @@ impl Default for RunConfig {
     }
 }
 
-const APP_BASE_IMAGE: &str = "cyfs/dec-app-base";
+const APP_BASE_IMAGE: &str = "buckyos/dec-app-base";
+const APP_BASE_TAG: &str = "v1";
 
 // entry strip content
 // 有些配置需要在docker run之后处理
@@ -128,7 +129,6 @@ pub fn prepare(id: &str, version: &str, executable: Option<Vec<String>>) -> Buck
 }
 
 fn run_docker<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<Child> {
-
     let mut cmd = Command::new("docker");
     cmd.args(args);
     cmd.stdout(Stdio::null());
@@ -139,6 +139,10 @@ fn run_docker<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<Child> {
         error!("spawn cmd: docker {} err {}", args_str, e);
         e
     })?);
+}
+
+fn run_docker_only_status<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<ExitStatus> {
+    Ok(run_docker(args)?.wait()?)
 }
 
 fn add_bind_volume<P: AsRef<Path>, Q: AsRef<Path>>(args: &mut Vec<String>, source: P, target: Q, read_only: bool) {
@@ -207,8 +211,30 @@ pub struct DockerApi {
 }
 
 impl DockerApi {
-    pub fn new() -> DockerApi {
-        DockerApi { }
+    pub fn new() -> Self {
+        Self { }
+    }
+
+    pub fn update_image() -> BuckyResult<bool> {
+        let output = String::from_utf8(run_docker(vec![
+            "images",
+            "--format", "{{.Tag}}",
+            APP_BASE_IMAGE])?.wait_with_output()?.stdout).unwrap();
+
+        for line in output.lines() {
+            if line == APP_BASE_TAG {
+                info!("app image tag {} exists", line);
+                return Ok(true);
+            }
+        }
+
+        info!("cannot found app image tag {}, pull it", APP_BASE_TAG);
+
+        async_std::task::spawn(async {
+            run_docker_only_status(vec!["pull".to_string(), format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG)])?;
+        });
+
+        Ok(false)
     }
 
     /// # get_network_id
@@ -360,22 +386,22 @@ impl DockerApi {
             create_args.push("none".to_string());
         }
 
-        create_args.push(APP_BASE_IMAGE.to_owned());
+        create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG)).to_owned());
         if let Some(command) = command {
             create_args.append(&mut command.clone());
         }
 
         info!("dapp start: run container, {}", id);
-        let output = run_docker(create_args)?.wait_with_output().map_err(|e| {
+        let output = run_docker_only_status(create_args).map_err(|e| {
             error!("run container {} err {}", container_name, e);
             e
         })?;
 
-        if output.status.success() {
+        if output.success() {
             info!("run container {} success", container_name);
             Ok(())
         } else {
-            error!("run container {} fail, exit code {}", container_name, output.status.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
+            error!("run container {} fail, exit code {}", container_name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
             Err(BuckyError::from(BuckyErrorCode::Failed))
         }
     }
@@ -386,16 +412,16 @@ impl DockerApi {
 
         let args = vec!["stop", "-t", "30", &container_name];
 
-        let output = run_docker(args)?.wait_with_output().map_err(|e| {
+        let output = run_docker_only_status(args).map_err(|e| {
             error!("stop container {} err {}", container_name, e);
             e
         })?;
 
-        if output.status.success() {
+        if output.success() {
             info!("stop container {} success", container_name);
             Ok(())
         } else {
-            error!("stop container {} fail, exit code {}", container_name, output.status.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
+            error!("stop container {} fail, exit code {}", container_name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
             Err(BuckyError::from(BuckyErrorCode::Failed))
         }
     }
