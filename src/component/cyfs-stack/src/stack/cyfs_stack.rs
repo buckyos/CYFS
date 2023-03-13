@@ -123,6 +123,8 @@ impl CyfsStackImpl {
         };
 
         let noc = Self::init_raw_noc(isolate, known_objects).await?;
+        let noc_relation = NamedObjectRelationCacheManager::create(isolate)
+        .await?;
 
         // meta with cache
         let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
@@ -332,6 +334,7 @@ impl CyfsStackImpl {
 
         let (non_service, ndn_service) = NONService::new(
             noc.clone(),
+            noc_relation,
             bdt_stack.clone(),
             &named_data_components,
             forward_manager.clone(),
