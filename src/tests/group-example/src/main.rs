@@ -547,8 +547,8 @@ mod GroupDecService {
         RPathService,
     };
     use cyfs_lib::{
-        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestSourceInfo,
-        RouterHandlerChain, SharedCyfsStack,
+        CreateObjectMapOption, NONPostObjectInputRequest, NONPostObjectInputResponse,
+        RequestSourceInfo, RouterHandlerChain, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
@@ -677,7 +677,12 @@ mod GroupDecService {
                 }
                 None => {
                     state_op_env
-                        .create_new(ObjectMapSimpleContentType::Map)
+                        .create_new_with_option(
+                            ObjectMapSimpleContentType::Map,
+                            &CreateObjectMapOption::new_with_owner(
+                                proposal.rpath().group_id().clone(),
+                            ),
+                        )
                         .await
                         .expect(
                             format!("create_new {} failed", EXAMPLE_VALUE_PATH.as_str()).as_str(),
