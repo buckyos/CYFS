@@ -38,6 +38,7 @@ pub struct UniBackupParams {
 
 #[derive(Clone)]
 pub struct UniBackupTask {
+    id: u64,
     isolate: String,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
@@ -47,12 +48,15 @@ pub struct UniBackupTask {
 }
 
 impl UniBackupTask {
-    pub fn new(isolate: &str,
+    pub fn new(
+        id: u64,
+        isolate: &str,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         loader: ObjectTraverserLoaderRef,
     ) -> Self {
         Self {
+            id,
             isolate: isolate.to_owned(),
             noc,
             ndc,
@@ -61,6 +65,10 @@ impl UniBackupTask {
         }
     }
 
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+    
     pub fn status(&self) -> BackupStatus {
         self.status_manager.status()
     }
