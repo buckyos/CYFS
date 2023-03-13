@@ -2,7 +2,7 @@ use cyfs_base::*;
 use cyfs_util::*;
 use log::*;
 use std::ffi::OsStr;
-use std::path::{Path};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::Duration;
 use crate::docker_network_manager::*;
@@ -104,7 +104,7 @@ pub fn prepare(id: &str, version: &str) -> BuckyResult<()> {
 fn run_docker<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<Child> {
     let mut cmd = Command::new("docker");
     cmd.args(args);
-    cmd.stdout(Stdio::null());
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let args_str = cmd.get_args().collect::<Vec<&OsStr>>().iter().map(|s|s.to_string_lossy()).join(" ");
     info!("will spawn cmd: docker {}", &args_str);
 
@@ -128,67 +128,68 @@ fn add_bind_volume<P: AsRef<Path>, Q: AsRef<Path>>(args: &mut Vec<String>, sourc
     args.push(mounts)
 }
 
-fn get_hostconfig_mounts(id: &str) -> Vec<String> {
-    info!("start to handle container mount params of app:{}", id);
-    let mut mounts = vec![];
-
-    // mount log 目录
-    let log_dir = get_app_log_dir(id);
-    let default_log_dir = default_cyfs_root_path().join("log").join("app").join(id);
-
-    let app_data_dir = get_app_data_dir(id);
-    let default_app_data_dir = get_app_data_dir_ex(id, &default_cyfs_root_path());
-
-    add_bind_volume(&mut mounts, log_dir, default_log_dir, false);
-    add_bind_volume(&mut mounts, app_data_dir, default_app_data_dir, false);
-
-    // 将启动脚本mount到/opt/start.sh
-    add_bind_volume(&mut mounts, get_app_dockerfile_dir(id).join("start.sh"), "/opt/start.sh", true);
-
-    let tmp_path = get_temp_path();
-    let default_tmp_path = default_cyfs_root_path().join("tmp");
-
-    add_bind_volume(&mut mounts, tmp_path, default_tmp_path, false);
-
-    add_bind_volume(&mut mounts, "/etc/localtime", "/etc/localtime", true);
-
-    // dns
-    // if host machine's resolv.conf contain the '127.0.0.53', it means host use systemd resolv service, which container can not use.
-    // In this time , we should not mont the /etc/resolv to container
-    // docker has some handler, can see this source:
-    // https://github.com/docker/docker-ce/blob/44a430f4c43e61c95d4e9e9fd6a0573fa113a119/components/engine/libnetwork/resolvconf/resolvconf.go#L52
-    // https://superuser.com/questions/1702091/how-should-systemd-resolved-and-docker-interact
-    let resolv = "/etc/resolv.conf";
-    if let Ok(resolv_content) = std::fs::read_to_string(resolv) {
-        let is_host_systemd_resolved = resolv_content.contains("127.0.0.53");
-        if !is_host_systemd_resolved {
-            info!("resolv.conf file did not contain 127.0.0.53 use this file directly");
-            add_bind_volume(&mut mounts, "/etc/resolv.conf", "/etc/resolv.conf", true);
-        } else {
-            info!("resolv.conf file contain 127.0.0.53, use systemd resolv.conf instead");
-            let systemd_resolve = Path::new("/run/systemd/resolve/resolv.conf");
-            if systemd_resolve.is_file() {
-                add_bind_volume(&mut mounts, systemd_resolve, "/etc/resolv.conf", true);
-            }
-        }
-    } else {
-        warn!("read resolv file err")
-    }
-
-    mounts
-}
-
 fn code_to_string(code: Option<i32>) -> String {
     code.map(|i|{i.to_string()}).unwrap_or("signal".to_owned())
 }
 
 pub struct DockerApi {
-
+    host_reslov: PathBuf
 }
 
 impl DockerApi {
     pub fn new() -> Self {
-        Self { }
+        // dns
+        // if host machine's resolv.conf contain the '127.0.0.53', it means host use systemd resolv service, which container can not use.
+        // In this time , we should not mont the /etc/resolv to container
+        // docker has some handler, can see this source:
+        // https://github.com/docker/docker-ce/blob/44a430f4c43e61c95d4e9e9fd6a0573fa113a119/components/engine/libnetwork/resolvconf/resolvconf.go#L52
+        // https://superuser.com/questions/1702091/how-should-systemd-resolved-and-docker-interact
+        let mut host_reslov = PathBuf::from("/etc/resolv.conf");
+        if let Ok(resolv_content) = std::fs::read_to_string(&host_reslov) {
+            let is_host_systemd_resolved = resolv_content.contains("127.0.0.53");
+            if is_host_systemd_resolved {
+                info!("resolv.conf file contain 127.0.0.53, use systemd resolv.conf instead");
+                host_reslov = PathBuf::from("/run/systemd/resolve/resolv.conf");
+            } else {
+                info!("resolv.conf file did not contain 127.0.0.53, use this file directly");
+            }
+        } else {
+            warn!("read resolv file err");
+            host_reslov = PathBuf::new();
+        }
+        Self { host_reslov }
+    }
+
+    fn get_hostconfig_mounts(&self, id: &str) -> Vec<String> {
+        info!("start to handle container mount params of app:{}", id);
+        let mut mounts = vec![];
+
+        // mount log 目录
+        let log_dir = get_app_log_dir(id);
+        let default_log_dir = default_cyfs_root_path().join("log").join("app").join(id);
+
+        let app_data_dir = get_app_data_dir(id);
+        let default_app_data_dir = get_app_data_dir_ex(id, &default_cyfs_root_path());
+
+        add_bind_volume(&mut mounts, log_dir, default_log_dir, false);
+        add_bind_volume(&mut mounts, app_data_dir, default_app_data_dir, false);
+
+        // 将启动脚本mount到/opt/start.sh
+        add_bind_volume(&mut mounts, get_app_dockerfile_dir(id).join("start.sh"), "/opt/start.sh", true);
+
+        let tmp_path = get_temp_path();
+        let default_tmp_path = default_cyfs_root_path().join("tmp");
+
+        add_bind_volume(&mut mounts, tmp_path, default_tmp_path, false);
+
+        add_bind_volume(&mut mounts, "/etc/localtime", "/etc/localtime", true);
+
+        if self.host_reslov.is_file() {
+            info!("use host reslov file {} as /etc/resolv.conf", self.host_reslov.display());
+            add_bind_volume(&mut mounts, &self.host_reslov, "/etc/resolv.conf", true);
+        }
+
+        mounts
     }
 
     pub async fn update_image() -> BuckyResult<()> {
@@ -225,12 +226,7 @@ impl DockerApi {
         })?;
 
         if output.status.success() {
-            let stdout = String::from_utf8(output.stdout).unwrap();
-            let result = stdout.lines().nth(0).unwrap();
-            let ip = result
-                .trim_start_matches("'")
-                .trim_end_matches("'")
-                .to_string();
+            let ip = String::from_utf8(output.stdout).unwrap();
             info!("get network Gateway ip {}", ip);
             Ok(ip)
         } else {
@@ -262,7 +258,7 @@ impl DockerApi {
             ];
 
             // 容器启动的host配置
-            let mut mounts = get_hostconfig_mounts(id);
+            let mut mounts = self.get_hostconfig_mounts(id);
             // 将app service目录mount到/opt/app, app install的时候service目录为可写
             add_bind_volume(&mut mounts, get_app_dir(id), "/opt/app", false);
             create_args.append(&mut mounts);
@@ -318,7 +314,7 @@ impl DockerApi {
         command: String,
     ) -> BuckyResult<()> {
         info!("docker run dec app:{}, config {:?}", id, config);
-        if self.is_running(id).await.unwrap() {
+        if self.is_running(id)? {
             info!("docker container is alreay running {}", id);
             return Ok(());
         }
@@ -340,7 +336,7 @@ impl DockerApi {
         ];
 
         // 容器启动的host配置
-        let mut mounts = get_hostconfig_mounts(id);
+        let mut mounts = self.get_hostconfig_mounts(id);
         // 将app service目录mount到/opt/app, app run的时候service目录为只读
         add_bind_volume(&mut mounts, get_app_dir(id), "/opt/app", true);
         create_args.append(&mut mounts);
@@ -401,6 +397,10 @@ impl DockerApi {
     pub fn stop(&self, id: &str) -> BuckyResult<()> {
         let container_name = format!("decapp-{}", id.to_lowercase());
         info!("try to stop container[{}]", container_name);
+        if !(self.is_running(id)?) {
+            info!("container {} not running", container_name);
+            return Ok(());
+        }
 
         let args = vec!["stop", "-t", "30", &container_name];
 
@@ -418,13 +418,14 @@ impl DockerApi {
         }
     }
 
-    pub async fn is_running(&self, id: &str) -> BuckyResult<bool> {
+    pub fn is_running(&self, id: &str) -> BuckyResult<bool> {
         let container_name = format!("decapp-{}", id.to_lowercase());
         let output = run_docker(vec!["container", "inspect", &container_name, "--format", "{{.State.Status}}"])?.wait_with_output()?;
         if output.status.success() {
             let status = String::from_utf8(output.stdout).unwrap();
-            Ok(status == "running")
+            Ok(status.trim() == "running")
         } else {
+            info!("container inspect return error, tract as not running");
             Ok(false)
         }
     }

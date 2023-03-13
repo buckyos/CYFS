@@ -352,7 +352,7 @@ impl AppController {
         let use_docker = self.config.app_use_docker(app_id);
         info!("app {} use docker status: {}", app_id, use_docker);
         if use_docker {
-            self.docker_api.is_running(&id).await
+            self.docker_api.is_running(&id)
         } else {
             if let Some(dapp) = self.dapp_instance.read().unwrap().get(app_id) {
                 dapp.status()

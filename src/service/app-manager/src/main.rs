@@ -76,9 +76,9 @@ async fn main_run() {
     let (action, _) = cyfs_util::process::parse_cmd(APP_MANAGER_NAME, &matches);
     if action == ProcessAction::Start || action == ProcessAction::Stop {
         cyfs_debug::CyfsLoggerBuilder::new_service(APP_MANAGER_NAME)
-            .level("debug")
-            .console("debug")
-            .enable_bdt(Some("debug"), Some("debug"))
+            .level("info")
+            .console("info")
+            .enable_bdt(Some("info"), Some("info"))
             .build()
             .unwrap()
             .start();
