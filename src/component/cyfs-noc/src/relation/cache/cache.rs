@@ -63,13 +63,54 @@ impl NamedObjectRelationCacheMemoryCache {
         let _ret = cache.insert(req.cache_key.clone(), data.clone());
         // assert!(ret.is_none());
     }
+
+    // ensure starts with / and end with no /
+    fn fix_inner_path(origin_path: &str) -> Option<String> {
+        let path = origin_path.trim();
+        if path == "/" {
+            if path == origin_path {
+                return None;
+            } else {
+                return Some(path.to_owned());
+            }
+        }
+
+        // At the end / need to be removed
+        let path = path.trim_end_matches("/");
+        if path.starts_with("/") {
+            if path == origin_path {
+                None
+            } else {
+                Some(path.to_owned())
+            }
+        } else {
+            Some(format!("/{}", path))
+        }
+    }
 }
+
+use std::borrow::Cow;
 
 #[async_trait::async_trait]
 impl NamedObjectRelationCache for NamedObjectRelationCacheMemoryCache {
     async fn put(&self, req: &NamedObjectRelationCachePutRequest) -> BuckyResult<()> {
+        let req = if req.cache_key.relation_type == NamedObjectRelationType::InnerPath {
+            match Self::fix_inner_path(&req.cache_key.relation) {
+                Some(inner_path) => {
+                    let mut req = req.clone();
+                    req.cache_key.relation = inner_path;
+                    Cow::Owned(req)
+                }
+                None => {
+                    Cow::Borrowed(req)
+                }
+            }
+        } else {
+            Cow::Borrowed(req)
+        };
+
         if req.target_object_id.is_some() {
-            let ret = self.next.put(req).await;
+            let ret = self.next.put(&req).await;
 
             {
                 let mut cache = self.cache.lock().await;
@@ -94,21 +135,36 @@ impl NamedObjectRelationCache for NamedObjectRelationCacheMemoryCache {
         &self,
         req: &NamedObjectRelationCacheGetRequest,
     ) -> BuckyResult<Option<NamedObjectRelationCacheData>> {
-        let cache_item = self.get(req).await;
+        let req = if req.cache_key.relation_type == NamedObjectRelationType::InnerPath {
+            match Self::fix_inner_path(&req.cache_key.relation) {
+                Some(inner_path) => {
+                    let mut req = req.clone();
+                    req.cache_key.relation = inner_path;
+                    Cow::Owned(req)
+                }
+                None => {
+                    Cow::Borrowed(req)
+                }
+            }
+        } else {
+            Cow::Borrowed(req)
+        };
+
+        let cache_item = self.get(&req).await;
         if cache_item.is_some() {
             return Ok(cache_item);
         }
 
-        if self.is_missing(req) {
+        if self.is_missing(&req) {
             return Ok(Some(NamedObjectRelationCacheData {
                 target_object_id: None,
             }));
         }
 
-        let ret = self.next.get(req).await?;
+        let ret = self.next.get(&req).await?;
 
         if ret.is_some() {
-            self.cache(req, ret.as_ref().unwrap()).await;
+            self.cache(&req, ret.as_ref().unwrap()).await;
         }
 
         Ok(ret)

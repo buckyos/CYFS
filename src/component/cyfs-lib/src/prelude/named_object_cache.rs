@@ -319,11 +319,13 @@ pub struct NamedObjectRelationCacheKey {
     pub relation: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct NamedObjectRelationCachePutRequest {
     pub cache_key: NamedObjectRelationCacheKey,
     pub target_object_id: Option<ObjectId>,
 }
 
+#[derive(Clone, Debug)]
 pub struct NamedObjectRelationCacheGetRequest {
     pub cache_key: NamedObjectRelationCacheKey,
     pub flags: u32,
