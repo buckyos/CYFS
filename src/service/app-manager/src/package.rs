@@ -10,6 +10,7 @@ use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, 
 use cyfs_client::NamedCacheClient;
 use cyfs_core::DecAppId;
 use ood_daemon::get_system_config;
+use crate::dapp::DApp;
 
 /**
  AppPackage是无状态的辅助类，用于准备DApp文件，并将其拷贝到指定位置
@@ -86,12 +87,9 @@ impl AppPackage {
             let _ = fs::remove_dir_all(local_path);
         }
 
-        // 非windows下，设置executable对应的文件为可执行
-        #[cfg(not(windows))]
-        {
-            let dapp = DApp::load_from(&service_path)?;
-            dapp.prepare()?;
-        }
+        // 文件就绪后，尝试load app，并做app的前期准备
+        let dapp = DApp::load_from(&service_path)?;
+        dapp.prepare()?;
 
         Ok(())
     }
