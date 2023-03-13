@@ -7,20 +7,12 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveUniMeta {
-    pub id: u64,
-    pub time: String,
-
     pub meta: ObjectArchiveDataSeriesMeta,
 }
 
 impl ObjectArchiveUniMeta {
-    pub fn new(id: u64) -> Self {
-        let datetime = chrono::offset::Local::now();
-        let time = format!("{:?}", datetime);
-
+    pub fn new() -> Self {
         Self {
-            id,
-            time,
             meta: ObjectArchiveDataSeriesMeta::default(),
         }
     }
@@ -32,8 +24,8 @@ pub struct ObjectArchiveUniMetaHolder {
 }
 
 impl ObjectArchiveUniMetaHolder {
-    pub fn new(id: u64) -> Self {
-        let meta = ObjectArchiveUniMeta::new(id);
+    pub fn new() -> Self {
+        let meta = ObjectArchiveUniMeta::new();
 
         Self {
             meta: Arc::new(Mutex::new(meta)),
@@ -63,7 +55,7 @@ impl ObjectArchiveUniMetaHolder {
     pub fn finish(&self) -> ObjectArchiveUniMeta {
         let meta = {
             let mut meta = self.meta.lock().unwrap();
-            let mut empty_meta = ObjectArchiveUniMeta::new(meta.id);
+            let mut empty_meta = ObjectArchiveUniMeta::new();
             std::mem::swap(meta.deref_mut(), &mut empty_meta);
 
             empty_meta

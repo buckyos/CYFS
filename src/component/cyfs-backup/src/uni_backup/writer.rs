@@ -36,7 +36,7 @@ impl UniBackupDataLocalFileWriter {
         }
 
         let log = BackupLogManager::new(None, log_dir);
-        let meta = ObjectArchiveUniMetaHolder::new(id);
+        let meta = ObjectArchiveUniMetaHolder::new();
 
         let archive = ArchiveLocalFileWriter::new(id, root, format, archive_file_max_size)?;
 

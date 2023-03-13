@@ -56,22 +56,13 @@ impl ObjectArchiveIsolateMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveStateMeta {
-    pub id: u64,
-    pub time: String,
-
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
     pub roots: ObjectArchiveDataSeriesMeta,
 }
 
 impl ObjectArchiveStateMeta {
-    pub fn new(id: u64) -> Self {
-        let datetime = chrono::offset::Local::now();
-        // let time = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
-        let time = format!("{:?}", datetime);
-
+    pub fn new() -> Self {
         Self {
-            id,
-            time,
             isolates: vec![],
             roots: ObjectArchiveDataSeriesMeta::default(),
         }
@@ -106,8 +97,8 @@ pub struct ObjectArchiveStateMetaHolder {
 }
 
 impl ObjectArchiveStateMetaHolder {
-    pub fn new(id: u64) -> Self {
-        let meta = ObjectArchiveStateMeta::new(id);
+    pub fn new() -> Self {
+        let meta = ObjectArchiveStateMeta::new();
 
         Self {
             meta: Arc::new(Mutex::new(meta)),
@@ -122,7 +113,7 @@ impl ObjectArchiveStateMetaHolder {
     pub fn finish(&self) -> ObjectArchiveStateMeta {
         let meta = {
             let mut meta = self.meta.lock().unwrap();
-            let mut empty_meta = ObjectArchiveStateMeta::new(meta.id);
+            let mut empty_meta = ObjectArchiveStateMeta::new();
             std::mem::swap(meta.deref_mut(), &mut empty_meta);
 
             empty_meta

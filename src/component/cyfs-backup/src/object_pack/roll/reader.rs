@@ -80,3 +80,73 @@ impl ObjectPackSerializeReader {
         Ok(ret)
     }
 }
+
+struct FileItem {
+    info: ObjectPackFileInfo,
+    reader: Option<Box<dyn ObjectPackReader>>,
+}
+
+pub struct ObjectPackRandomReader {
+    format: ObjectPackFormat,
+
+    root: PathBuf,
+    file_list: Vec<FileItem>,
+}
+
+impl ObjectPackRandomReader {
+    pub fn new(
+        format: ObjectPackFormat,
+        root: PathBuf,
+        file_list: Vec<ObjectPackFileInfo>,
+    ) -> Self {
+        Self {
+            format,
+            root,
+            file_list: file_list
+                .into_iter()
+                .map(|info| FileItem { info, reader: None })
+                .collect(),
+        }
+    }
+
+    pub async fn open(&mut self) -> BuckyResult<()> {
+        for item in self.file_list.iter_mut() {
+            assert!(item.reader.is_none());
+
+            let file_path = self.root.join(&item.info.name);
+
+            info!("will open pack file: file={}", file_path.display());
+
+            let mut reader = ObjectPackFactory::create_reader(self.format, file_path);
+            reader.open().await?;
+            item.reader = Some(reader);
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>> {
+        for item in self.file_list.iter_mut() {
+            let reader = item.reader.as_mut().unwrap();
+            match reader.get_data(object_id).await {
+                Ok(Some(info)) => {
+                    return Ok(Some(info));
+                }
+                Ok(None) => continue,
+                Err(e) => {
+                    error!(
+                        "get object from pack file failed! object={}, file={}, {}",
+                        object_id, item.info.name, e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
+        error!(
+            "get object from pack file but not found! object={}",
+            object_id
+        );
+        Ok(None)
+    }
+}
