@@ -4,8 +4,11 @@ use log::*;
 use std::ffi::OsStr;
 use std::path::{Path};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::Duration;
 use crate::docker_network_manager::*;
 use itertools::Itertools;
+use wait_timeout::ChildExt;
+use crate::dapp::INSTALL_CMD_TIME_OUT_IN_SECS;
 
 #[derive(Debug)]
 pub struct RunConfig {
@@ -175,6 +178,10 @@ fn get_hostconfig_mounts(id: &str) -> Vec<String> {
     mounts
 }
 
+fn code_to_string(code: Option<i32>) -> String {
+    code.map(|i|{i.to_string()}).unwrap_or("signal".to_owned())
+}
+
 pub struct DockerApi {
 
 }
@@ -252,7 +259,6 @@ impl DockerApi {
                 "--cap-add".to_string(), "NET_RAW".to_string(),
                 "--rm".to_string(), "--init".to_string(),
                 "--network".to_string(), "bridge".to_string(),
-                "--entrypoint=\"\"".to_string()
             ];
 
             // 容器启动的host配置
@@ -264,17 +270,25 @@ impl DockerApi {
             create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG));
             create_args.push(cmd.clone());
 
-            let output = run_docker_only_status(create_args).map_err(|e| {
-                error!("run container {} err {}", container_name, e);
+            let mut child = run_docker(create_args).map_err(|e| {
+                error!("app {} run install cmd {} err {}", id, &cmd, e);
                 e
             })?;
 
-            if output.success() {
-                info!("run container {} success", container_name);
-                Ok(())
-            } else {
-                error!("run container {} fail, exit code {}", container_name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
-                Err(BuckyError::from(BuckyErrorCode::Failed))
+            match child.wait_timeout(Duration::from_secs(INSTALL_CMD_TIME_OUT_IN_SECS))? {
+                None => {
+                    error!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
+                    child.kill();
+                    child.wait();
+                }
+                Some(status) => {
+                    if status.success() {
+                        info!("app {} run install cmd {} success", id, &cmd);
+                    } else {
+                        error!("app {} run install cmd {}, exit code {}", id, &cmd, code_to_string(status.code()));
+                        return Err(BuckyError::from(BuckyErrorCode::Failed));
+                    }
+                }
             }
         }
         Ok(())

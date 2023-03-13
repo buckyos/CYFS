@@ -211,8 +211,9 @@ impl AppController {
             if use_docker {
                 info!("run docker install!");
                 let id = app_id.to_string();
+                let install_cmds = dapp.get_install_cmd();
                 self.docker_api
-                    .install(&id, version, executable)
+                    .install(&id, version, install_cmds)
                     .await
                     .map_err(|e| {
                         error!("docker install failed. app:{} failed, {}", app_id, e);
