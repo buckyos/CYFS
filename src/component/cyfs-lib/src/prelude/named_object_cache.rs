@@ -321,7 +321,7 @@ pub struct NamedObjectRelationCacheKey {
 
 pub struct NamedObjectRelationCachePutRequest {
     pub cache_key: NamedObjectRelationCacheKey,
-    pub target_object_id: ObjectId,
+    pub target_object_id: Option<ObjectId>,
 }
 
 pub struct NamedObjectRelationCacheGetRequest {
@@ -331,7 +331,7 @@ pub struct NamedObjectRelationCacheGetRequest {
 
 #[derive(Clone)]
 pub struct NamedObjectRelationCacheData {
-    pub target_object_id: ObjectId,
+    pub target_object_id: Option<ObjectId>,
 }
 
 #[async_trait::async_trait]

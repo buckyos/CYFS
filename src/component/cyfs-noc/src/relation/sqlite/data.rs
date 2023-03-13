@@ -28,7 +28,7 @@ impl TryInto<NamedObjectRelationCacheData> for NamedObjectRelationCacheDataRaw {
     fn try_into(self) -> Result<NamedObjectRelationCacheData, Self::Error> {
         Ok(NamedObjectRelationCacheData {
             // version 0
-            target_object_id: ObjectId::from_str(&self.target_object_id)?,
+            target_object_id: Some(ObjectId::from_str(&self.target_object_id)?),
         })
     }
 }

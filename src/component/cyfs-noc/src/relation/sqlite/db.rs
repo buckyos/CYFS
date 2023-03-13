@@ -74,7 +74,7 @@ impl SqliteDBObjectRelationCache {
     }
 
     fn init_db(&self) -> BuckyResult<()> {
-        let (conn, _lock) = self.conn.get_write_conn()?;
+        let conn = self.conn.create_new_conn(false)?;
 
         for sql in &INIT_OBJECT_RELATION_CACHE_LIST {
             info!("will exec: {}", sql);
@@ -115,7 +115,7 @@ impl SqliteDBObjectRelationCache {
         let object_id = req.cache_key.object_id.to_string();
         let now = bucky_time_now() as i64;
         let relation_type: u8 = req.cache_key.relation_type.into();
-        let target_object_id = req.target_object_id.to_string();
+        let target_object_id = req.target_object_id.as_ref().unwrap().to_string();
 
         let params = params![
             &object_id,
@@ -138,7 +138,7 @@ impl SqliteDBObjectRelationCache {
             let code = if Self::is_exists_error(&e) {
                 msg = format!(
                     "insert object relation but already exists: key={:?}, target={}",
-                    req.cache_key, req.target_object_id,
+                    req.cache_key, target_object_id,
                 );
                 warn!("{}", msg);
 
@@ -146,7 +146,7 @@ impl SqliteDBObjectRelationCache {
             } else {
                 msg = format!(
                     "insert object relation error: key={:?}, target={}, {}",
-                    req.cache_key, req.target_object_id, e,
+                    req.cache_key, target_object_id, e,
                 );
                 error!("{}", msg);
 
@@ -158,7 +158,7 @@ impl SqliteDBObjectRelationCache {
 
         info!(
             "insert object relation success: key={:?}, target={}",
-            req.cache_key, req.target_object_id,
+            req.cache_key, target_object_id,
         );
 
         Ok(())
@@ -189,7 +189,7 @@ impl SqliteDBObjectRelationCache {
             object_id=?0 AND relation_type=?1 AND relation=?2
         "#;
         */
-        
+
         let ret = {
             let (conn, _lock) = self.conn.get_write_conn()?;
 
@@ -215,6 +215,8 @@ impl SqliteDBObjectRelationCache {
 #[async_trait::async_trait]
 impl NamedObjectRelationCache for SqliteDBObjectRelationCache {
     async fn put(&self, req: &NamedObjectRelationCachePutRequest) -> BuckyResult<()> {
+        assert!(req.target_object_id.is_some());
+
         Self::put(&self, req)
     }
 
