@@ -63,11 +63,6 @@ impl SystemConfig {
 
         let node = Self::load_as_toml(&config_file)?;
 
-        self.parse_config(node).await?;
-
-        Ok(())
-    }
-
         self.parse_config(node).await
     }
 
@@ -212,3 +207,4 @@ pub async fn reload_system_config() -> BuckyResult<bool> {
 
 pub fn get_system_config() -> Arc<SystemConfig> {
     SYSTEM_CONFIG.lock().unwrap().clone().unwrap()
+}
