@@ -5,7 +5,7 @@ use crate::helper::ArcWeakHelper;
 use crate::meta_backend::MetaBackend;
 use crate::stat::Stat;
 use crate::state_storage::{StateRef, StateWeakRef};
-use cyfs_base::{BuckyResult, RawConvertTo};
+use cyfs_base::{BuckyResult, RawConvertTo, ObjectId};
 use cyfs_base_meta::*;
 use evm::executor::{MemoryStackState, StackExecutor, StackSubstateMetadata};
 
