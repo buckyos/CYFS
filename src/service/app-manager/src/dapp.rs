@@ -188,7 +188,11 @@ impl DApp {
         }
         info!("run cmd {} in {}", cmd, dir.display());
         let program = which::which(args[0]).unwrap_or_else(|_| dir.join(args[0]));
-        info!("program full path: {}", program.display());
+        if !program.exists() {
+            let err = format!("exec program path {} not exists!", program.display());
+            error!("{}", &err);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, err));
+        }
         let mut command = Command::new(program);
         command.args(&args[1..]).current_dir(dir);
         if let Some(out) = stdout {
