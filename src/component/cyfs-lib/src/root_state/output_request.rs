@@ -311,6 +311,20 @@ impl FromStr for ObjectMapField {
         }
     }
 }
+
+impl From<&Option<ObjectId>> for ObjectMapField {
+    fn from(id: &Option<ObjectId>) -> Self {
+        id.as_ref()
+            .map_or(Self::None, |id| Self::Specific(id.clone()))
+    }
+}
+
+impl From<&ObjectId> for ObjectMapField {
+    fn from(id: &ObjectId) -> Self {
+        Self::Specific(id.clone())
+    }
+}
+
 // create_new
 pub struct OpEnvCreateNewOutputRequest {
     pub common: OpEnvOutputRequestCommon,
