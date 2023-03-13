@@ -81,6 +81,8 @@ impl GroupStorage {
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 GroupStatePath::new(rpath.to_string()),
+                group_id.clone(),
+                dec_id.clone(),
             ),
             local_device_id,
             cache: StorageCacheInfo::new(None),
@@ -138,7 +140,12 @@ impl GroupStorage {
             rpath: rpath.to_string(),
             non_driver,
             group_chunk_id: group_chunk_id.object_id(),
-            storage_engine: StorageEngineGroupState::new(dec_group_state, state_path),
+            storage_engine: StorageEngineGroupState::new(
+                dec_group_state,
+                state_path,
+                group_id.clone(),
+                dec_id.clone(),
+            ),
             local_device_id,
             cache,
             object_map_processor,
