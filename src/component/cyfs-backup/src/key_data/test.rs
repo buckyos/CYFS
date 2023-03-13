@@ -1,5 +1,4 @@
 use super::zip_helper::*;
-use cyfs_base::*;
 use cyfs_util::get_cyfs_root_path;
 
 #[test]

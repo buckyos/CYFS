@@ -1,13 +1,13 @@
-use super::generator::*;
-use super::loader::*;
 use super::file_meta::*;
+use super::generator::*;
+use super::index::*;
+use super::loader::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 
 use async_std::io::ReadExt;
 use std::collections::HashMap;
-
 
 fn new_dec(name: &str) -> ObjectId {
     DecApp::generate_id(ObjectId::default(), name)
@@ -36,6 +36,7 @@ async fn test_archive() {
     let mut generator = ObjectArchiveGenerator::new(
         bucky_time_now(),
         crate::object_pack::ObjectPackFormat::Zip,
+        ObjectBackupStrategy::Uni,
         path.clone(),
         1024 * 1024 * 10,
     );
@@ -46,7 +47,10 @@ async fn test_archive() {
         let meta = gen_meta(i);
 
         let data = async_std::io::Cursor::new(file_buffer.clone());
-        generator.add_data(&id, Box::new(data), Some(meta.clone())).await.unwrap();
+        generator
+            .add_data(&id, Box::new(data), Some(meta.clone()))
+            .await
+            .unwrap().unwrap();
 
         objects.insert(id, meta);
     }
@@ -66,7 +70,7 @@ async fn test_archive() {
         generator
             .add_data(&chunk_id.object_id(), Box::new(data), Some(meta.clone()))
             .await
-            .unwrap();
+            .unwrap().unwrap();
 
         chunks.insert(chunk_id, meta);
     }

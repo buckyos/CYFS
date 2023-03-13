@@ -25,9 +25,9 @@ async fn test_pack() {
 
         if i % 2 == 0 {
             let data = async_std::io::Cursor::new(file_buffer.clone());
-            pack.add_data(&id, Box::new(data), Some(id.to_vec().unwrap())).await.unwrap();
+            pack.add_data(&id, Box::new(data), Some(id.to_vec().unwrap())).await.unwrap().unwrap();
         } else {
-            pack.add_data_buf(&id, &file_buffer, Some(id.to_vec().unwrap())).await.unwrap();
+            pack.add_data_buf(&id, &file_buffer, Some(id.to_vec().unwrap())).await.unwrap().unwrap();
         }
         
         if i % 1024 == 0 {

@@ -10,7 +10,7 @@ pub struct ObjectPackInnerFile {
 }
 
 #[async_trait::async_trait]
-pub trait ObjectPackReader: Send {
+pub trait ObjectPackReader: Send + Sync {
     async fn open(&mut self) -> BuckyResult<()>;
     async fn close(&mut self) -> BuckyResult<()>;
 

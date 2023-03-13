@@ -29,8 +29,7 @@ impl ObjectArchiveSerializeLoader {
         }
 
         // First load index into meta
-        let index_file = root.join("index");
-        let index = ObjectArchiveIndex::load(&index_file).await?;
+        let index = ObjectArchiveIndex::load(&root).await?;
 
         let object_reader =
             ObjectPackSerializeReader::new(index.format, root.clone(), index.object_files.clone());
@@ -120,8 +119,7 @@ impl ObjectArchiveRandomLoader {
         }
 
         // First load index into meta
-        let index_file = root.join("index");
-        let index = ObjectArchiveIndex::load(&index_file).await?;
+        let index = ObjectArchiveIndex::load(&root).await?;
 
         let mut object_reader =
             ObjectPackRandomReader::new(index.format, root.clone(), index.object_files.clone());

@@ -18,6 +18,7 @@ impl ArchiveLocalFileWriter {
         id: u64,
         root: PathBuf,
         format: ObjectPackFormat,
+        strategy: ObjectBackupStrategy,
         archive_file_max_size: u64,
     ) -> BuckyResult<Self> {
         let data_dir = root.join("data");
@@ -33,7 +34,7 @@ impl ArchiveLocalFileWriter {
             })?;
         }
 
-        let archive = ObjectArchiveGenerator::new(id, format, data_dir, archive_file_max_size);
+        let archive = ObjectArchiveGenerator::new(id, format, strategy, data_dir, archive_file_max_size);
 
         Ok(Self {
             archive: Arc::new(AsyncMutex::new(archive)),

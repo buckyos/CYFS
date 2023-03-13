@@ -4,26 +4,32 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[derive(Clone, Debug, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ObjectBackupStrategy {
+    State,
+    Uni,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveIndex {
     pub id: u64,
     pub time: String,
     pub format: ObjectPackFormat,
+    pub strategy: ObjectBackupStrategy,
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
 }
 
 impl ObjectArchiveIndex {
-    pub fn new(id: u64, format: ObjectPackFormat) -> Self {
+    pub fn new(id: u64, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> Self {
         let datetime = chrono::offset::Local::now();
-        // let time = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
         let time = format!("{:?}", datetime);
 
         Self {
             id,
             time,
             format,
+            strategy,
             object_files: vec![],
             chunk_files: vec![],
         }
@@ -59,19 +65,25 @@ impl ObjectArchiveIndex {
 
     pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
         let index_file = dir.join("index");
-        
-        let data = serde_json::to_string_pretty(&self).unwrap();
-        async_std::fs::write(&index_file, &data).await.map_err(|e| {
-            let msg = format!(
-                "write backup index info to file failed! file={}, {}",
-                index_file.display(),
-                e
-            );
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
 
-        info!("save backup index success! index={}, file={}", data, index_file.display());
+        let data = serde_json::to_string_pretty(&self).unwrap();
+        async_std::fs::write(&index_file, &data)
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "write backup index info to file failed! file={}, {}",
+                    index_file.display(),
+                    e
+                );
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
+
+        info!(
+            "save backup index success! index={}, file={}",
+            data,
+            index_file.display()
+        );
         Ok(())
     }
 }

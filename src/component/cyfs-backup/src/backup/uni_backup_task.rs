@@ -68,7 +68,7 @@ impl UniBackupTask {
     pub fn id(&self) -> u64 {
         self.id
     }
-    
+
     pub fn status(&self) -> BackupStatus {
         self.status_manager.status()
     }
@@ -174,7 +174,6 @@ impl UniBackupTask {
 
         let backup_meta = ObjectArchiveMetaForUniBackup::new(params.id, uni_meta, keydata_meta);
 
-        index.save(&backup_dir).await?;
         backup_meta.save(&backup_dir).await?;
 
         Ok((index, backup_meta))

@@ -4,11 +4,11 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
     pub id: u64,
     pub time: String,
-
     pub object: T,
     pub key_data: Vec<KeyDataMeta>,
 }

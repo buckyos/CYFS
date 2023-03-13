@@ -1,5 +1,4 @@
-use crate::archive::ArchiveInnerFileMeta;
-use crate::archive::ObjectArchiveIndex;
+use crate::archive::*;
 use crate::data::*;
 use crate::meta::*;
 use crate::object_pack::*;
@@ -38,7 +37,13 @@ impl UniBackupDataLocalFileWriter {
         let log = BackupLogManager::new(None, log_dir);
         let meta = ObjectArchiveUniMetaHolder::new();
 
-        let archive = ArchiveLocalFileWriter::new(id, root, format, archive_file_max_size)?;
+        let archive = ArchiveLocalFileWriter::new(
+            id,
+            root,
+            format,
+            ObjectBackupStrategy::Uni,
+            archive_file_max_size,
+        )?;
 
         Ok(Self {
             loader,

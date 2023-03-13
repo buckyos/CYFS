@@ -38,7 +38,7 @@ impl StateBackupDataLocalFileWriter {
         let log = BackupLogManager::new(Some(state_default_isolate), log_dir);
         let meta = ObjectArchiveStateMetaHolder::new();
 
-        let archive = ArchiveLocalFileWriter::new(id, root, format, archive_file_max_size)?;
+        let archive = ArchiveLocalFileWriter::new(id, root, format, ObjectBackupStrategy::State, archive_file_max_size)?;
 
         Ok(Self {
             archive,
