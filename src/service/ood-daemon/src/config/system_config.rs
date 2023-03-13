@@ -3,6 +3,7 @@ use super::version::{ServiceListVersion, ServiceVersion};
 use crate::repo::REPO_MANAGER;
 use cyfs_base::*;
 use cyfs_util::TomlHelper;
+use super::monitor::SystemConfigMonitor;
 
 use std::path::Path;
 use std::str::FromStr;
