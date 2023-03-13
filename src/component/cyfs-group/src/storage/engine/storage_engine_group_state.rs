@@ -19,6 +19,8 @@ const ACCESS: Option<OpEnvPathAccess> = None;
 
 #[derive(Clone)]
 pub struct StorageEngineGroupState {
+    group_id: ObjectId,
+    dec_id: ObjectId,
     state_mgr: ObjectMapRootManagerRef,
     state_path: Arc<GroupStatePath>,
 }
@@ -183,18 +185,28 @@ impl StorageEngineGroupState {
         Ok(cache)
     }
 
-    pub fn new(state_mgr: ObjectMapRootManagerRef, state_path: GroupStatePath) -> Self {
+    pub fn new(
+        state_mgr: ObjectMapRootManagerRef,
+        state_path: GroupStatePath,
+        group_id: ObjectId,
+        dec_id: ObjectId,
+    ) -> Self {
         Self {
             state_mgr,
             state_path: Arc::new(state_path),
+            group_id,
+            dec_id,
         }
     }
 
     pub async fn create_writer(&self) -> BuckyResult<StorageEngineGroupStateWriter> {
-        Ok(
-            StorageEngineGroupStateWriter::new(self.state_mgr.clone(), self.state_path.clone())
-                .await?,
+        Ok(StorageEngineGroupStateWriter::new(
+            self.state_mgr.clone(),
+            self.state_path.clone(),
+            self.group_id,
+            self.dec_id,
         )
+        .await?)
     }
 
     pub fn root_cache(&self) -> &ObjectMapRootCacheRef {
@@ -218,6 +230,8 @@ impl StorageEngine for StorageEngineGroupState {
 
 #[derive(Clone)]
 pub struct StorageEngineGroupStateWriter {
+    group_id: ObjectId,
+    dec_id: ObjectId,
     state_mgr: ObjectMapRootManagerRef,
     op_env: ObjectMapPathOpEnvRef,
     prepare_op_env: ObjectMapSingleOpEnvRef,
@@ -230,6 +244,8 @@ impl StorageEngineGroupStateWriter {
     async fn new(
         state_mgr: ObjectMapRootManagerRef,
         state_path: Arc<GroupStatePath>,
+        group_id: ObjectId,
+        dec_id: ObjectId,
     ) -> BuckyResult<Self> {
         let op_env = state_mgr.create_op_env(ACCESS)?;
         let prepare_op_env = state_mgr.create_single_op_env(ACCESS)?;
@@ -237,7 +253,11 @@ impl StorageEngineGroupStateWriter {
             if let Err(err) = prepare_op_env.load_by_path(state_path.prepares()).await {
                 if err.code() == BuckyErrorCode::NotFound {
                     prepare_op_env
-                        .create_new(ObjectMapSimpleContentType::Map)
+                        .create_new(
+                            ObjectMapSimpleContentType::Map,
+                            Some(group_id),
+                            Some(dec_id),
+                        )
                         .await?;
                     None
                 } else {
@@ -254,6 +274,8 @@ impl StorageEngineGroupStateWriter {
             state_mgr,
             prepare_map_id,
             write_result: Ok(()),
+            group_id,
+            dec_id,
         })
     }
 
@@ -264,7 +286,11 @@ impl StorageEngineGroupStateWriter {
     ) -> BuckyResult<ObjectId> {
         let single_op_env = self.state_mgr.create_single_op_env(ACCESS)?;
         single_op_env
-            .create_new(ObjectMapSimpleContentType::Map)
+            .create_new(
+                ObjectMapSimpleContentType::Map,
+                Some(self.group_id),
+                Some(self.dec_id),
+            )
             .await?;
         single_op_env
             .insert_with_key(GROUP_STATE_PATH_BLOCK, block_id)
@@ -463,7 +489,11 @@ impl StorageEngineGroupStateWriter {
             }
 
             add_single_op_env
-                .create_new(ObjectMapSimpleContentType::Set)
+                .create_new(
+                    ObjectMapSimpleContentType::Set,
+                    Some(self.group_id),
+                    Some(self.dec_id),
+                )
                 .await?;
         } else {
             add_single_op_env
