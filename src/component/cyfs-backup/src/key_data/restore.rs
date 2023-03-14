@@ -42,7 +42,7 @@ impl KeyDataRestoreManager {
     async fn restore_data(&self, meta: &KeyDataMeta) -> BuckyResult<()> {
         let ret = self
             .data_loader
-            .get_chunk(meta.chunk_id.as_object_id())
+            .get_chunk(&meta.chunk_id)
             .await
             .map_err(|e| {
                 let msg = format!(

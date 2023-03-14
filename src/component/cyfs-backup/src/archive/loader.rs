@@ -69,9 +69,25 @@ impl ObjectArchiveSerializeLoader {
         self.chunk_reader.reset()
     }
 
-    pub async fn next_chunk(&mut self) -> BuckyResult<Option<(ObjectId, ObjectArchiveInnerFile)>> {
+    pub async fn next_chunk(&mut self) -> BuckyResult<Option<(ChunkId, ObjectArchiveInnerFile)>> {
         let ret = self.chunk_reader.next_data().await?;
-        Self::convert(ret)
+        let ret = Self::convert(ret)?;
+        match ret {
+            Some((id, data)) => {
+                let chunk_id = ChunkId::try_from(&id).map_err(|e| {
+                    let msg = format!(
+                        "enumerate chunks but the object_id format is invalid! id={}, {}",
+                        id,
+                        e
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(e.code(), msg)
+                })?;
+
+                Ok(Some((chunk_id, data)))
+            }
+            None => Ok(None),
+        }
     }
 
     fn convert(
@@ -160,10 +176,10 @@ impl ObjectArchiveRandomLoader {
 
     pub async fn get_chunk(
         &mut self,
-        chunk_id: &ObjectId,
+        chunk_id: &ChunkId,
     ) -> BuckyResult<Option<ObjectArchiveInnerFile>> {
-        let ret = self.chunk_reader.get_data(chunk_id).await?;
-        Self::convert(chunk_id, ret)
+        let ret = self.chunk_reader.get_data(chunk_id.as_object_id()).await?;
+        Self::convert(chunk_id.as_object_id(), ret)
     }
 
     fn convert(

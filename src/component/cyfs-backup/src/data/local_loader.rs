@@ -76,7 +76,7 @@ impl BackupDataLoader for ArchiveLocalFileLoader {
         loader.serialize_reader().reset_chunk()
     }
 
-    async fn next_chunk(&self) -> BuckyResult<Option<(ObjectId, ObjectArchiveInnerFile)>> {
+    async fn next_chunk(&self) -> BuckyResult<Option<(ChunkId, ObjectArchiveInnerFile)>> {
         let mut loader = self.archive.lock().await;
         loader.serialize_reader().next_chunk().await
     }
@@ -88,7 +88,7 @@ impl BackupDataLoader for ArchiveLocalFileLoader {
             loader.random_reader().get_object(object_id).await
         }
 
-    async fn get_chunk(&self, chunk_id: &ObjectId) -> BuckyResult<Option<ObjectArchiveInnerFile>> {
+    async fn get_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Option<ObjectArchiveInnerFile>> {
         let mut loader = self.archive.lock().await;
         loader.random_reader().get_chunk(chunk_id).await
     }

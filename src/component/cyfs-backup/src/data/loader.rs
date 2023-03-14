@@ -14,13 +14,13 @@ pub trait BackupDataLoader: Send + Sync {
     async fn next_object(&self) -> BuckyResult<Option<(ObjectId, ObjectArchiveInnerFile)>>;
 
     async fn reset_chunk(&self);
-    async fn next_chunk(&self) -> BuckyResult<Option<(ObjectId, ObjectArchiveInnerFile)>>;
+    async fn next_chunk(&self) -> BuckyResult<Option<(ChunkId, ObjectArchiveInnerFile)>>;
 
     // random methods
     async fn get_object(&self, object_id: &ObjectId)
         -> BuckyResult<Option<ObjectArchiveInnerFile>>;
 
-    async fn get_chunk(&self, chunk_id: &ObjectId) -> BuckyResult<Option<ObjectArchiveInnerFile>>;
+    async fn get_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Option<ObjectArchiveInnerFile>>;
 }
 
 pub type BackupDataLoaderRef = Arc<Box<dyn BackupDataLoader>>;

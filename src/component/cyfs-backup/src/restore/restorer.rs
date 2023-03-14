@@ -1,4 +1,4 @@
-use crate::archive::ObjectArchiveInnerFileData;
+use crate::archive::*;
 use cyfs_base::*;
 
 use std::path::Path;
@@ -10,6 +10,18 @@ pub trait ObjectRestorer: Send + Sync {
         &self,
         inner_path: &Path,
         data: ObjectArchiveInnerFileData,
+    ) -> BuckyResult<()>;
+
+    async fn restore_object(
+        &self,
+        object_id: &ObjectId,
+        data: ObjectArchiveInnerFile,
+    ) -> BuckyResult<()>;
+
+    async fn restore_chunk(
+        &self,
+        chunk_id: &ChunkId,
+        data: ObjectArchiveInnerFile,
     ) -> BuckyResult<()>;
 }
 
