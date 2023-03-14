@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
-use cyfs_base::{BuckyResult, NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner};
+use cyfs_base::{
+    AnyNamedObject, BuckyResult, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom,
+    RsaCPUObjectSigner, TypelessCoreObject,
+};
 use cyfs_core::{GroupProposal, GroupRPath};
 use cyfs_group_lib::RPathDelegate;
+use cyfs_lib::NONObjectInfo;
 
 use crate::{
     network::NONDriverHelper, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
@@ -15,6 +19,7 @@ struct RPathServiceRaw {
     network_sender: crate::network::Sender,
     pending_proposal_handle: PendingProposalHandler,
     hotstuff: Hotstuff,
+    non_driver: NONDriverHelper,
 }
 
 #[derive(Clone)]
@@ -44,7 +49,7 @@ impl RPathService {
             store,
             signer,
             network_sender.clone(),
-            non_driver,
+            non_driver.clone(),
             pending_proposal_consumer,
             event_notifier,
             rpath.clone(),
@@ -56,6 +61,7 @@ impl RPathService {
             local_id,
             rpath,
             hotstuff,
+            non_driver,
         };
 
         Ok(Self(Arc::new(raw)))
@@ -71,6 +77,16 @@ impl RPathService {
             self.rpath(),
             proposal.desc().object_id()
         );
+
+        let object_raw = proposal.to_vec()?;
+        let any_obj =
+            AnyNamedObject::Core(TypelessCoreObject::clone_from_slice(object_raw.as_slice())?);
+        let non_obj = NONObjectInfo::new(
+            proposal.desc().object_id(),
+            object_raw,
+            Some(Arc::new(any_obj)),
+        );
+        self.0.non_driver.put_object(non_obj).await?;
         self.0.pending_proposal_handle.on_proposal(proposal).await
     }
 

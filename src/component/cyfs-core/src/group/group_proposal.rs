@@ -1,7 +1,6 @@
 use crate::{CoreObjectType, GroupRPath};
 use async_trait::async_trait;
 use cyfs_base::*;
-use sha2::Digest;
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupProposalDescContent)]
