@@ -5,6 +5,7 @@ use cyfs_bdt::DeviceCache;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
+use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, RwLock};
 
@@ -87,7 +88,7 @@ impl DeviceInfoManagerImpl {
         self.list.read().unwrap().get(device_id).map(|d| d.clone())
     }
 
-    async fn verfiy_own_signs(
+    async fn verfiy_single_own_signs(
         &self,
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
@@ -115,6 +116,103 @@ impl DeviceInfoManagerImpl {
             Err(e) => {
                 error!(
                     "verify object own's body sign by owner error! id={}, {}",
+                    object_id, e
+                );
+                Err(e)
+            }
+        }
+    }
+
+    async fn verfiy_group_own_signs(
+        &self,
+        object_id: &ObjectId,
+        object: &Arc<AnyNamedObject>,
+    ) -> BuckyResult<()> {
+        if object_id.obj_type_code() != ObjectTypeCode::Group {
+            let msg = format!(
+                "verify object own's body sign by owner failed for expect group, id = {}",
+                object_id
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        }
+
+        let group = object.as_group();
+        let sign_object_ids = HashSet::<ObjectId>::from_iter(
+            [
+                group.admins().iter().map(|m| m.id).collect::<Vec<_>>(),
+                group.members().iter().map(|m| m.id).collect::<Vec<_>>(),
+            ]
+            .concat()
+            .into_iter(),
+        );
+
+        // all singatures
+        let results = futures::future::join_all(
+            sign_object_ids
+                .into_iter()
+                .map(|id| self.verify_with_object(object_id.clone(), object.clone(), id)),
+        )
+        .await;
+
+        results
+            .into_iter()
+            .find(|r| r.is_err())
+            .map_or(Ok(()), |r| r)
+    }
+
+    async fn verify_with_object(
+        &self,
+        object_id: ObjectId,
+        object: Arc<AnyNamedObject>,
+        signer_id: ObjectId,
+    ) -> BuckyResult<()> {
+        let mut signer_obj = self
+            .obj_searcher
+            .search_ex(None, &signer_id, ObjectSearcherFlags::full())
+            .await
+            .map_err(|err| {
+                error!(
+                    "verify object(group) own's body sign find signer failed! id={}, err={:?}",
+                    object_id, err
+                );
+                err
+            })?;
+
+        let singer_obj_any = signer_obj.object.take();
+        let req = VerifyObjectInnerRequest {
+            sign_type: VerifySignType::Body,
+            object: ObjectInfo {
+                object_id: object_id.clone(),
+                object: object.clone(),
+            },
+            sign_object: VerifyObjectType::Object(NONSlimObjectInfo::new(
+                signer_id,
+                Some(signer_obj.object_raw),
+                singer_obj_any,
+            )),
+        };
+
+        match self.obj_verifier.verify_object_inner(req).await {
+            Ok(ret) => {
+                if ret.valid {
+                    info!(
+                        "verify object(group) own's body sign success! id={}",
+                        object_id,
+                    );
+                    Ok(())
+                } else {
+                    let msg = format!(
+                        "verify object(group) own's body sign unmatch! id={}",
+                        object_id,
+                    );
+                    error!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::InvalidSignature, msg))
+                }
+            }
+            Err(e) => {
+                error!(
+                    "verify object(group) own's body sign by owner error! id={}, {}",
                     object_id, e
                 );
                 Err(e)
@@ -427,7 +525,11 @@ impl DeviceCache for DeviceInfoManager {
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
     ) -> BuckyResult<()> {
-        self.0.verfiy_own_signs(object_id, object).await
+        if ObjectTypeCode::Group == object_id.obj_type_code() {
+            self.0.verfiy_group_own_signs(object_id, object).await
+        } else {
+            self.0.verfiy_single_own_signs(object_id, object).await
+        }
     }
 
     fn clone_cache(&self) -> Box<dyn DeviceCache> {

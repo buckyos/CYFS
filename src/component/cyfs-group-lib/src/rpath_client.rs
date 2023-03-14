@@ -42,7 +42,7 @@ impl RPathClient {
             .requestor
             .post_object(NONPostObjectOutputRequest {
                 common: NONOutputRequestCommon {
-                    req_path: None,
+                    req_path: Some("post-proposal".to_string()),
                     source: None,
                     dec_id: self.0.local_dec_id.clone(),
                     level: NONAPILevel::Router,

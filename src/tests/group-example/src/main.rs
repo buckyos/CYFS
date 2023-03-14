@@ -29,10 +29,10 @@ mod Common {
     use async_std::fs;
     use cyfs_base::{
         AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, EndpointArea, Group,
-        GroupMember, IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo,
-        RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, SocketAddr, StandardObject,
-        TypelessCoreObject, UniqueId, NON_STACK_BDT_VPORT, NON_STACK_SYNC_BDT_VPORT,
-        SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
+        GroupMember, IpAddr, NamedObject, ObjectDesc, ObjectLink, People, PrivateKey, Protocol,
+        RawConvertTo, RawDecode, RawEncode, RawFrom, RsaCPUObjectSigner, Signer, SocketAddr,
+        StandardObject, TypelessCoreObject, UniqueId, NON_STACK_BDT_VPORT,
+        NON_STACK_SYNC_BDT_VPORT, SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
     use cyfs_bdt_ext::{BdtStackParams, SNMode};
     use cyfs_chunk_lib::ChunkMeta;
@@ -166,8 +166,8 @@ mod Common {
 
     fn create_group(
         founder: &People,
-        admins: Vec<&People>,
-        members: Vec<&People>,
+        admins: Vec<(&People, &PrivateKey)>,
+        members: Vec<(&People, &PrivateKey)>,
         oods: Vec<&Device>,
     ) -> Group {
         log::info!("create group");
@@ -176,13 +176,13 @@ mod Common {
         group.check_org_body_content_mut().set_admins(
             admins
                 .iter()
-                .map(|m| GroupMember::from_member_id(m.desc().object_id()))
+                .map(|m| GroupMember::from_member_id(m.0.desc().object_id()))
                 .collect(),
         );
         group.set_members(
             members
                 .iter()
-                .map(|m| GroupMember::from_member_id(m.desc().object_id()))
+                .map(|m| GroupMember::from_member_id(m.0.desc().object_id()))
                 .collect(),
         );
         group.set_ood_list(
@@ -194,6 +194,29 @@ mod Common {
         group.set_consensus_interval(5000);
 
         log::info!("create group: {:?}", group.desc().object_id());
+
+        let body_hash = group.body().as_ref().unwrap().raw_hash_value().unwrap();
+        let signers = [admins, members].concat();
+        signers
+            .into_iter()
+            .map(|(owner, private_key)| {
+                let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
+
+                async_std::task::block_on(async move {
+                    let body_signature = signer
+                        .sign(
+                            body_hash.as_slice(),
+                            &cyfs_base::SignatureSource::Object(ObjectLink {
+                                obj_id: owner.desc().object_id(),
+                                obj_owner: None,
+                            }),
+                        )
+                        .await
+                        .unwrap();
+                    body_signature
+                })
+            })
+            .for_each(|signature| group.signs_mut().push_body_sign(signature));
 
         group
     }
@@ -315,8 +338,8 @@ mod Common {
     }
 
     pub async fn init_group(
-        admins: Vec<&People>,
-        members: Vec<&People>,
+        admins: Vec<(&People, &PrivateKey)>,
+        members: Vec<(&People, &PrivateKey)>,
         oods: Vec<&Device>,
     ) -> Group {
         fs::create_dir_all("./test-group")
@@ -340,7 +363,7 @@ mod Common {
             }
         }
 
-        let group = create_group(admins.get(0).unwrap(), admins, members, oods);
+        let group = create_group(admins.get(0).unwrap().0, admins, members, oods);
         fs::write("./test-group/group.desc", group.to_vec().unwrap())
             .await
             .expect("save file ./test-group/group.desc failed");
@@ -976,7 +999,7 @@ async fn main_run() {
     log::info!("main_run");
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
-    
+
     cyfs_debug::CyfsLoggerBuilder::new_app(EXAMPLE_APP_NAME.as_str())
         .level("debug")
         .console("debug")
@@ -998,8 +1021,8 @@ async fn main_run() {
     let admins = init_admins().await;
     let members = init_members().await;
     let group = init_group(
-        admins.iter().map(|m| &m.0 .0).collect(),
-        members.iter().map(|m| &m.0 .0).collect(),
+        admins.iter().map(|m| (&m.0 .0, &m.0 .1)).collect(),
+        members.iter().map(|m| (&m.0 .0, &m.0 .1)).collect(),
         admins.iter().map(|m| &m.1 .0).collect(),
     )
     .await;
