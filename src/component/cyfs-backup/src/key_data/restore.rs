@@ -3,6 +3,7 @@ use crate::data::*;
 use crate::meta::*;
 use crate::restore::ObjectRestorerRef;
 use cyfs_base::*;
+use crate::backup::*;
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ pub struct KeyDataRestoreManager {
     list: Vec<KeyDataMeta>,
     data_loader: BackupDataLoaderRef,
     restorer: ObjectRestorerRef,
+    status_manager: RestoreStatusManager,
 }
 
 impl KeyDataRestoreManager {
@@ -19,11 +21,13 @@ impl KeyDataRestoreManager {
         keydata: Vec<KeyDataMeta>,
         data_loader: BackupDataLoaderRef,
         restorer: ObjectRestorerRef,
+        status_manager: RestoreStatusManager,
     ) -> Self {
         Self {
             list: keydata,
             data_loader,
             restorer,
+            status_manager,
         }
     }
 
@@ -32,6 +36,7 @@ impl KeyDataRestoreManager {
             info!("will restore key data: {:?}", item);
 
             self.restore_data(item).await?;
+            self.status_manager.on_file();
         }
 
         info!("restore all key data complete!");
@@ -92,41 +97,45 @@ impl KeyDataRestoreManager {
                 })?;
 
                 for i in 0..ar.len() {
-                    let mut file = ar.by_index(i)?;
+                    let mut content;
+                    let file_path;
+                    {
+                        let mut file = ar.by_index(i)?;
 
-                    let mut content = Vec::with_capacity(file.size() as usize);
-                    let bytes = file.read_to_end(&mut content).map_err(|e| {
-                        let msg = format!(
-                            "read zip file to buffer failed! zip={}, chunk={}, inner_file={}, {}",
-                            meta.local_path,
-                            meta.chunk_id,
-                            file.name(),
-                            e
-                        );
-                        error!("{}", msg);
-                        BuckyError::new(BuckyErrorCode::IoError, msg)
-                    })?;
+                        content = Vec::with_capacity(file.size() as usize);
+                        let bytes = file.read_to_end(&mut content).map_err(|e| {
+                            let msg = format!(
+                                "read zip file to buffer failed! zip={}, chunk={}, inner_file={}, {}",
+                                meta.local_path,
+                                meta.chunk_id,
+                                file.name(),
+                                e
+                            );
+                            error!("{}", msg);
+                            BuckyError::new(BuckyErrorCode::IoError, msg)
+                        })?;
 
-                    let file_path = file.enclosed_name().ok_or_else(|| {
-                        let msg = format!(
-                            "invalid zip file name! zip={}, inner_file={}",
-                            meta.local_path,
-                            file.name()
-                        );
-                        error!("{}", msg);
-                        BuckyError::new(BuckyErrorCode::InvalidData, msg)
-                    })?;
+                        file_path = file.enclosed_name().ok_or_else(|| {
+                            let msg = format!(
+                                "invalid zip file name! zip={}, inner_file={}",
+                                meta.local_path,
+                                file.name()
+                            );
+                            error!("{}", msg);
+                            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                        })?.to_owned();
 
-                    if bytes as u64 != file.size() {
-                        let msg = format!(
-                            "read zip file but length unmatch! zip={}, file={}, len={}, got={}",
-                            meta.local_path,
-                            file.name(),
-                            file.size(),
-                            bytes,
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+                        if bytes as u64 != file.size() {
+                            let msg = format!(
+                                "read zip file but length unmatch! zip={}, file={}, len={}, got={}",
+                                meta.local_path,
+                                file.name(),
+                                file.size(),
+                                bytes,
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+                        }
                     }
 
                     let data = ObjectArchiveInnerFileData::Buffer(content);

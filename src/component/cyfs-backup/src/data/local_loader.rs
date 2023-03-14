@@ -56,6 +56,11 @@ impl BackupDataLoader for ArchiveLocalFileLoader {
         loader.random_reader().verify().await
     }
 
+    async fn index(&self) -> ObjectArchiveIndex {
+        let mut loader = self.archive.lock().await;
+        loader.random_reader().index().to_owned()
+    }
+
     async fn meta(&self) -> BuckyResult<String> {
         Self::load_meta(&self).await
     }

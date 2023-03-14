@@ -7,6 +7,8 @@ use async_std::sync::Arc;
 pub trait BackupDataLoader: Send + Sync {
     async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult>;
 
+    async fn index(&self) -> ObjectArchiveIndex;
+
     async fn meta(&self) -> BuckyResult<String>;
 
     // serialize methods

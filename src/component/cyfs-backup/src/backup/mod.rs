@@ -1,7 +1,11 @@
 mod backup;
-mod status;
+mod backup_status;
+mod restore;
+mod restore_status;
 mod uni_backup_task;
 mod uni_restore_task;
 
 pub use backup::*;
-pub use status::*;
+pub use backup_status::*;
+pub use restore::*;
+pub use restore_status::*;

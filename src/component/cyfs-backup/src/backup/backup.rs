@@ -1,4 +1,4 @@
-use super::status::BackupStatus;
+use super::backup_status::BackupStatus;
 use super::uni_backup_task::*;
 use cyfs_base::*;
 use cyfs_bdt::ChunkReaderRef;
@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 
 pub struct BackupManager {
     isolate: String,
-    state_default_isolate: ObjectId,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
     loader: ObjectTraverserLoaderRef,
@@ -20,7 +19,6 @@ pub struct BackupManager {
 impl BackupManager {
     pub fn new(
         isolate: &str,
-        state_default_isolate: ObjectId,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         chunk_reader: ChunkReaderRef,
@@ -28,7 +26,6 @@ impl BackupManager {
         let loader = ObjectTraverserLocalLoader::new(noc.clone(), chunk_reader).into_reader();
         Self {
             isolate: isolate.to_owned(),
-            state_default_isolate,
             noc,
             ndc,
             loader,
