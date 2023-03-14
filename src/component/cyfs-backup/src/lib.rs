@@ -7,6 +7,7 @@ mod meta;
 mod object_pack;
 mod state_backup;
 mod uni_backup;
+mod restore;
 
 pub use backup::*;
 
