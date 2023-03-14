@@ -497,7 +497,7 @@ pub(crate) trait TSingleDiskChunkCache {
     fn set_local_cache_meta(&self, meta: &LocalChunkCacheMeta) -> BuckyResult<()>;
 }
 
-pub(crate) struct SingleDiskChunkCache {
+pub struct SingleDiskChunkCache {
     path: PathBuf,
     cache_id: HashValue,
 

@@ -8,7 +8,7 @@ pub enum ChunkType {
 }
 
 #[async_trait::async_trait]
-pub(crate) trait ChunkCache: Send + Sync
+pub trait ChunkCache: Send + Sync
 {
     async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>>;
     async fn new_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>>;

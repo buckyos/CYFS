@@ -31,7 +31,7 @@ impl NamedObjectLocalStorage {
         }
 
         // Init blob module
-        let blob = Self::init_blob(&dir).await?;
+        let blob = create_blob_storage(&dir).await?;
 
         let meta = Self::init_meta(&dir)?;
 
@@ -40,27 +40,6 @@ impl NamedObjectLocalStorage {
 
     pub fn meta(&self) -> &NamedObjectMetaRef {
         &self.meta
-    }
-
-    async fn init_blob(root: &Path) -> BuckyResult<Box<dyn BlobStorage>> {
-        let dir = root.join("objects");
-
-        if !dir.is_dir() {
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                let msg = format!(
-                    "create noc blob data dir error! dir={}, {}",
-                    dir.display(),
-                    e
-                );
-                error!("{}", msg);
-
-                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
-            }
-        }
-
-        let blob = FileBlobStorage::new(dir);
-
-        Ok(Box::new(blob))
     }
 
     fn init_meta(root: &Path) -> BuckyResult<NamedObjectMetaRef> {
