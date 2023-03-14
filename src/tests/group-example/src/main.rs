@@ -8,9 +8,9 @@ use cyfs_base::{
 use cyfs_core::{DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_group_lib::GroupManager;
 use cyfs_lib::{
-    DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo, NONOutputRequestCommon,
-    NONPutObjectOutputRequest, NamedObjectCachePutObjectRequest, NamedObjectStorageCategory,
-    RequestProtocol, RequestSourceInfo, SharedCyfsStack,
+    CyfsStackRequestorType, DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo,
+    NONOutputRequestCommon, NONPutObjectOutputRequest, NamedObjectCachePutObjectRequest,
+    NamedObjectStorageCategory, RequestProtocol, RequestSourceInfo, SharedCyfsStack,
 };
 use cyfs_stack::CyfsStack;
 use Common::{create_stack, EXAMPLE_RPATH};
@@ -473,7 +473,7 @@ mod Common {
         dec_app: &DecApp,
         rpc_port: u16,
         ws_port: u16,
-    ) -> (CyfsStack, SharedCyfsStack) {
+    ) -> (Box<CyfsStack>, Box<SharedCyfsStack>) {
         let params = init_stack_params(
             people,
             private_key,
@@ -488,20 +488,23 @@ mod Common {
 
         log::info!("cyfs-stack.open");
 
-        let stack = CyfsStack::open(params.0, params.1, params.2)
-            .await
-            .map_err(|e| {
-                log::error!("stack start failed: {}", e);
-                e
-            })
-            .unwrap();
+        let stack = Box::new(
+            CyfsStack::open(params.0, params.1, params.2)
+                .await
+                .map_err(|e| {
+                    log::error!("stack start failed: {}", e);
+                    e
+                })
+                .unwrap(),
+        );
 
         async_std::task::sleep(Duration::from_millis(1000)).await;
 
-        let shared_stack =
+        let shared_stack = Box::new(
             SharedCyfsStack::open_with_port(Some(dec_app.desc().object_id()), rpc_port, ws_port)
                 .await
-                .unwrap();
+                .unwrap(),
+        );
 
         shared_stack.wait_online(None).await.unwrap();
 
@@ -539,7 +542,7 @@ mod GroupDecService {
     use async_std::sync::Mutex;
     use cyfs_base::*;
     use cyfs_core::{
-        DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
+        CoreObjectType, DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
         GroupProposalObject,
     };
     use cyfs_group_lib::{
@@ -548,7 +551,8 @@ mod GroupDecService {
     };
     use cyfs_lib::{
         CreateObjectMapOption, NONPostObjectInputRequest, NONPostObjectInputResponse,
-        RequestSourceInfo, RouterHandlerChain, SharedCyfsStack,
+        RequestSourceInfo, RouterHandlerAction, RouterHandlerChain, RouterHandlerManagerProcessor,
+        RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
@@ -561,50 +565,82 @@ mod GroupDecService {
             cyfs_stack: &SharedCyfsStack,
             local_name: String,
             dec_app_id: DecAppId,
+            group_id: ObjectId,
+            rpath: &str,
         ) -> GroupManager {
             let group_mgr = GroupManager::open(
                 cyfs_stack.clone(),
-                Box::new(GroupRPathDelegateFactory { local_name }),
+                Box::new(GroupRPathDelegateFactory {
+                    local_name: local_name.clone(),
+                }),
                 &cyfs_lib::CyfsStackRequestorType::Http,
             )
             .await
             .unwrap();
 
-            // let source = RequestSourceInfo {
-            //     protocol: todo!(),
-            //     zone: todo!(),
-            //     dec: todo!(),
-            //     verified: todo!(),
-            // };
+            let filter = format!("obj_type == {}", CoreObjectType::GroupProposal as u16,);
+            let routine = ProposalListener {
+                service: group_mgr
+                    .start_rpath_service(
+                        group_id,
+                        rpath.to_string(),
+                        Box::new(MyRPathDelegate::new(local_name.to_string())),
+                    )
+                    .await
+                    .unwrap(),
+                local_name,
+            };
 
-            // cyfs_stack
-            //     .router_handlers()
-            //     .handlers(&RouterHandlerChain::PostRouter)
-            //     .post_object()
-            //     .add_handler(RouterHandler::new());
+            cyfs_stack
+                .router_handlers()
+                .post_object()
+                .add_handler(
+                    RouterHandlerChain::Handler,
+                    format!("group-proposal-listener-{}", dec_app_id).as_str(),
+                    0,
+                    Some(filter),
+                    Some("group-proposal".to_string()),
+                    RouterHandlerAction::Pass,
+                    Some(Box::new(routine)),
+                )
+                .await
+                .unwrap();
 
             group_mgr
         }
     }
 
-    // pub struct PostProposalRoutine {
-    //     service: RPathService,
-    // }
+    pub struct ProposalListener {
+        service: RPathService,
+        local_name: String,
+    }
 
-    // #[async_trait::async_trait]
-    // impl EventListenerAsyncRoutine<NONPostObjectInputRequest, NONPostObjectInputResponse>
-    //     for PostProposalRoutine
-    // {
-    //     async fn call(
-    //         &self,
-    //         param: &NONPostObjectInputRequest,
-    //     ) -> BuckyResult<NONPostObjectInputResponse> {
-    //         let (proposal, remain) = GroupProposal::raw_decode(param.object.object_raw.as_slice())?;
-    //         assert_eq!(remain.len(), 0);
-    //         self.service.push_proposal(proposal).await?;
-    //         Ok(NONPostObjectInputResponse { object: None })
-    //     }
-    // }
+    #[async_trait::async_trait]
+    impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult>
+        for ProposalListener
+    {
+        async fn call(
+            &self,
+            param: &RouterHandlerPostObjectRequest,
+        ) -> BuckyResult<RouterHandlerPostObjectResult> {
+            log::info!(
+                "recv proposal {} from {:?}, local: {}",
+                param.request.object.object_id,
+                param.request.common.source.zone,
+                self.local_name
+            );
+
+            let (proposal, remain) =
+                GroupProposal::raw_decode(param.request.object.object_raw.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            self.service.push_proposal(&proposal).await.unwrap();
+            Ok(RouterHandlerPostObjectResult {
+                action: RouterHandlerAction::Response,
+                request: None,
+                response: None,
+            })
+        }
+    }
 
     pub struct GroupRPathDelegateFactory {
         local_name: String,
@@ -939,6 +975,8 @@ fn create_proposal(
 async fn main_run() {
     log::info!("main_run");
 
+    async_std::task::sleep(Duration::from_millis(10000)).await;
+    
     cyfs_debug::CyfsLoggerBuilder::new_app(EXAMPLE_APP_NAME.as_str())
         .level("debug")
         .console("debug")
@@ -972,8 +1010,10 @@ async fn main_run() {
     );
     let dec_app_id = DecAppId::try_from(dec_app.desc().object_id()).unwrap();
 
-    let mut admin_stacks: Vec<(CyfsStack, SharedCyfsStack)> = vec![];
-    let mut group_mgrs: Vec<GroupManager> = vec![];
+    let mut admin_stacks: Vec<(Box<CyfsStack>, Box<SharedCyfsStack>)> = vec![];
+    let mut admin_group_mgrs: Vec<GroupManager> = vec![];
+    let mut member_stacks: Vec<(Box<CyfsStack>, Box<SharedCyfsStack>)> = vec![];
+    let mut member_group_mgrs: Vec<GroupManager> = vec![];
     let mut rpc_port = 32217_u16;
     let mut ws_port = 33217_u16;
     for ((admin, _), (device, private_key)) in admins.iter() {
@@ -1000,25 +1040,60 @@ async fn main_run() {
         ws_port += 1;
     }
 
+    for ((member, _), (device, private_key)) in members.iter() {
+        let (cyfs_stack, shared_stack) = create_stack(
+            member,
+            private_key,
+            device,
+            admins
+                .iter()
+                .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
+                .collect(),
+            members
+                .iter()
+                .map(|m| (m.0 .0.clone(), m.1 .0.clone()))
+                .collect(),
+            &group,
+            &dec_app,
+            rpc_port,
+            ws_port,
+        )
+        .await;
+        member_stacks.push((cyfs_stack, shared_stack));
+        rpc_port += 1;
+        ws_port += 1;
+    }
+
     async_std::task::sleep(Duration::from_millis(10000)).await;
 
     for i in 0..admin_stacks.len() {
         let (_, shared_stack) = admin_stacks.get(i).unwrap();
         let ((admin, _), _) = admins.get(i).unwrap();
         let local_name = admin.name().unwrap();
-        let group_mgr =
-            DecService::run(&shared_stack, local_name.to_string(), dec_app_id.clone()).await;
 
-        let service = group_mgr
-            .start_rpath_service(
-                group.desc().object_id(),
-                EXAMPLE_RPATH.to_string(),
-                Box::new(MyRPathDelegate::new(local_name.to_string())),
-            )
-            .await
-            .unwrap();
+        let group_mgr = DecService::run(
+            &shared_stack,
+            local_name.to_string(),
+            dec_app_id.clone(),
+            group_id,
+            EXAMPLE_RPATH.as_str(),
+        )
+        .await;
 
-        group_mgrs.push(group_mgr);
+        admin_group_mgrs.push(group_mgr);
+    }
+
+    for i in 0..member_stacks.len() {
+        let (_, shared_stack) = member_stacks.get(i).unwrap();
+        let ((member, _), _) = members.get(i).unwrap();
+        let group_mgr = GroupManager::open_as_client(
+            shared_stack.as_ref().clone(),
+            &CyfsStackRequestorType::WebSocket,
+        )
+        .await
+        .unwrap();
+
+        member_group_mgrs.push(group_mgr);
     }
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
@@ -1029,20 +1104,15 @@ async fn main_run() {
 
     let PROPOSAL_COUNT = 20usize;
     for i in 1..PROPOSAL_COUNT {
-        let (_, stack) = admin_stacks.get(i % admin_stacks.len()).unwrap();
-        let group_mgr = group_mgrs.get(i % group_mgrs.len()).unwrap();
-        let owner = &admins.get(i % admins.len()).unwrap().0 .0;
+        let (_, stack) = member_stacks.get(i % member_stacks.len()).unwrap();
+        let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
+        let owner = &members.get(i % members.len()).unwrap().0 .0;
         let proposal = create_proposal(
             i as u64,
             owner.desc().object_id(),
             group_id,
             dec_app_id.object_id().clone(),
         );
-
-        let service = group_mgr
-            .find_rpath_service(&group_id, &EXAMPLE_RPATH)
-            .await
-            .unwrap();
 
         let noc = stack.non_service().clone();
 
@@ -1073,16 +1143,29 @@ async fn main_run() {
 
     for i in 1..PROPOSAL_COUNT {
         let proposal = proposals.get(i - 1).unwrap().clone();
-        let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
-        let group_mgr = group_mgrs.get(i % group_mgrs.len()).unwrap();
+        let stack = member_stacks.get(i % member_stacks.len()).unwrap();
+        let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
+        let ((member, _), _) = members.get(i % members.len()).unwrap();
+        let local_name = member.name().map(|n| n.to_string());
 
-        let service = group_mgr
-            .find_rpath_service(&group_id, &EXAMPLE_RPATH)
-            .await
-            .unwrap();
+        let client = group_mgr
+            .rpath_client(group_id, dec_app_id.clone(), &EXAMPLE_RPATH)
+            .await;
 
         async_std::task::spawn(async move {
-            service.push_proposal(&proposal).await.unwrap();
+            log::info!(
+                "client {:?} will post proposal {}",
+                local_name,
+                proposal.desc().object_id(),
+            );
+
+            let result = client.post_proposal(&proposal).await;
+            log::info!(
+                "client {:?} post proposal {}, result: {:?}",
+                local_name,
+                proposal.desc().object_id(),
+                result.map(|o| o.map(|o| o.object_id))
+            );
         });
 
         if i % 10 == 0 {
@@ -1093,7 +1176,7 @@ async fn main_run() {
 
     async_std::task::sleep(Duration::from_millis(10000)).await;
 
-    // let client = group_mgrs
+    // let client = admin_group_mgrs
     //     .get(0)
     //     .unwrap()
     //     .rpath_client(
