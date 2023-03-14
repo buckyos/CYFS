@@ -4,11 +4,12 @@ use super::verifier::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
-use async_std::io::Read as AsyncRead;
 use std::path::PathBuf;
 
+pub type ObjectArchiveInnerFileData = ObjectPackInnerFileData;
+
 pub struct ObjectArchiveInnerFile {
-    pub data: Box<dyn AsyncRead + Unpin + Sync + Send + 'static>,
+    pub data: ObjectArchiveInnerFileData,
     pub meta: Option<ArchiveInnerFileMeta>,
 }
 
@@ -195,11 +196,10 @@ impl ObjectArchiveRandomLoader {
     }
 }
 
-
 pub struct ObjectArchiveLoader {
     root: PathBuf,
     random_loader: ObjectArchiveRandomLoader,
-    serialize_loader: ObjectArchiveSerializeLoader, 
+    serialize_loader: ObjectArchiveSerializeLoader,
 }
 
 impl ObjectArchiveLoader {
@@ -208,7 +208,11 @@ impl ObjectArchiveLoader {
         let serialize_loader = ObjectArchiveSerializeLoader::load(root.clone()).await?;
 
         random_loader.verify().await.map_err(|e| {
-            let msg = format!("verify object archive but failed! root={}, {}", root.display(), e);
+            let msg = format!(
+                "verify object archive but failed! root={}, {}",
+                root.display(),
+                e
+            );
             error!("{}", msg);
             BuckyError::new(e.code(), msg)
         })?;
@@ -222,11 +226,11 @@ impl ObjectArchiveLoader {
         Ok(ret)
     }
 
-    pub fn serialize_reader(&mut self) ->&mut ObjectArchiveSerializeLoader {
+    pub fn serialize_reader(&mut self) -> &mut ObjectArchiveSerializeLoader {
         &mut self.serialize_loader
     }
 
-    pub fn random_reader(&mut self) ->&mut ObjectArchiveRandomLoader {
+    pub fn random_reader(&mut self) -> &mut ObjectArchiveRandomLoader {
         &mut self.random_loader
     }
 }

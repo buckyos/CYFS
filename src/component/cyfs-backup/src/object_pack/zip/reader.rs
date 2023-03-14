@@ -74,8 +74,6 @@ impl ZipObjectPackReader {
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
-        let data = async_std::io::Cursor::new(buffer);
-
         let meta = zip_file.extra_data();
         let meta = if !meta.is_empty() {
             if meta.len() > 4 {
@@ -102,7 +100,7 @@ impl ZipObjectPackReader {
         };
 
         let ret = ObjectPackInnerFile {
-            data: Box::new(data),
+            data: ObjectPackInnerFileData::Buffer(buffer),
             meta,
         };
 

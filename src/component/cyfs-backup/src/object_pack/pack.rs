@@ -1,11 +1,42 @@
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
+use async_std::io::ReadExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub enum ObjectPackInnerFileData {
+    Buffer(Vec<u8>),
+    Stream(Box<dyn AsyncRead + Unpin + Sync + Send + 'static>),
+}
+
+impl ObjectPackInnerFileData {
+    pub fn into_stream(self) -> Box<dyn AsyncRead + Unpin + Sync + Send + 'static> {
+        match self {
+            Self::Buffer(buf) => Box::new(async_std::io::Cursor::new(buf)),
+            Self::Stream(stream) => stream,
+        }
+    }
+
+    pub async fn into_buffer(self) -> BuckyResult<Vec<u8>> {
+        match self {
+            Self::Buffer(buf) => Ok(buf),
+            Self::Stream(mut stream) => {
+                let mut buf = vec![];
+                stream.read_to_end(&mut buf).await.map_err(|e| {
+                    let msg = format!("read stream to buffer failed! {}", e);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
+                })?;
+
+                Ok(buf)
+            }
+        }
+    }
+}
+
 pub struct ObjectPackInnerFile {
-    pub data: Box<dyn AsyncRead + Unpin + Sync + Send + 'static>,
+    pub data: ObjectPackInnerFileData,
     pub meta: Option<Vec<u8>>,
 }
 
