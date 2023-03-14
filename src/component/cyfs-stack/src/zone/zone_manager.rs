@@ -646,13 +646,13 @@ impl ZoneManager {
                 match owner_object.ood_list() {
                     Ok(list) => {
                         if list.len() > 0 {
-                            let work_mode = owner_object.ood_work_mode().unwrap().to_owned();
-                            debug!(
-                                "get ood list from owner object ood_list: owner={}, work_mode={:?}, list={:?}",
-                                owner_id, work_mode, list
-                            );
-
                             if obj_type == ObjectTypeCode::People {
+                                let work_mode = owner_object.ood_work_mode().unwrap().to_owned();
+                                debug!(
+                                    "get ood list from owner object ood_list: owner={}, work_mode={:?}, list={:?}",
+                                    owner_id, work_mode, list
+                                );
+
                                 return Ok((work_mode, list.to_owned()));
                             } else if obj_type == ObjectTypeCode::Group {
                                 let group = owner_object.into_group();
@@ -666,7 +666,7 @@ impl ZoneManager {
                                     .filter(|id| id.obj_type_code() == ObjectTypeCode::Device)
                                     .map(|id| DeviceId::try_from(id).unwrap())
                                     .collect();
-                                return Ok((work_mode, list));
+                                return Ok((OODWorkMode::Standalone, list));
                             } else {
                                 unreachable!()
                             }
