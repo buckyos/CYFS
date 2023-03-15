@@ -32,7 +32,7 @@ impl UniRestoreDataFilter {
 }
 
 pub struct UniRestoreManager {
-    id: u64,
+    id: String,
     backup_loader: BackupDataLoaderRef,
     restorer: ObjectRestorerRef,
     filter: UniRestoreDataFilter,
@@ -41,7 +41,7 @@ pub struct UniRestoreManager {
 
 impl UniRestoreManager {
     pub fn new(
-        id: u64,
+        id: String,
         backup_loader: BackupDataLoaderRef,
         restorer: ObjectRestorerRef,
         filter: UniRestoreDataFilter,

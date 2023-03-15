@@ -27,7 +27,7 @@ pub struct GlobalStateBackupParams {
 }
 
 pub struct StateBackupManager {
-    id: u64,
+    id: String,
     root: PathBuf,
     format: ObjectPackFormat,
     state_default_isolate: ObjectId,
@@ -40,7 +40,7 @@ pub struct StateBackupManager {
 
 impl StateBackupManager {
     pub fn new(
-        id: u64,
+        id: String,
         root: PathBuf,
         state_default_isolate: ObjectId,
         noc: NamedObjectCacheRef,
@@ -67,7 +67,7 @@ impl StateBackupManager {
         let backup_dir = self.root.join(format!("{}", self.id));
 
         let data_writer = StateBackupDataLocalFileWriter::new(
-            self.id,
+            self.id.clone(),
             self.state_default_isolate.clone(),
             backup_dir,
             self.format,
@@ -94,7 +94,7 @@ impl StateBackupManager {
         &self,
         params: GlobalStateBackupParams,
     ) -> BuckyResult<ObjectArchiveStatMeta> {
-        let data_writer = BackupDataStatWriter::new(self.id);
+        let data_writer = BackupDataStatWriter::new(self.id.clone());
         let writer = data_writer.clone().into_writer();
 
         let root_meta = self.run(params, writer).await?;

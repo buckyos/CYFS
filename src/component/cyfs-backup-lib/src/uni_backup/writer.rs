@@ -19,7 +19,7 @@ pub struct UniBackupDataLocalFileWriter {
 
 impl UniBackupDataLocalFileWriter {
     pub fn new(
-        id: u64,
+        id: String,
         root: PathBuf,
         format: ObjectPackFormat,
         archive_file_max_size: u64,

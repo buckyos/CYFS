@@ -16,7 +16,7 @@ pub struct ObjectArchiveGenerator {
 }
 
 impl ObjectArchiveGenerator {
-    pub fn new(id: u64, format: ObjectPackFormat, strategy: ObjectBackupStrategy, root: PathBuf, size_limit: u64) -> Self {
+    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy, root: PathBuf, size_limit: u64) -> Self {
         let object_writer = ObjectPackRollWriter::new(
             format,
             root.clone(),
@@ -42,7 +42,7 @@ impl ObjectArchiveGenerator {
     }
 
     pub fn clone_empty(&self) -> Self {
-        Self::new(self.index.id, self.index.format, self.index.strategy, self.root.clone(), self.size_limit)
+        Self::new(self.index.id.clone(), self.index.format, self.index.strategy, self.root.clone(), self.size_limit)
     }
 
     pub async fn add_data(

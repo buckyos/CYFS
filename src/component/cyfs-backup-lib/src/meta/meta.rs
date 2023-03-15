@@ -7,7 +7,7 @@ use std::path::Path;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
-    pub id: u64,
+    pub id: String,
     pub time: String,
     pub object: T,
     pub key_data: Vec<KeyDataMeta>,
@@ -17,7 +17,7 @@ impl<T> ObjectArchiveMeta<T>
 where
     T: std::fmt::Debug + Serialize + for<'de> Deserialize<'de>,
 {
-    pub fn new(id: u64, object: T, key_data: Vec<KeyDataMeta>) -> Self {
+    pub fn new(id: String, object: T, key_data: Vec<KeyDataMeta>) -> Self {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 

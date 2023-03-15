@@ -15,7 +15,7 @@ pub struct ArchiveLocalFileWriter {
 
 impl ArchiveLocalFileWriter {
     pub fn new(
-        id: u64,
+        id: String,
         root: PathBuf,
         format: ObjectPackFormat,
         strategy: ObjectBackupStrategy,

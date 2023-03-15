@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveStatMeta {
-    pub id: u64,
+    pub id: String,
     pub time: String,
     
     pub isolates: Vec<ObjectArchiveIsolateMeta>,
@@ -17,7 +17,7 @@ pub struct ObjectArchiveStatMeta {
 }
 
 impl ObjectArchiveStatMeta {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: String) -> Self {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 
@@ -40,7 +40,7 @@ pub struct BackupDataStatWriterInner {
 }
 
 impl BackupDataStatWriterInner {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: String) -> Self {
         let meta = ObjectArchiveStatMeta::new(id);
         Self {
             meta,
@@ -63,7 +63,7 @@ impl BackupDataStatWriterInner {
     }
 
     pub fn finish(&mut self) -> ObjectArchiveStatMeta {
-        let mut empty_meta = ObjectArchiveStatMeta::new(self.meta.id);
+        let mut empty_meta = ObjectArchiveStatMeta::new(self.meta.id.clone());
         std::mem::swap(&mut self.meta, &mut empty_meta);
 
         empty_meta
@@ -74,7 +74,7 @@ impl BackupDataStatWriterInner {
 pub struct BackupDataStatWriter(Arc<Mutex<BackupDataStatWriterInner>>);
 
 impl BackupDataStatWriter {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: String) -> Self {
         let inner = BackupDataStatWriterInner::new(id);
         Self(Arc::new(Mutex::new(inner)))
     }

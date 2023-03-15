@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct LocalFileBackupParam {
-    // Backup file storage directory
+    // Backup target_file storage directory
     pub dir: Option<PathBuf>,
 
     pub format: ObjectPackFormat,
@@ -31,15 +31,15 @@ impl Default for LocalFileBackupParam {
 
 #[derive(Debug, Clone)]
 pub struct UniBackupParams {
-    pub id: u64,
+    pub id: String,
+    pub isolate: String,
 
-    pub file: LocalFileBackupParam,
+    pub target_file: LocalFileBackupParam,
 }
 
 #[derive(Clone)]
 pub struct UniBackupTask {
-    id: u64,
-    isolate: String,
+    id: String,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
     loader: ObjectTraverserLoaderRef,
@@ -49,15 +49,13 @@ pub struct UniBackupTask {
 
 impl UniBackupTask {
     pub fn new(
-        id: u64,
-        isolate: &str,
+        id: String,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         loader: ObjectTraverserLoaderRef,
     ) -> Self {
         Self {
             id,
-            isolate: isolate.to_owned(),
             noc,
             ndc,
             loader,
@@ -65,8 +63,8 @@ impl UniBackupTask {
         }
     }
 
-    pub fn id(&self) -> u64 {
-        self.id
+    pub fn id(&self) -> &str {
+        self.id.as_str()
     }
 
     pub fn status(&self) -> BackupStatus {
@@ -96,11 +94,11 @@ impl UniBackupTask {
         Ok(())
     }
 
-    async fn run_stat(&self, _params: UniBackupParams) -> BuckyResult<()> {
+    async fn run_stat(&self, params: UniBackupParams) -> BuckyResult<()> {
         let uni_stat = UniBackupStat::new(self.noc.clone(), self.ndc.clone());
         let uni_stat = uni_stat.stat().await?;
 
-        let keydata = KeyDataManager::new_uni(&self.isolate);
+        let keydata = KeyDataManager::new_uni(&params.isolate);
         let keydata_stat = KeyDataBackupStat::new(keydata);
         let keydata_stat = keydata_stat.stat();
 
@@ -120,7 +118,7 @@ impl UniBackupTask {
         params: UniBackupParams,
     ) -> BuckyResult<(ObjectArchiveIndex, ObjectArchiveMetaForUniBackup)> {
         
-        let backup_dir = match params.file.dir {
+        let backup_dir = match params.target_file.dir {
             Some(dir) => dir,
             None => cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id)),
         };
@@ -138,10 +136,10 @@ impl UniBackupTask {
         })?;
 
         let uni_data_writer = UniBackupDataLocalFileWriter::new(
-            params.id,
+            params.id.clone(),
             backup_dir.clone(),
-            params.file.format,
-            params.file.file_max_size,
+            params.target_file.format,
+            params.target_file.file_max_size,
             self.loader.clone(),
         )?;
 
@@ -149,7 +147,7 @@ impl UniBackupTask {
 
         {
             let backup = UniBackupManager::new(
-                params.id,
+                params.id.clone(),
                 self.noc.clone(),
                 self.ndc.clone(),
                 self.loader.clone(),
@@ -160,7 +158,7 @@ impl UniBackupTask {
         }
 
         let keydata_meta = {
-            let keydata = KeyDataManager::new_uni(&self.isolate);
+            let keydata = KeyDataManager::new_uni(&params.isolate);
             let keydata_backup = KeyDataBackupManager::new(keydata, data_writer);
 
             keydata_backup.run().await.map_err(|e| {

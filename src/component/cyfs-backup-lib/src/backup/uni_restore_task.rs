@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct UniRestoreParams {
-    pub id: u64,
+    pub id: String,
     pub cyfs_root: String,
     pub isolate: String,
     pub archive: PathBuf,
@@ -20,21 +20,21 @@ pub struct UniRestoreParams {
 
 #[derive(Clone)]
 pub struct UniRestoreTask {
-    id: u64,
+    id: String,
 
     status_manager: RestoreStatusManager,
 }
 
 impl UniRestoreTask {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: String) -> Self {
         Self {
             id,
             status_manager: RestoreStatusManager::new(),
         }
     }
 
-    pub fn id(&self) -> u64 {
-        self.id
+    pub fn id(&self) -> &str {
+        self.id.as_str()
     }
 
     pub fn status(&self) -> RestoreStatus {

@@ -12,7 +12,7 @@ pub enum ObjectBackupStrategy {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveIndex {
-    pub id: u64,
+    pub id: String,
     pub time: String,
     pub format: ObjectPackFormat,
     pub strategy: ObjectBackupStrategy,
@@ -21,7 +21,7 @@ pub struct ObjectArchiveIndex {
 }
 
 impl ObjectArchiveIndex {
-    pub fn new(id: u64, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> Self {
+    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> Self {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 

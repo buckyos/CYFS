@@ -6,7 +6,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 pub struct UniBackupManager {
-    id: u64,
+    id: String,
 
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
@@ -17,7 +17,7 @@ pub struct UniBackupManager {
 
 impl UniBackupManager {
     pub fn new(
-        id: u64,
+        id: String,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         loader: ObjectTraverserLoaderRef,

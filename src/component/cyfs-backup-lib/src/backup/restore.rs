@@ -17,7 +17,7 @@ impl RestoreManager {
     }
 
     fn create_uni_restore_task(&self, params: &UniRestoreParams) -> BuckyResult<UniRestoreTask> {
-        let task = UniRestoreTask::new(params.id);
+        let task = UniRestoreTask::new(params.id.clone());
 
         {
             let mut tasks = self.tasks.lock().unwrap();
@@ -43,7 +43,7 @@ impl RestoreManager {
         let task = self.create_uni_restore_task(&params)?;
 
         async_std::task::spawn(async move {
-            let id = params.id;
+            let id = params.id.clone();
             match task.run(params).await {
                 Ok(()) => {
                     info!("run uni restore task complete! task={}", id);
@@ -57,7 +57,7 @@ impl RestoreManager {
         Ok(())
     }
 
-    pub fn get_task_status(&self, id: u64) -> BuckyResult<RestoreStatus> {
+    pub fn get_task_status(&self, id: &str) -> BuckyResult<RestoreStatus> {
         let status = {
             let tasks = self.tasks.lock().unwrap();
             let ret = tasks.iter().find(|item| item.id() == id);

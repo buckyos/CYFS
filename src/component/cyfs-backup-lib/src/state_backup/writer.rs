@@ -19,7 +19,7 @@ pub struct StateBackupDataLocalFileWriter {
 
 impl StateBackupDataLocalFileWriter {
     pub fn new(
-        id: u64,
+        id: String,
         state_default_isolate: ObjectId,
         root: PathBuf,
         format: ObjectPackFormat,

@@ -7,7 +7,6 @@ use cyfs_lib::*;
 use std::sync::{Arc, Mutex};
 
 pub struct BackupManager {
-    isolate: String,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
     loader: ObjectTraverserLoaderRef,
@@ -18,14 +17,12 @@ pub struct BackupManager {
 
 impl BackupManager {
     pub fn new(
-        isolate: &str,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
         chunk_reader: ChunkReaderRef,
     ) -> Self {
         let loader = ObjectTraverserLocalLoader::new(noc.clone(), chunk_reader).into_reader();
         Self {
-            isolate: isolate.to_owned(),
             noc,
             ndc,
             loader,
@@ -36,8 +33,7 @@ impl BackupManager {
 
     fn create_uni_backup_task(&self, params: &UniBackupParams) -> BuckyResult<UniBackupTask> {
         let task = UniBackupTask::new(
-            params.id,
-            &self.isolate,
+            params.id.clone(),
             self.noc.clone(),
             self.ndc.clone(),
             self.loader.clone(),
@@ -67,7 +63,7 @@ impl BackupManager {
         let task = self.create_uni_backup_task(&params)?;
 
         async_std::task::spawn(async move {
-            let id = params.id;
+            let id = params.id.clone();
             match task.run(params).await {
                 Ok(()) => {
                     info!("run uni backup task complete! task={}", id);
@@ -81,7 +77,7 @@ impl BackupManager {
         Ok(())
     }
 
-    pub fn get_task_status(&self, id: u64) -> BuckyResult<BackupStatus> {
+    pub fn get_task_status(&self, id: &str) -> BuckyResult<BackupStatus> {
         let status = {
             let tasks = self.tasks.lock().unwrap();
             let ret = tasks.iter().find(|item| item.id() == id);
