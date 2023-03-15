@@ -374,12 +374,23 @@ impl AnyNamedObject {
         ))
     }
 
-    fn raw_decode_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
-        let (group, buf) = Group::raw_decode(buf).map_err(|e| {
-            log::error!("AnyNamedObject::raw_decode/group error:{}", e);
+    fn raw_decode_simple_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
             e
         })?;
-        Ok((AnyNamedObject::Standard(StandardObject::Group(group)), buf))
+        return Ok((
+            AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
+            buf,
+        ));
+    }
+
+    fn raw_decode_org<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (org, buf) = Org::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/org error:{}", e);
+            e
+        })?;
+        return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
     }
 
     fn raw_decode_union_account<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
@@ -520,7 +531,6 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
             ObjectTypeCode::Device => Self::raw_decode_device(buf),
             ObjectTypeCode::People => Self::raw_decode_people(buf),
             ObjectTypeCode::AppGroup => Self::raw_decode_app_group(buf),
-            ObjectTypeCode::Group => Self::raw_decode_group(buf),
             ObjectTypeCode::UnionAccount => Self::raw_decode_union_account(buf),
             ObjectTypeCode::Chunk => {
                 unreachable!();
@@ -536,6 +546,8 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
             ObjectTypeCode::Custom => {
                 Self::raw_decode_custom(buf, obj_type_info.is_decapp_object())
             }
+            ObjectTypeCode::SimpleGroup => Self::raw_decode_simple_group(buf),
+            ObjectTypeCode::Org => Self::raw_decode_org(buf),
         }
     }
 }
