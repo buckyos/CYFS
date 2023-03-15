@@ -9,3 +9,5 @@ pub use backup::*;
 pub use backup_status::*;
 pub use restore::*;
 pub use restore_status::*;
+pub use uni_backup_task::*;
+pub use uni_restore_task::*;

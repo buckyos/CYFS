@@ -107,8 +107,6 @@ impl ObjectArchiveGenerator {
         self.index.object_files = object_files;
         self.index.chunk_files = chunk_files;
 
-        self.index.save(&self.root).await?;
-
         Ok(self.index)
     }
 }

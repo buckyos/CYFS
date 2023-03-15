@@ -7,7 +7,7 @@ use crate::uni_backup::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct LocalFileBackupParam {
@@ -59,7 +59,7 @@ impl UniBackupTask {
             noc,
             ndc,
             loader,
-            status_manager: BackupStatusManager::new()
+            status_manager: BackupStatusManager::new(),
         }
     }
 
@@ -87,11 +87,18 @@ impl UniBackupTask {
             Err(e) => Err(e),
         };
 
+        let r = match ret.as_ref() {
+            Ok(_) => { Ok(()) },
+            Err(e) => {
+                Err(e.clone())
+            }
+        };
+
         self.status_manager.on_complete(ret);
 
         self.status_manager.update_phase(BackupTaskPhase::Complete);
 
-        Ok(())
+        r
     }
 
     async fn run_stat(&self, params: UniBackupParams) -> BuckyResult<()> {
@@ -113,15 +120,53 @@ impl UniBackupTask {
         Ok(())
     }
 
+    fn check_target_dir(dir: &Path) -> BuckyResult<()> {
+        if dir.exists() {
+            if dir.is_dir() {
+                let mut read = dir.read_dir().map_err(|e| {
+                    let msg = format!("read target dir failed! {}, {}", dir.display(), e);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
+                })?;
+
+                if !read.next().is_none() {
+                    let msg = format!(
+                        "target dir is already exists and not empty! {}",
+                        dir.display()
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            } else if dir.is_file() {
+                let msg = format!(
+                    "target dir is already exists and not valid dir! {}",
+                    dir.display()
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        }
+
+        Ok(())
+    }
+
     async fn run_backup(
         &self,
         params: UniBackupParams,
     ) -> BuckyResult<(ObjectArchiveIndex, ObjectArchiveMetaForUniBackup)> {
-        
         let backup_dir = match params.target_file.dir {
             Some(dir) => dir,
-            None => cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id)),
+            None => {
+                if params.isolate.is_empty() {
+                    cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id))
+                } else {
+                    cyfs_util::get_cyfs_root_path_ref()
+                        .join(format!("data/backup/{}/{}", params.isolate, params.id))
+                }
+            }
         };
+
+        Self::check_target_dir(&backup_dir)?;
 
         info!("backup local dir is: {}", backup_dir.display());
 
@@ -172,6 +217,7 @@ impl UniBackupTask {
 
         let backup_meta = ObjectArchiveMetaForUniBackup::new(params.id, uni_meta, keydata_meta);
 
+        index.save(&backup_dir).await?;
         backup_meta.save(&backup_dir).await?;
 
         Ok((index, backup_meta))
