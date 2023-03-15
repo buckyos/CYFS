@@ -290,22 +290,23 @@ impl GroupManager {
                 //     .await;
             }
             HotstuffPackage::ProposalResult(proposal_id, result) => {
-                let rpath = result.as_ref().map_or_else(
-                    |(_, target)| target.check_rpath(),
-                    |(_, block, _)| block.rpath(),
-                );
-                let client = self
-                    .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
-                    .await?;
-                client
-                    .on_message(
-                        HotstuffMessage::ProposalResult(
-                            proposal_id,
-                            result.map_err(|(err, _)| err),
-                        ),
-                        remote,
-                    )
-                    .await;
+                // TODO: unimplemented
+                // let rpath = result.as_ref().map_or_else(
+                //     |(_, target)| target.check_rpath(),
+                //     |(_, block, _)| block.rpath(),
+                // );
+                // let client = self
+                //     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
+                //     .await?;
+                // client
+                //     .on_message(
+                //         HotstuffMessage::ProposalResult(
+                //             proposal_id,
+                //             result.map_err(|(err, _)| err),
+                //         ),
+                //         remote,
+                //     )
+                //     .await;
             }
             HotstuffPackage::QueryState(target, sub_path) => {
                 let rpath = target.check_rpath();
