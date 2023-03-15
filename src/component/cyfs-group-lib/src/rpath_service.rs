@@ -3,7 +3,8 @@ use std::sync::Arc;
 use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_lib::{
-    HttpRequestorRef, IsolatePathOpEnvStub, RootStateOpEnvAccess, SharedCyfsStack, SingleOpEnvStub,
+    HttpRequestorRef, IsolatePathOpEnvStub, NONObjectInfo, RootStateOpEnvAccess, SharedCyfsStack,
+    SingleOpEnvStub,
 };
 
 use crate::{ExecuteResult, GroupObjectMapProcessor, GroupRequestor, RPathDelegate};
@@ -23,7 +24,10 @@ impl RPathService {
         &self.0.rpath
     }
 
-    pub async fn push_proposal(&self, proposal: &GroupProposal) -> BuckyResult<()> {
+    pub async fn push_proposal(
+        &self,
+        proposal: &GroupProposal,
+    ) -> BuckyResult<Option<NONObjectInfo>> {
         // post http
         self.0
             .requestor
@@ -32,7 +36,7 @@ impl RPathService {
                 proposal,
             )
             .await
-            .map(|_| {})
+            .map(|resp| resp.object)
     }
 
     pub(crate) fn new(

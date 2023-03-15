@@ -4,7 +4,7 @@ use cyfs_base::{AccessString, BuckyResult, ObjectId};
 use cyfs_lib::{
     DeviceZoneCategory, DeviceZoneInfo, NONAPILevel, NONGetObjectInputRequest,
     NONInputRequestCommon, NONObjectInfo, NONPostObjectInputRequest, NONPutObjectInputRequest,
-    RequestProtocol, RequestSourceInfo,
+    RequestGlobalStatePath, RequestProtocol, RequestSourceInfo,
 };
 
 use crate::{non::NONInputProcessor, non_api::NONService};
@@ -27,10 +27,12 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo> {
+        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Option::<String>::None);
+
         self.non_service
             .get_object(NONGetObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: None,
+                    req_path: Some(req_path.format_string()),
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {
@@ -57,10 +59,13 @@ impl cyfs_group::NONDriver for GroupNONDriver {
     async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {
         let access = AccessString::full();
         log::debug!("put object {} with access {}", obj.object_id, access);
+
+        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Option::<String>::None);
+
         self.non_service
             .put_object(NONPutObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: None,
+                    req_path: Some(req_path.format_string()),
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {
@@ -93,10 +98,12 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         let obj_type_code = obj.object_id.obj_type_code();
         let obj_type = obj.object.as_ref().map(|obj| obj.obj_type());
 
+        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Some("group/inner-cmd"));
+
         self.non_service
             .post_object(NONPostObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: Some("group-inner".to_string()),
+                    req_path: Some(req_path.format_string()),
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {

@@ -166,47 +166,29 @@ impl GroupRequestor {
 
         let mut resp = self.requestor.request(http_req).await?;
 
-        match resp.status() {
-            code if code.is_success() => {
-                let body = resp.body_string().await.map_err(|e| {
-                    let msg = format!(
-                        "group push proposal failed, read body string error! req={:?}/{} {}",
-                        proposal.rpath(),
+        let status = resp.status();
+        if status.is_success() {
+            match status {
+                http_types::StatusCode::NoContent => {
+                    let e = RequestorHelper::error_from_resp(&mut resp).await;
+                    log::info!(
+                        "push proposal but empty response! obj={}, {}",
                         proposal_id,
                         e
                     );
-                    log::error!("{}", msg);
-
-                    BuckyError::from(msg)
-                })?;
-
-                // let resp = GroupPushProposalOutputResponse::decode_string(&body).map_err(|e| {
-                //     error!(
-                //         "decode group push proposal resp from body string error: body={} {}",
-                //         body, e,
-                //     );
-                //     e
-                // })?;
-
-                log::debug!(
-                    "group push proposal success, req={:?}/{}",
-                    proposal.rpath(),
-                    proposal_id
-                );
-
-                Ok(GroupPushProposalOutputResponse {})
+                    Err(e)
+                }
+                _ => {
+                    log::info!("push proposal success: {}", proposal_id);
+                    let object = NONRequestorHelper::decode_option_object_info(&mut resp).await?;
+                    let ret = GroupPushProposalOutputResponse { object };
+                    Ok(ret)
+                }
             }
-            code @ _ => {
-                let e = RequestorHelper::error_from_resp(&mut resp).await;
-                log::error!(
-                    "group push proposal failed: rpath={:?}/{}, status={}, {}",
-                    proposal.rpath(),
-                    proposal_id,
-                    code,
-                    e
-                );
-                Err(e)
-            }
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            log::error!("push proposal error! object={}, {}", proposal_id, e);
+            Err(e)
         }
     }
 }

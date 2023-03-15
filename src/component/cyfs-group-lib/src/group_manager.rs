@@ -8,7 +8,7 @@ use cyfs_base::{
 use cyfs_core::{CoreObjectType, DecAppId, GroupConsensusBlock, GroupProposalObject, GroupRPath};
 use cyfs_lib::{
     CyfsStackRequestorType, DeviceZoneCategory, HttpRequestorRef, NONObjectInfo,
-    NONPostObjectInputResponse, RouterHandlerAction, RouterHandlerChain,
+    NONPostObjectInputResponse, RequestGlobalStatePath, RouterHandlerAction, RouterHandlerChain,
     RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult,
     SharedCyfsStack,
 };
@@ -75,6 +75,7 @@ impl GroupManager {
         );
 
         // let filter = "*".to_string();
+        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Some("group/inner-cmd"));
 
         router_handler_manager
             .post_object()
@@ -83,7 +84,7 @@ impl GroupManager {
                 format!("group-cmd-{}", dec_id).as_str(),
                 0,
                 Some(filter),
-                Some("group-inner".to_string()),
+                Some(req_path.format_string()),
                 RouterHandlerAction::Pass,
                 Some(Box::new(mgr.clone())),
             )

@@ -87,13 +87,19 @@ impl GroupRequestHandler {
         req: NONInputHttpRequest<State>,
     ) -> tide::Response {
         match self.on_push_proposal(req).await {
-            Ok(_) => {
-                let http_resp: tide::Response = RequestorHelper::new_ok_response();
-
-                http_resp
-            }
+            Ok(resp) => Self::encode_push_proposal_response(resp),
             Err(e) => RequestorHelper::trans_error(e),
         }
+    }
+
+    pub fn encode_push_proposal_response(resp: GroupPushProposalInputResponse) -> tide::Response {
+        let mut http_resp = RequestorHelper::new_response(tide::StatusCode::Ok);
+
+        if let Some(object) = resp.object {
+            NONRequestorHelper::encode_object_info(&mut http_resp, object);
+        }
+
+        http_resp.into()
     }
 
     async fn on_push_proposal<State: Send>(

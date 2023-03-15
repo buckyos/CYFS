@@ -1,4 +1,5 @@
 use cyfs_base::ObjectId;
+use cyfs_lib::NONObjectInfo;
 
 #[derive(Debug)]
 pub struct GroupStartServiceOutputRequest {
@@ -8,4 +9,6 @@ pub struct GroupStartServiceOutputRequest {
 
 pub struct GroupStartServiceOutputResponse {}
 
-pub struct GroupPushProposalOutputResponse {}
+pub struct GroupPushProposalOutputResponse {
+    pub object: Option<NONObjectInfo>,
+}

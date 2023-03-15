@@ -72,7 +72,9 @@ impl GroupInputTransformer {
             .push_proposal(Self::convert_common(req_common), req)
             .await?;
 
-        let resp = GroupPushProposalInputResponse {};
+        let resp = GroupPushProposalInputResponse {
+            object: out_resp.object,
+        };
 
         Ok(resp)
     }
@@ -144,7 +146,9 @@ impl GroupOutputTransformer {
             .push_proposal(self.convert_common(req_common), req)
             .await?;
 
-        let resp = GroupPushProposalOutputResponse {};
+        let resp = GroupPushProposalOutputResponse {
+            object: in_resp.object,
+        };
 
         Ok(resp)
     }

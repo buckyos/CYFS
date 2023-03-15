@@ -573,9 +573,10 @@ mod GroupDecService {
         RPathService,
     };
     use cyfs_lib::{
-        CreateObjectMapOption, NONPostObjectInputRequest, NONPostObjectInputResponse,
-        RequestSourceInfo, RouterHandlerAction, RouterHandlerChain, RouterHandlerManagerProcessor,
-        RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult, SharedCyfsStack,
+        CreateObjectMapOption, GlobalStatePathAccessItem, NONPostObjectInputRequest,
+        NONPostObjectInputResponse, RequestGlobalStatePath, RequestSourceInfo, RouterHandlerAction,
+        RouterHandlerChain, RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest,
+        RouterHandlerPostObjectResult, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
@@ -614,6 +615,21 @@ mod GroupDecService {
                 local_name,
             };
 
+            let req_path = RequestGlobalStatePath::new(
+                Some(dec_app_id.object_id().clone()),
+                Option::<String>::None,
+            )
+            .format_string();
+
+            cyfs_stack
+                .root_state_meta_stub(None, None)
+                .add_access(GlobalStatePathAccessItem::new(
+                    "group/proposal",
+                    AccessString::full().value(),
+                ))
+                .await
+                .unwrap();
+
             cyfs_stack
                 .router_handlers()
                 .post_object()
@@ -622,7 +638,7 @@ mod GroupDecService {
                     format!("group-proposal-listener-{}", dec_app_id).as_str(),
                     0,
                     Some(filter),
-                    Some("group-proposal".to_string()),
+                    Some(req_path),
                     RouterHandlerAction::Pass,
                     Some(Box::new(routine)),
                 )
@@ -656,11 +672,13 @@ mod GroupDecService {
             let (proposal, remain) =
                 GroupProposal::raw_decode(param.request.object.object_raw.as_slice())?;
             assert_eq!(remain.len(), 0);
-            self.service.push_proposal(&proposal).await.unwrap();
+
+            let result = self.service.push_proposal(&proposal).await;
+
             Ok(RouterHandlerPostObjectResult {
                 action: RouterHandlerAction::Response,
                 request: None,
-                response: None,
+                response: Some(result.map(|result| NONPostObjectInputResponse { object: result })),
             })
         }
     }
@@ -998,7 +1016,7 @@ fn create_proposal(
 async fn main_run() {
     log::info!("main_run");
 
-    async_std::task::sleep(Duration::from_millis(10000)).await;
+    // async_std::task::sleep(Duration::from_millis(10000)).await;
 
     cyfs_debug::CyfsLoggerBuilder::new_app(EXAMPLE_APP_NAME.as_str())
         .level("debug")
@@ -1197,7 +1215,7 @@ async fn main_run() {
         }
     }
 
-    async_std::task::sleep(Duration::from_millis(10000)).await;
+    async_std::task::sleep(Duration::from_millis(20000)).await;
 
     // let client = admin_group_mgrs
     //     .get(0)

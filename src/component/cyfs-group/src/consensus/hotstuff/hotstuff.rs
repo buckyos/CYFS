@@ -17,7 +17,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 
 use crate::{
-    consensus::{synchronizer::Synchronizer}, dec_state::StatePusher, helper::Timer, Committee,
+    consensus::{synchronizer::Synchronizer}, dec_state::{StatePusher, CallReplyNotifier, CallReplyWaiter}, helper::Timer, Committee,
     GroupStorage, HotstuffMessage,
     PendingProposalConsumer, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
     HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION, PROPOSAL_MAX_TIMEOUT, RPathEventNotifier, GroupObjectMapProcessor,
@@ -34,6 +34,7 @@ pub(crate) struct Hotstuff {
     local_device_id: ObjectId,
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
     state_pusher: StatePusher,
+    proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
 }
 
 impl std::fmt::Debug for Hotstuff {
@@ -56,6 +57,7 @@ impl Hotstuff {
         rpath: GroupRPath,
     ) -> Self {
         let (tx_message, rx_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
+        let proposal_result_notifier = CallReplyNotifier::new();
 
         let state_pusher = StatePusher::new(
             local_id,
@@ -64,38 +66,42 @@ impl Hotstuff {
             non_driver.clone(),
         );
 
-        let tx_message_runner = tx_message.clone();
-        let state_pusher_runner = state_pusher.clone();
+        let mut runner = HotstuffRunner::new(
+            local_id,
+            local_device_id,
+            committee,
+            store,
+            signer,
+            network_sender,
+            non_driver,
+            tx_message.clone(),
+            rx_message,
+            proposal_consumer,
+            state_pusher.clone(),
+            event_notifier,
+            rpath.clone(),
+            proposal_result_notifier.clone()
+        );
 
-        {
-            let rpath2 = rpath.clone();
-            async_std::task::spawn(async move {
-                HotstuffRunner::new(
-                    local_id,
-                    local_device_id,
-                    committee,
-                    store,
-                    signer,
-                    network_sender,
-                    non_driver,
-                    tx_message_runner,
-                    rx_message,
-                    proposal_consumer,
-                    state_pusher_runner,
-                    event_notifier,
-                    rpath2,
-                )
-                .run()
-                .await
-            });            
-        }
+        async_std::task::spawn(async move {
+            runner.run()
+            .await
+        });
 
         Self {
             local_device_id,
             tx_message,
             state_pusher,
-            rpath
+            rpath,
+            proposal_result_notifier
         }
+    }
+
+    pub async fn wait_proposal_result(
+        &self,
+        proposal_id: ObjectId,
+    ) -> CallReplyWaiter<BuckyResult<Option<NONObjectInfo>>> {
+        self.proposal_result_notifier.prepare(proposal_id).await
     }
 
     pub async fn on_block(&self, block: cyfs_core::GroupConsensusBlock, remote: ObjectId) {
@@ -230,6 +236,7 @@ struct HotstuffRunner {
     rpath: GroupRPath,
     rx_proposal_waiter: Option<(Receiver<()>, u64)>,
     state_pusher: StatePusher,
+    proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
 }
 
 impl std::fmt::Debug for HotstuffRunner {
@@ -254,6 +261,7 @@ impl HotstuffRunner {
         state_pusher: StatePusher,
         event_notifier: RPathEventNotifier,
         rpath: GroupRPath,
+        proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
     ) -> Self {
         let max_round_block = store.block_with_max_round();
         let last_qc = store.last_qc();
@@ -319,6 +327,7 @@ impl HotstuffRunner {
             state_pusher,
             tx_block_gen,
             rx_block_gen,
+            proposal_result_notifier,
         }
     }
 
@@ -687,48 +696,9 @@ impl HotstuffRunner {
             err
         })?;
 
-        if let Some((header_block, old_header_block)) = new_header_block.map(|(header_block, old_header_block, _discard_blocks)| (header_block.clone(), old_header_block)) {
-            log::info!(
-                "[hotstuff] local: {:?}, new header-block {:?} committed",
-                self, header_block.block_id()
-            );
-
-            /**
-             * 这里只清理已经提交的block包含的proposal
-             * 已经执行过的待提交block包含的proposal在下次打包时候去重
-             * */
-            self.cleanup_proposal(&header_block).await;
-
-            log::debug!(
-                "[hotstuff] local: {:?}, process_block-step1 {:?}",
-                self, block.block_id()
-            );
-
-            let (_, qc_block) = self
-                .store
-                .pre_commits()
-                .iter()
-                .next()
-                .expect("the pre-commit block must exist.");
-
-            self.notify_block_committed(&header_block, &old_header_block, qc_block).await;
-
-            log::debug!(
-                "[hotstuff] local: {:?}, process_block-step2 {:?}",
-                self, block.block_id()
-            );
-
-            // notify by leader
-            if &self.local_id == header_block.owner() {
-                self.state_pusher
-                    .notify_block_commit(header_block, qc_block.clone())
-                    .await;
-            }
-
-            log::debug!(
-                "[hotstuff] local: {:?}, process_block-step3 {:?}",
-                self, block.block_id()
-            );
+        if let Some((header_block, old_header_block, _discard_blocks)) = new_header_block {
+            let header_block = header_block.clone();
+            self.on_new_block_commit(&header_block, &old_header_block, block).await;
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -793,6 +763,65 @@ impl HotstuffRunner {
         }
 
         Ok(())
+    }
+
+    async fn on_new_block_commit(&mut self, new_header_block: &GroupConsensusBlock, old_header_block: &Option<GroupConsensusBlock>, qc_qc_block: &GroupConsensusBlock) {
+        log::info!(
+            "[hotstuff] local: {:?}, new header-block {:?} committed, old: {:?}, qc-qc: {}",
+            self, new_header_block.block_id(), old_header_block.as_ref().map(|b| b.block_id()), qc_qc_block.block_id()
+        );
+
+        /**
+         * 这里只清理已经提交的block包含的proposal
+         * 已经执行过的待提交block包含的proposal在下次打包时候去重
+         * */
+        self.cleanup_proposal(new_header_block).await;
+
+        log::debug!(
+            "[hotstuff] local: {:?}, process_block-step1 {:?}",
+            self, qc_qc_block.block_id()
+        );
+
+        let (_, qc_block) = self
+            .store
+            .pre_commits()
+            .iter()
+            .next()
+            .expect("the pre-commit block must exist.");
+
+        self.notify_block_committed(new_header_block, old_header_block, qc_block).await;
+
+        log::debug!(
+            "[hotstuff] local: {:?}, process_block-step2 {:?}",
+            self, qc_qc_block.block_id()
+        );
+
+        // notify by the block generator
+        if &self.local_id == new_header_block.owner() {
+            // push to member
+            self.state_pusher
+                .notify_block_commit(new_header_block.clone(), qc_block.clone())
+                .await;
+
+            // reply
+            let futs = new_header_block.proposals().iter().map(|proposal_info| {
+                let receipt = match proposal_info.receipt.as_ref() {
+                    Some(receipt) => NONObjectInfo::raw_decode(receipt.as_slice()).map(|(receipt, remain)| {
+                        assert_eq!(remain.len(), 0);
+                        Some(receipt)
+                    }),
+                    None => Ok(None),
+                };
+                self.proposal_result_notifier.reply(&proposal_info.proposal, receipt)
+            });
+
+            futures::future::join_all(futs).await;
+        }
+
+        log::debug!(
+            "[hotstuff] local: {:?}, process_block-step3 {:?}",
+            self, qc_qc_block.block_id()
+        );
     }
 
     async fn notify_block_committed(&self, new_header: &GroupConsensusBlock, old_header_block: &Option<GroupConsensusBlock>, qc_block: &GroupConsensusBlock) -> BuckyResult<()> {
@@ -915,6 +944,8 @@ impl HotstuffRunner {
     async fn notify_proposal_err(&self, proposal: &GroupProposal, err: BuckyError) {
         log::debug!("[hotstuff] local: {:?}, proposal {} failed {:?}",
             self, proposal.desc().object_id(), err);
+
+        self.proposal_result_notifier.reply(&proposal.desc().object_id(), Err(err.clone())).await;
 
         self.state_pusher
             .notify_proposal_err(proposal.clone(), err)

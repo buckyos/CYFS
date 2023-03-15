@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use cyfs_base::{
-    AnyNamedObject, BuckyResult, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom,
-    RsaCPUObjectSigner, TypelessCoreObject,
+    AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId,
+    RawConvertTo, RawFrom, RsaCPUObjectSigner, TypelessCoreObject,
 };
 use cyfs_core::{GroupProposal, GroupRPath};
 use cyfs_group_lib::RPathDelegate;
@@ -71,23 +71,27 @@ impl RPathService {
         &self.0.rpath
     }
 
-    pub async fn push_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
-        log::info!(
-            "group({:?}) push proposal {}",
-            self.rpath(),
-            proposal.desc().object_id()
-        );
+    pub async fn push_proposal(
+        &self,
+        proposal: GroupProposal,
+    ) -> BuckyResult<Option<NONObjectInfo>> {
+        let proposal_id = proposal.desc().object_id();
+
+        log::info!("group({:?}) push proposal {}", self.rpath(), proposal_id);
 
         let object_raw = proposal.to_vec()?;
         let any_obj =
             AnyNamedObject::Core(TypelessCoreObject::clone_from_slice(object_raw.as_slice())?);
-        let non_obj = NONObjectInfo::new(
-            proposal.desc().object_id(),
-            object_raw,
-            Some(Arc::new(any_obj)),
-        );
+        let non_obj = NONObjectInfo::new(proposal_id, object_raw, Some(Arc::new(any_obj)));
         self.0.non_driver.put_object(non_obj).await?;
-        self.0.pending_proposal_handle.on_proposal(proposal).await
+        self.0.pending_proposal_handle.on_proposal(proposal).await?;
+
+        let waiter = self.0.hotstuff.wait_proposal_result(proposal_id).await;
+
+        waiter.wait().await.map_or(
+            Err(BuckyError::new(BuckyErrorCode::Unknown, "unknown")),
+            |r| r,
+        )
     }
 
     pub fn select_branch(&self, block_id: ObjectId, source: ObjectId) -> BuckyResult<()> {
