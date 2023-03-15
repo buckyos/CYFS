@@ -97,7 +97,7 @@ impl GroupInputProcessor for LocalGroupService {
         service
             .push_proposal(req)
             .await
-            .map(|_| GroupPushProposalInputResponse {})
+            .map(|object| GroupPushProposalInputResponse { object })
             .map_err(|err| {
                 log::error!(
                     "group push proposal {}-{}-{} {} failed {:?}",
