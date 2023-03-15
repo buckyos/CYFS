@@ -1,11 +1,13 @@
-mod object;
-mod writer;
-mod chunk;
 mod backup;
-mod stat;
+mod chunk;
+mod chunk_fix;
+mod object;
 mod restore;
+mod stat;
+mod writer;
 
-pub use writer::*;
 pub use backup::*;
-pub use stat::*;
+pub use chunk_fix::*;
 pub use restore::*;
+pub use stat::*;
+pub use writer::*;

@@ -12,16 +12,22 @@ pub struct KeyData {
 impl KeyData {
     pub fn new_file(local_path: impl Into<String>) -> Self {
         Self {
-            local_path: local_path.into(),
+            local_path: Self::fix_path(local_path),
             data_type: KeyDataType::File,
         }
     }
 
     pub fn new_dir(local_path: impl Into<String>) -> Self {
         Self {
-            local_path: local_path.into(),
+            local_path: Self::fix_path(local_path),
             data_type: KeyDataType::Dir,
         }
+    }
+
+    fn fix_path(local_path: impl Into<String>) -> String {
+        let local_path: String = local_path.into();
+        let local_path = local_path.replace("\\", "/");
+        local_path
     }
 }
 

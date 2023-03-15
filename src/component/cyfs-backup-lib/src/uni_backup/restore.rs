@@ -3,6 +3,7 @@ use crate::data::*;
 use crate::meta::*;
 use crate::restore::*;
 use cyfs_base::*;
+use super::chunk_fix::ChunkTrackerFixer;
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -37,6 +38,7 @@ pub struct UniRestoreManager {
     restorer: ObjectRestorerRef,
     filter: UniRestoreDataFilter,
     status_manager: RestoreStatusManager,
+    chunk_fixer: ChunkTrackerFixer,
 }
 
 impl UniRestoreManager {
@@ -46,6 +48,7 @@ impl UniRestoreManager {
         restorer: ObjectRestorerRef,
         filter: UniRestoreDataFilter,
         status_manager: RestoreStatusManager,
+        chunk_fixer: ChunkTrackerFixer,
     ) -> Self {
         Self {
             id,
@@ -53,6 +56,7 @@ impl UniRestoreManager {
             restorer,
             filter,
             status_manager,
+            chunk_fixer,
         }
     }
 
@@ -96,6 +100,9 @@ impl UniRestoreManager {
             }
 
             self.restorer.restore_chunk(&chunk_id, data).await?;
+
+            self.chunk_fixer.try_fix_chunk_pos(&chunk_id).await?;
+
             self.status_manager.on_chunk();
         }
 
