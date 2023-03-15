@@ -101,6 +101,9 @@ impl KeyDataRestoreManager {
                     let file_path;
                     {
                         let mut file = ar.by_index(i)?;
+                        if file.is_dir() {
+                            continue;
+                        }
 
                         content = Vec::with_capacity(file.size() as usize);
                         let bytes = file.read_to_end(&mut content).map_err(|e| {
@@ -138,6 +141,7 @@ impl KeyDataRestoreManager {
                         }
                     }
 
+                    let file_path = PathBuf::from(&meta.local_path).join(file_path);
                     let data = ObjectArchiveInnerFileData::Buffer(content);
                     self.restorer
                         .restore_file(&file_path, data)

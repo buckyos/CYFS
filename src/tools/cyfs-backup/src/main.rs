@@ -1,5 +1,7 @@
 mod backup;
 mod def;
+mod restore;
+mod stack;
 
 use cyfs_backup_lib::*;
 use cyfs_base::BuckyErrorCode;
@@ -23,7 +25,7 @@ async fn main_run() {
         Arg::with_name("root")
             .long("root")
             .takes_value(true)
-            .help(&format!("Specify cyfs root folder, default is {}", cyfs_util::get_cyfs_root_path().display())),
+            .help(&format!("Specify cyfs root folder, default is {}", cyfs_util::default_cyfs_root_path().display())),
     ).arg(
         Arg::with_name("mode")
             .long("mode")
@@ -54,24 +56,16 @@ async fn main_run() {
             .long("file-max-size")
             .takes_value(true)
             .help("The maximum size of a single backup target file in bytes, the default is 512MB"),
+    ).arg(
+        Arg::with_name("archive_dir")
+            .long("archive-dir")
+            .takes_value(true)
+            .required_if("mode", ServiceMode::Restore.as_str())
+            .help("The local directory where the backup file been stored"),
     )
     .get_matches();
 
-    cyfs_util::process::check_cmd_and_exec_with_args(CYFS_BACKUP, &matches);
-
-    cyfs_debug::CyfsLoggerBuilder::new_app(CYFS_BACKUP)
-        .level("info")
-        .console("info")
-        .enable_bdt(Some("info"), Some("info"))
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("cyfs-tools", CYFS_BACKUP)
-        .build()
-        .start();
-
-    // 如果指定了root目录，那么使用
+    // If specify the root directory, then use it
     if let Some(v) = matches.value_of("root") {
         let root = PathBuf::from_str(v).unwrap_or_else(|e| {
             error!("invalid root path: root={}, {}", v, e);
@@ -90,6 +84,20 @@ async fn main_run() {
         cyfs_util::bind_cyfs_root_path(root);
     }
 
+    cyfs_util::process::check_cmd_and_exec_with_args(CYFS_BACKUP, &matches);
+
+    cyfs_debug::CyfsLoggerBuilder::new_app(CYFS_BACKUP)
+        .level("info")
+        .console("info")
+        .enable_bdt(Some("info"), Some("info"))
+        .build()
+        .unwrap()
+        .start();
+
+    cyfs_debug::PanicBuilder::new("cyfs-tools", CYFS_BACKUP)
+        .build()
+        .start();
+
     let mode = matches.value_of("mode").unwrap();
     let mode = def::ServiceMode::from_str(mode)
         .map_err(|e| {
@@ -98,43 +106,72 @@ async fn main_run() {
         .unwrap();
 
     let ret = match mode {
-        ServiceMode::Backup => {
+        ServiceMode::Backup | ServiceMode::Restore => {
             let id = matches.value_of("id").unwrap();
             let isolate = matches.value_of("isolate").unwrap_or("");
 
-            let mut target_file = LocalFileBackupParam::default();
-            if let Some(target_dir) = matches.value_of("target_dir") {
-                target_file.dir = Some(PathBuf::from(target_dir));
+            match mode {
+                ServiceMode::Backup => {
+                    let mut target_file = LocalFileBackupParam::default();
+                    if let Some(target_dir) = matches.value_of("target_dir") {
+                        target_file.dir = Some(PathBuf::from(target_dir));
+                    }
+
+                    if let Some(file_max_size) = matches.value_of("file_max_size") {
+                        target_file.file_max_size = u64::from_str(file_max_size)
+                            .map_err(|e| {
+                                error!(
+                                    "invalid file_max_size, must be valid u64 value: {}, {}",
+                                    file_max_size, e
+                                );
+                                std::process::exit(BuckyErrorCode::InvalidParam.into());
+                            })
+                            .unwrap();
+                    }
+
+                    let params = UniBackupParams {
+                        id: id.to_owned(),
+                        isolate: isolate.to_owned(),
+                        target_file,
+                    };
+
+                    let backup_manager = backup::BackupService::new(&params.isolate)
+                        .await
+                        .map_err(|e| {
+                            std::process::exit(e.code().into());
+                        })
+                        .unwrap();
+
+                    backup_manager.backup_manager().run_uni_backup(params).await
+                }
+                ServiceMode::Restore => {
+                    let archive = matches.value_of("archive_dir").unwrap();
+
+                    let params = UniRestoreParams {
+                        id: id.to_owned(),
+                        cyfs_root: cyfs_util::get_cyfs_root_path_ref()
+                            .as_os_str()
+                            .to_string_lossy()
+                            .to_string(),
+                        isolate: isolate.to_owned(),
+                        archive: PathBuf::from(archive),
+                    };
+
+                    let restore_manager = restore::RestoreService::new(&params.isolate)
+                        .await
+                        .map_err(|e| {
+                            std::process::exit(e.code().into());
+                        })
+                        .unwrap();
+
+                    restore_manager
+                        .restore_manager()
+                        .run_uni_restore(params)
+                        .await
+                }
+                _ => unreachable!(),
             }
-
-            if let Some(file_max_size) = matches.value_of("file_max_size") {
-                target_file.file_max_size = u64::from_str(file_max_size)
-                    .map_err(|e| {
-                        error!(
-                            "invalid file_max_size, must be valid u64 value: {}, {}",
-                            file_max_size, e
-                        );
-                        std::process::exit(BuckyErrorCode::InvalidParam.into());
-                    })
-                    .unwrap();
-            }
-
-            let params = UniBackupParams {
-                id: id.to_owned(),
-                isolate: isolate.to_owned(),
-                target_file,
-            };
-
-            let backup_manager = backup::BackupService::new(&params.isolate)
-                .await
-                .map_err(|e| {
-                    std::process::exit(e.code().into());
-                })
-                .unwrap();
-
-            backup_manager.backup_manager().run_uni_backup(params).await
         }
-        ServiceMode::Restore => Ok(()),
         ServiceMode::Interactive => Ok(()),
     };
 

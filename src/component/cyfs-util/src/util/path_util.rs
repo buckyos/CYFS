@@ -42,6 +42,7 @@ static CYFS_ROOT: once_cell::sync::OnceCell<PathBuf> = once_cell::sync::OnceCell
 // 初始化时候调用一次
 pub fn bind_cyfs_root_path(root_path: impl Into<PathBuf>) {
     let root_path: PathBuf = root_path.into();
+    println!("bind cyfs_root dir: {}", root_path.display());
 
     match CYFS_ROOT.set(root_path.clone()) {
         Ok(_) => {

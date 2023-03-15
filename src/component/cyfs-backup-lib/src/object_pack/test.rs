@@ -2,7 +2,6 @@ use super::pack::*;
 use cyfs_base::*;
 use cyfs_core::*;
 
-use async_std::io::ReadExt;
 use std::collections::HashSet;
 
 async fn test_pack() {
@@ -51,9 +50,8 @@ async fn test_pack() {
 
         all.insert(id.clone());
 
-        let mut data = pack_reader.get_data(&id).await.unwrap().unwrap();
-        let mut buf = vec![];
-        data.data.read_to_end(&mut buf).await.unwrap();
+        let data = pack_reader.get_data(&id).await.unwrap().unwrap();
+        let buf = data.data.into_buffer().await.unwrap();
         assert_eq!(buf, file_buffer);
 
         let data_id = ObjectId::clone_from_slice(data.meta.as_ref().unwrap()).unwrap();
@@ -67,11 +65,10 @@ async fn test_pack() {
             break;
         }
 
-        let (object_id, mut data) = ret.unwrap();
+        let (object_id, data) = ret.unwrap();
         assert!(all.remove(&object_id));
 
-        let mut buf = vec![];
-        data.data.read_to_end(&mut buf).await.unwrap();
+        let buf = data.data.into_buffer().await.unwrap();
         assert_eq!(buf, file_buffer);
 
         let data_id = ObjectId::clone_from_slice(data.meta.as_ref().unwrap()).unwrap();

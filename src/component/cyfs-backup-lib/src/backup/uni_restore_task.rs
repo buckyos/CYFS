@@ -45,11 +45,18 @@ impl UniRestoreTask {
         info!("will uni restore: {:?}", params);
         let ret = self.run_restore(params).await;
 
+        let r = match ret.as_ref() {
+            Ok(_) => { Ok(()) },
+            Err(e) => {
+                Err(e.clone())
+            }
+        };
+
         self.status_manager.on_complete(ret);
 
         self.status_manager.update_phase(RestoreTaskPhase::Complete);
 
-        Ok(())
+        r
     }
 
     async fn run_restore(&self, params: UniRestoreParams) -> BuckyResult<RestoreResult> {

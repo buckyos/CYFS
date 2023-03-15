@@ -41,7 +41,7 @@ impl ObjectArchiveIndex {
             .await
             .map_err(|e| {
                 let msg = format!(
-                    "load meta info from file failed! file={}, {}",
+                    "load index info from file failed! file={}, {}",
                     index_file.display(),
                     e
                 );
@@ -51,7 +51,7 @@ impl ObjectArchiveIndex {
 
         let ret: Self = serde_json::from_str(&s).map_err(|e| {
             let msg = format!(
-                "invalid meta info format! file={}, meta={}, {}",
+                "invalid index info format! file={}, content={}, {}",
                 index_file.display(),
                 s,
                 e,
@@ -60,6 +60,11 @@ impl ObjectArchiveIndex {
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
+        debug!(
+            "load backup archive index: file={}, {}",
+            index_file.display(),
+            s
+        );
         Ok(ret)
     }
 

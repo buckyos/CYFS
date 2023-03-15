@@ -6,7 +6,6 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 
-use async_std::io::ReadExt;
 use std::collections::HashMap;
 
 fn new_dec(name: &str) -> ObjectId {
@@ -32,12 +31,17 @@ async fn test_archive() {
         std::fs::create_dir_all(&path).unwrap();
     }
 
+    let data_dir = path.join("data");
+    if !data_dir.is_dir() {
+        std::fs::create_dir_all(&data_dir).unwrap();
+    }
+
     let mut objects = HashMap::new();
     let mut generator = ObjectArchiveGenerator::new(
-        bucky_time_now(),
+        bucky_time_now().to_string(),
         crate::object_pack::ObjectPackFormat::Zip,
         ObjectBackupStrategy::Uni,
-        path.clone(),
+        data_dir.clone(),
         1024 * 1024 * 10,
     );
     for i in 0..1024 * 10 {
@@ -75,8 +79,10 @@ async fn test_archive() {
         chunks.insert(chunk_id, meta);
     }
 
-    let meta = generator.finish().await.unwrap();
-    info!("meta: {:?}", meta);
+    let index = generator.finish().await.unwrap();
+    info!("index: {:?}", index);
+
+    index.save(&path).await.unwrap();
 
     let mut loader = ObjectArchiveSerializeLoader::load(path).await.unwrap();
 
@@ -90,11 +96,10 @@ async fn test_archive() {
             break;
         }
 
-        let (object_id, mut data) = ret.unwrap();
+        let (object_id, data) = ret.unwrap();
         let meta = objects.remove(&object_id).unwrap();
 
-        let mut buf = vec![];
-        data.data.read_to_end(&mut buf).await.unwrap();
+        let buf = data.data.into_buffer().await.unwrap();
         assert_eq!(buf, file_buffer);
 
         // info!("{:?}", meta);
@@ -109,12 +114,10 @@ async fn test_archive() {
             break;
         }
 
-        let (object_id, mut data) = ret.unwrap();
-        let chunk_id = ChunkId::try_from(&object_id).unwrap();
+        let (chunk_id, data) = ret.unwrap();
         let meta = chunks.remove(&chunk_id).unwrap();
 
-        let mut buf = vec![];
-        data.data.read_to_end(&mut buf).await.unwrap();
+        let buf = data.data.into_buffer().await.unwrap();
         let read_chunk_id = ChunkId::calculate_sync(&buf).unwrap();
         assert_eq!(read_chunk_id, chunk_id);
 

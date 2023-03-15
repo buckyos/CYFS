@@ -32,10 +32,12 @@ impl ObjectArchiveSerializeLoader {
         // First load index into meta
         let index = ObjectArchiveIndex::load(&root).await?;
 
+        let data_dir = root.join("data");
         let object_reader =
-            ObjectPackSerializeReader::new(index.format, root.clone(), index.object_files.clone());
+            ObjectPackSerializeReader::new(index.format, data_dir.clone(), index.object_files.clone());
         let chunk_reader =
-            ObjectPackSerializeReader::new(index.format, root.clone(), index.chunk_files.clone());
+            ObjectPackSerializeReader::new(index.format, data_dir, index.chunk_files.clone());
+            
         let ret = Self {
             root,
             index,
@@ -51,7 +53,8 @@ impl ObjectArchiveSerializeLoader {
     }
 
     pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
-        ObjectArchiveVerifier::new(self.root.clone())
+        let data_dir = self.root.join("data");
+        ObjectArchiveVerifier::new(data_dir)
             .verify(&self.index)
             .await
     }
@@ -138,12 +141,13 @@ impl ObjectArchiveRandomLoader {
         // First load index into meta
         let index = ObjectArchiveIndex::load(&root).await?;
 
+        let data_dir = root.join("data");
         let mut object_reader =
-            ObjectPackRandomReader::new(index.format, root.clone(), index.object_files.clone());
+            ObjectPackRandomReader::new(index.format, data_dir.clone(), index.object_files.clone());
         object_reader.open().await?;
 
         let mut chunk_reader =
-            ObjectPackRandomReader::new(index.format, root.clone(), index.chunk_files.clone());
+            ObjectPackRandomReader::new(index.format, data_dir, index.chunk_files.clone());
         chunk_reader.open().await?;
 
         let ret = Self {
@@ -161,7 +165,8 @@ impl ObjectArchiveRandomLoader {
     }
 
     pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
-        ObjectArchiveVerifier::new(self.root.clone())
+        let data_dir = self.root.join("data");
+        ObjectArchiveVerifier::new(data_dir)
             .verify(&self.index)
             .await
     }

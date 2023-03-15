@@ -25,7 +25,7 @@ impl ArchiveLocalFileLoader {
 
     async fn load_meta(&self) -> BuckyResult<String> {
         let meta_file = self.archive_dir.join("meta");
-        if meta_file.is_file() {
+        if !meta_file.is_file() {
             let msg = format!(
                 "load meta info from file but not exists! file={}",
                 meta_file.display(),
