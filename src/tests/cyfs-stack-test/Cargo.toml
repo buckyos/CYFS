@@ -20,7 +20,7 @@ cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
 cyfs-cip = { path = "../../component/cyfs-cip" }
 cyfs-noc = { path = "../../component/cyfs-noc" }
-cyfs-backup = { path = "../../component/cyfs-backup" }
+cyfs-backup-lib = { path = "../../component/cyfs-backup-lib" }
 hex = "0.4"
 log = "0.4"
 async-std = { version = "1.11", features = ["unstable", "attributes"] }

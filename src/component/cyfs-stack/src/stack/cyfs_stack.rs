@@ -38,7 +38,7 @@ use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
-use cyfs_backup::{BackupManager, BackupManagerRef};
+use cyfs_backup_lib::{BackupManager, BackupManagerRef};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;

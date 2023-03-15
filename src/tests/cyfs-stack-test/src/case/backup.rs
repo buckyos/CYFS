@@ -1,4 +1,4 @@
-use cyfs_backup::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use zone_simulator::*;
 
