@@ -2,10 +2,12 @@ use std::{clone, collections::HashSet, sync::Arc, time::Duration};
 
 use async_std::sync::Mutex;
 use cyfs_base::{
-    AccessString, AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom,
-    TypelessCoreObject,
+    AccessString, AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawDecode,
+    RawFrom, TypelessCoreObject,
 };
-use cyfs_core::{DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath};
+use cyfs_core::{
+    DecApp, DecAppId, DecAppObj, GroupProposal, GroupProposalObject, GroupRPath, Text, TextObj,
+};
 use cyfs_group_lib::GroupManager;
 use cyfs_lib::{
     CyfsStackRequestorType, DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo,
@@ -566,14 +568,14 @@ mod GroupDecService {
     use cyfs_base::*;
     use cyfs_core::{
         CoreObjectType, DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal,
-        GroupProposalObject,
+        GroupProposalObject, Text, TextObj,
     };
     use cyfs_group_lib::{
         DelegateFactory, ExecuteResult, GroupManager, GroupObjectMapProcessor, RPathDelegate,
         RPathService,
     };
     use cyfs_lib::{
-        CreateObjectMapOption, GlobalStatePathAccessItem, NONPostObjectInputRequest,
+        CreateObjectMapOption, GlobalStatePathAccessItem, NONObjectInfo, NONPostObjectInputRequest,
         NONPostObjectInputResponse, RequestGlobalStatePath, RequestSourceInfo, RouterHandlerAction,
         RouterHandlerChain, RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest,
         RouterHandlerPostObjectResult, SharedCyfsStack,
@@ -768,7 +770,7 @@ mod GroupDecService {
                 }
             };
 
-            let result_value = {
+            let (result_value, result_value_u64) = {
                 /**
                  * prev_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
                  */
@@ -785,10 +787,11 @@ mod GroupDecService {
                 let delta = u64::from_be_bytes(delta);
 
                 let value = prev_value + delta;
-                ObjectIdDataBuilder::new()
+                let result_value = ObjectIdDataBuilder::new()
                     .data(&value.to_be_bytes())
                     .build()
-                    .unwrap()
+                    .unwrap();
+                (result_value, value)
             };
 
             let result_state_id = {
@@ -819,14 +822,21 @@ mod GroupDecService {
                 /**
                  * 返回给Client的对象，相当于这个请求的结果或者叫回执？
                  */
-                None
+                let text = Text::build("value", "header", format!("{}", result_value_u64))
+                    .no_create_time()
+                    .build();
+                Some(NONObjectInfo::new(
+                    text.desc().object_id(),
+                    text.to_vec().unwrap(),
+                    None,
+                ))
             };
 
             let context = {
                 /**
                  * 执行请求的上下文，运算过程中可能有验证节点无法得到的上下文信息（比如时间戳，随机数）
                  */
-                None
+                Some(Vec::from(result_value_u64.to_le_bytes()))
             };
 
             /**
@@ -855,19 +865,20 @@ mod GroupDecService {
                 .await?;
 
             log::info!(
-                "verify expect: prev-state: {:?}, {:?}/{}/{}, got: {:?}/{}/{}",
+                "verify expect: prev-state: {:?}, {:?}/{:?}/{:?}, got: {:?}/{:?}/{:?}",
                 prev_state_id,
                 execute_result.result_state_id,
-                execute_result.context.is_none(),
-                execute_result.receipt.is_none(),
+                execute_result.context.as_ref().map(|v| v.to_hex()),
+                execute_result.receipt.as_ref().map(|r| r.object_id),
                 result.result_state_id,
-                result.context.is_none(),
-                result.receipt.is_none()
+                result.context.as_ref().map(|v| v.to_hex()),
+                result.receipt.as_ref().map(|r| r.object_id)
             );
 
             let is_ok = execute_result.result_state_id == result.result_state_id
-                && execute_result.context.is_none()
-                && execute_result.receipt.is_none();
+                && execute_result.context == result.context
+                && execute_result.receipt.as_ref().map(|r| r.object_id)
+                    == result.receipt.as_ref().map(|r| r.object_id);
 
             if is_ok {
                 Ok(())
@@ -1201,11 +1212,18 @@ async fn main_run() {
             );
 
             let result = client.post_proposal(&proposal).await;
+            let result_text = result.as_ref().map(|obj| {
+                obj.as_ref().map(|obj| {
+                    Text::raw_decode(obj.object_raw.as_slice())
+                        .map(|(txt, _)| txt.value().to_string())
+                })
+            });
             log::info!(
-                "client {:?} post proposal {}, result: {:?}",
+                "client {:?} post proposal {}, result: {:?}, result-text: {:?}",
                 local_name,
                 proposal.desc().object_id(),
-                result.map(|o| o.map(|o| o.object_id))
+                result.as_ref().map(|o| o.as_ref().map(|o| o.object_id)),
+                result_text
             );
         });
 

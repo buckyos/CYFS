@@ -434,7 +434,10 @@ impl CyfsStackImpl {
 
         let group_manager = GroupManager::new(
             signer,
-            Box::new(GroupNONDriver::new(non_service.clone())),
+            Box::new(GroupNONDriver::new(
+                non_service.clone(),
+                device_id.object_id().clone(),
+            )),
             bdt_stack.clone(),
             global_state_manager.clone_processor(),
         )?;

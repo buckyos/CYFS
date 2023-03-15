@@ -11,11 +11,15 @@ use crate::{non::NONInputProcessor, non_api::NONService};
 
 pub struct GroupNONDriver {
     non_service: Arc<NONService>,
+    local_device_id: ObjectId,
 }
 
 impl GroupNONDriver {
-    pub fn new(non_service: Arc<NONService>) -> Self {
-        Self { non_service }
+    pub fn new(non_service: Arc<NONService>, local_device_id: ObjectId) -> Self {
+        Self {
+            non_service,
+            local_device_id,
+        }
     }
 }
 
@@ -27,12 +31,17 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo> {
-        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Option::<String>::None);
+        log::debug!(
+            "get object {}, local: {}, from: {:?}",
+            object_id,
+            self.local_device_id,
+            from
+        );
 
         self.non_service
             .get_object(NONGetObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: Some(req_path.format_string()),
+                    req_path: None,
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {
@@ -58,14 +67,18 @@ impl cyfs_group::NONDriver for GroupNONDriver {
 
     async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {
         let access = AccessString::full();
-        log::debug!("put object {} with access {}", obj.object_id, access);
 
-        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Option::<String>::None);
+        log::debug!(
+            "put object {} with access {}, local: {}",
+            obj.object_id,
+            access,
+            self.local_device_id
+        );
 
         self.non_service
             .put_object(NONPutObjectInputRequest {
                 common: NONInputRequestCommon {
-                    req_path: Some(req_path.format_string()),
+                    req_path: None,
                     source: RequestSourceInfo {
                         protocol: RequestProtocol::DataBdt,
                         zone: DeviceZoneInfo {
