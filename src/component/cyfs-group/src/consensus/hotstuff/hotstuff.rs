@@ -1061,6 +1061,12 @@ impl HotstuffRunner {
         mut proposals: &HashMap<ObjectId, GroupProposal>,
         remote: &ObjectId,
     ) -> Option<HotstuffBlockQCVote> {
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 0",
+            self,
+            block.block_id()
+        );
+
         if block.round() <= self.store.last_vote_round() {
             log::debug!("[hotstuff] local: {:?}, make vote ignore for timeouted block {}/{}, last vote roud: {}",
                 self, block.block_id(), block.round(), self.store.last_vote_round());
@@ -1117,6 +1123,12 @@ impl HotstuffRunner {
             None => None,
         };
 
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 1",
+            self,
+            block.block_id()
+        );
+
         match self.check_group_is_latest(block.group_chunk_id()).await {
             Ok(is_latest) if is_latest => {}
             _ => {
@@ -1127,6 +1139,12 @@ impl HotstuffRunner {
                 return None;
             }
         }
+
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 2",
+            self,
+            block.block_id()
+        );
 
         // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
         let mut proposal_temp: HashMap<ObjectId, GroupProposal> = HashMap::new();
@@ -1149,6 +1167,12 @@ impl HotstuffRunner {
         } else {
             assert_eq!(proposals.len(), block.proposals().len());
         }
+
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 3",
+            self,
+            block.block_id()
+        );
 
         if !Self::check_timestamp_precision(block, prev_block.as_ref(), proposals) {
             log::warn!(
@@ -1177,6 +1201,12 @@ impl HotstuffRunner {
             );
             return None;
         }
+
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 4",
+            self,
+            block.block_id()
+        );
 
         if let Err(err) = self
             .check_block_proposal_result_state_by_app(block, &proposals, &prev_block, remote)
@@ -1228,6 +1258,12 @@ impl HotstuffRunner {
             );
             return None;
         }
+
+        log::debug!(
+            "[hotstuff] local: {:?} make vote {} step 5",
+            self,
+            block.block_id()
+        );
 
         Some(vote)
     }
