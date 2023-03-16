@@ -578,8 +578,9 @@ mod GroupDecService {
         CreateObjectMapOption, GlobalStatePathAccessItem, NONAPILevel, NONGetObjectInputRequest,
         NONGetObjectOutputRequest, NONInputRequestCommon, NONObjectInfo, NONOutputRequestCommon,
         NONPostObjectInputRequest, NONPostObjectInputResponse, RequestGlobalStatePath,
-        RequestSourceInfo, RouterHandlerAction, RouterHandlerChain, RouterHandlerManagerProcessor,
-        RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult, SharedCyfsStack,
+        RequestSourceInfo, RootStateOpEnvAccess, RouterHandlerAction, RouterHandlerChain,
+        RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest,
+        RouterHandlerPostObjectResult, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
@@ -758,7 +759,10 @@ mod GroupDecService {
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
             let state_op_env = object_map_processor
-                .create_sub_tree_op_env(None)
+                .create_sub_tree_op_env(Some(RootStateOpEnvAccess {
+                    path: "".to_string(),
+                    access: AccessPermissions::Full,
+                }))
                 .await
                 .expect(format!("create_sub_tree_op_env failed").as_str());
             let prev_value = match prev_state_id {
@@ -944,7 +948,10 @@ mod GroupDecService {
             let prev_value = match prev_state_id {
                 Some(prev_state_id) => {
                     let state_op_env = object_map_processor
-                        .create_sub_tree_op_env(None)
+                        .create_sub_tree_op_env(Some(RootStateOpEnvAccess {
+                            path: "".to_string(),
+                            access: AccessPermissions::Full,
+                        }))
                         .await
                         .expect(format!("create_sub_tree_op_env failed").as_str());
                     state_op_env
@@ -971,7 +978,10 @@ mod GroupDecService {
             let result_value = match block.result_state_id() {
                 Some(result_state_id) => {
                     let state_op_env = object_map_processor
-                        .create_sub_tree_op_env(None)
+                        .create_sub_tree_op_env(Some(RootStateOpEnvAccess {
+                            path: "".to_string(),
+                            access: AccessPermissions::Full,
+                        }))
                         .await
                         .expect(format!("create_sub_tree_op_env failed").as_str());
                     state_op_env

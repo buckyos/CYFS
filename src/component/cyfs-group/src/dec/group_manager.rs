@@ -107,7 +107,11 @@ impl GroupManager {
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
             let local_device_id = local_info.bdt_stack.local_device_id();
             let state_mgr = local_info.global_state_mgr.clone();
-            let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
+            let non_driver = NONDriverHelper::new(
+                local_info.non_driver.clone(),
+                dec_id.clone(),
+                local_device_id.object_id().clone(),
+            );
             let network_sender = crate::network::Sender::new(
                 local_info.datagram.clone(),
                 non_driver.clone(),
@@ -386,7 +390,11 @@ impl GroupManager {
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
             let local_device_id = local_info.bdt_stack.local_device_id();
             let signer = local_info.signer.clone();
-            let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
+            let non_driver = NONDriverHelper::new(
+                local_info.non_driver.clone(),
+                dec_id.clone(),
+                local_device_id.object_id().clone(),
+            );
             let root_state_mgr = local_info.global_state_mgr.clone();
             let network_sender = crate::network::Sender::new(
                 local_info.datagram.clone(),

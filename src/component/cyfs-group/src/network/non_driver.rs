@@ -38,14 +38,20 @@ pub(crate) struct NONDriverHelper {
     driver: Arc<Box<dyn NONDriver>>,
     dec_id: ObjectId,
     cache: NONObjectCache,
+    local_device_id: ObjectId,
 }
 
 impl NONDriverHelper {
-    pub fn new(driver: Arc<Box<dyn NONDriver>>, dec_id: ObjectId) -> Self {
+    pub fn new(
+        driver: Arc<Box<dyn NONDriver>>,
+        dec_id: ObjectId,
+        local_device_id: ObjectId,
+    ) -> Self {
         Self {
             driver,
             dec_id,
             cache: NONObjectCache::new(),
+            local_device_id,
         }
     }
 
@@ -239,14 +245,32 @@ impl NONDriverHelper {
             _ => panic!("invalid remote type: {:?}", block_owner.obj_type_code()),
         };
 
+        log::debug!(
+            "{} load_all_proposals_for_block {} from {}",
+            self.local_device_id,
+            block.block_id(),
+            remote
+        );
+
         let load_futs = block.proposals().iter().map(|proposal| {
             let proposal_id = proposal.proposal;
             let non_driver = non_driver.clone();
             let remote = remote.clone();
             async move {
-                non_driver
+                let ret = non_driver
                     .get_proposal(&proposal_id, Some(remote.object_id()))
-                    .await
+                    .await;
+
+                log::debug!(
+                    "{} load_all_proposals_for_block {}/{} from {}, ret: {:?}",
+                    self.local_device_id,
+                    block.block_id(),
+                    proposal_id,
+                    remote,
+                    ret.as_ref().map(|_| ())
+                );
+
+                ret
             }
         });
 
