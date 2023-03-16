@@ -196,7 +196,7 @@ mod getifaddrs_posix {
         let mut ret = Vec::<Interface>::new();
         let mut ifaddrs: *mut posix_ifaddrs;
         unsafe {
-            ifaddrs = mem::MaybeUninit::uninit().assume_init();
+            ifaddrs = mem::MaybeUninit::zeroed().assume_init();
             if -1 == posix_getifaddrs(&mut ifaddrs) {
                 return Err(io::Error::last_os_error());
             }

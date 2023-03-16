@@ -2,7 +2,6 @@ use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
@@ -47,8 +46,8 @@ impl FileBlobStorage {
 
         #[cfg(target_os = "windows")]
         let first = match first {
-            "con" | "aux" | "nul" | "prn" => Cow::Owned(format!("{}_", first)),
-            _ => Cow::Borrowed(first),
+            "con" | "aux" | "nul" | "prn" => std::borrow::Cow::Owned(format!("{}_", first)),
+            _ => std::borrow::Cow::Borrowed(first),
         };
 
         let path = self.root.join(format!("{}/{}", first, second));
