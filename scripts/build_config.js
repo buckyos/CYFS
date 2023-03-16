@@ -138,6 +138,10 @@ const misc = [
         "name": "sn-online-test",
         "include": formal_platform
     },
+    {
+        "name": "http-bug-server",
+        "include": formal_platform
+    },
 ]
 
 module.exports = {

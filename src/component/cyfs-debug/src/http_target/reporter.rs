@@ -43,7 +43,7 @@ impl LogCache {
     pub fn shrink(&mut self) {
         while self.pending.len() > self.capacity {
             let item = self.pending.pop_front().unwrap();
-            println!("will drom log item: {}", item.index);
+            println!("will drop log item: {}", item.index);
         }
     }
 
