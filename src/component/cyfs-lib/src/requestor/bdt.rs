@@ -94,21 +94,6 @@ impl BdtHttpRequestor {
 
         Ok(bdt_stream)
     }
-
-    fn has_wan_addr(&self) -> bool {
-        match self.device.body() {
-            Some(body) => {
-                for ep in body.content().endpoints() {
-                    if ep.is_mapped_wan() {
-                        return true;
-                    }
-                }
-
-                false
-            }
-            None => false,
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -128,7 +113,7 @@ impl HttpRequestor for BdtHttpRequestor {
         let bdt_stream = match self.connect(true).await {
             Ok(stream) => stream,
             Err(e) => {
-                if !self.has_wan_addr() {
+                if !self.device.has_wan_endpoint() {
                     return Err(e);
                 }
                 
