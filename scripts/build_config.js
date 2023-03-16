@@ -41,6 +41,10 @@ const tools = [
         "name": "zone-simulator",
         "include": formal_platform
     },
+    {
+        "name": "cyfs-backup",
+        "include": formal_platform
+    },
 ]
 
 const service_default_cfg = {
