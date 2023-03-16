@@ -65,6 +65,7 @@ members = [
     "./misc/misc-util",
     "./misc/sn-online-test",
     "./misc/perf-service",
+    "./misc/http-bug-server",
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",

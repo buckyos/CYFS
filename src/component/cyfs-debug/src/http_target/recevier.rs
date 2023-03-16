@@ -4,6 +4,7 @@ use cyfs_base::*;
 
 use futures::future::{self, AbortHandle, Aborted};
 use std::error::Error;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 const CONTENT_TYPE: &str = "Content-Type";
@@ -30,16 +31,27 @@ pub trait OnRecvLogRecords: Send + Sync {
     async fn on_log_records(&self, meta: LogRecordMeta, list: Vec<ReportLogItem>) -> BuckyResult<()>;
 }
 
+#[async_trait::async_trait]
+impl<F, Fut> OnRecvLogRecords for F
+    where
+        F: Send + Sync + 'static + Fn(LogRecordMeta, Vec<ReportLogItem>) -> Fut,
+        Fut: Future<Output=BuckyResult<()>> + Send + 'static
+{
+    async fn on_log_records(&self, meta: LogRecordMeta, list: Vec<ReportLogItem>) -> BuckyResult<()> {
+        let fut = (self)(meta, list);
+        fut.await
+    }
+}
+
 #[derive(Clone)]
 pub struct HttpLogReceiver {
     listen_addr: String,
     canceller: Arc<Mutex<Option<AbortHandle>>>,
-    headers: Vec<String>,
-    cb: Arc<Box<dyn OnRecvLogRecords>>,
+    server: tide::Server<()>,
 }
 
 struct HttpLogRecevierEndpoint {
-    owner: HttpLogReceiver,
+    owner: HttpLogProcessor,
 }
 
 #[async_trait::async_trait]
@@ -61,25 +73,21 @@ where
     }
 }
 
-impl HttpLogReceiver {
+#[derive(Clone)]
+pub struct HttpLogProcessor {
+    headers: Vec<String>,
+    cb: Arc<dyn OnRecvLogRecords>,
+}
+
+impl HttpLogProcessor {
     pub fn new(
-        listen_addr: &str,
         headers: Vec<String>,
-        callback: Box<dyn OnRecvLogRecords>,
+        callback: impl OnRecvLogRecords + 'static,
     ) -> Self {
         Self {
-            listen_addr: listen_addr.to_owned(),
-            canceller: Arc::new(Mutex::new(None)),
             headers,
             cb: Arc::new(callback),
         }
-    }
-
-    pub fn start(&self) -> BuckyResult<()> {
-        let this = self.clone();
-        async_std::task::spawn(async move { this.run().await });
-
-        Ok(())
     }
 
     fn init_header<State>(
@@ -175,7 +183,7 @@ impl HttpLogReceiver {
         let data = formdata::read_formdata(&mut reader, &headers).map_err(|e| {
             // TODO Error的display和to_string实现有问题，会导致异常崩溃，所以这里只能暂时使用description来输出一些描述信息
             #[allow(deprecated)]
-            let msg = format!("parse body formdata error! {:?}", e.description());
+                let msg = format!("parse body formdata error! {:?}", e.description());
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
@@ -220,16 +228,42 @@ impl HttpLogReceiver {
         ret
     }
 
-    async fn run(self) {
+    pub fn register(&self, server: &mut tide::Server<()>) {
         let ep = HttpLogRecevierEndpoint {
             owner: self.clone(),
         };
 
+        server.at("/logs").post(ep);
+    }
+}
+
+impl HttpLogReceiver {
+    pub fn new(
+        listen_addr: &str,
+        headers: Vec<String>,
+        callback: impl OnRecvLogRecords + 'static,
+    ) -> Self {
+        let mut server = tide::Server::new();
+        let processor = HttpLogProcessor::new(headers, callback);
+        processor.register(&mut server);
+        Self {
+            listen_addr: listen_addr.to_owned(),
+            canceller: Arc::new(Mutex::new(None)),
+            server
+        }
+    }
+
+    pub fn start(&self) -> BuckyResult<()> {
+        let this = self.clone();
+        async_std::task::spawn(async move { this.run().await });
+
+        Ok(())
+    }
+
+    async fn run(self) {
         let addr = self.listen_addr.clone();
         let (future, handle) = future::abortable(async move {
-            let mut app = tide::new();
-            app.at("/logs").post(ep);
-            app.listen(&addr).await.map_err(|e| {
+                self.server.listen(&addr).await.map_err(|e| {
                 let msg = format!("logs server listen error! {}", e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::Failed, msg)

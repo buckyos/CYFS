@@ -154,7 +154,7 @@ dependencies = [
  "async-trait",
  "bollard",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-client",
@@ -201,7 +201,7 @@ name = "app-tool"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-core",
@@ -220,7 +220,7 @@ version = "0.5.0"
 dependencies = [
  "async-std",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -630,7 +630,7 @@ name = "bdt-debuger"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "log 0.4.17",
@@ -641,7 +641,7 @@ name = "bdt-debuger-deamon"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -1093,6 +1093,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap"
+version = "4.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d7ae14b20b94cb02149ed21a86c423859cbe18dc7ed69845cace50e52b40a5"
+dependencies = [
+ "bitflags",
+ "clap_lex",
+ "is-terminal",
+ "strsim 0.10.0",
+ "termcolor",
+]
+
+[[package]]
+name = "clap_lex"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "350b9cf31731f9957399229e9b2adc51eeabdfbe9d71d9a0552275fd12710d09"
+dependencies = [
+ "os_str_bytes",
+]
+
+[[package]]
 name = "clippy"
 version = "0.0.302"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1271,7 +1293,7 @@ checksum = "b01d6de93b2b6c65e17c634a26653a29d107b3c98c607c765bf38d041531cd8f"
 dependencies = [
  "atty",
  "cast",
- "clap",
+ "clap 2.34.0",
  "criterion-plot",
  "csv",
  "itertools",
@@ -1595,7 +1617,7 @@ dependencies = [
  "async-trait",
  "bytes 0.4.12",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-debug",
  "cyfs-raptorq",
@@ -1657,7 +1679,7 @@ dependencies = [
  "ansi_term",
  "async-std",
  "async-trait",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-meta-lib",
@@ -1765,7 +1787,7 @@ dependencies = [
  "async-recursion",
  "async-std",
  "async-trait",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-bdt",
@@ -1948,7 +1970,7 @@ dependencies = [
  "async-h1",
  "async-recursion",
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-meta-lib",
@@ -1996,7 +2018,7 @@ name = "cyfs-meta-miner"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-debug",
  "cyfs-meta",
@@ -2016,7 +2038,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "base58",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-debug",
@@ -2056,7 +2078,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-client",
@@ -2172,7 +2194,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "bytes 1.4.0",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -2266,7 +2288,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -2370,7 +2392,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "c_linked_list",
- "clap",
+ "clap 2.34.0",
  "clippy",
  "cyfs-base",
  "cyfs-sha2",
@@ -2509,7 +2531,7 @@ version = "0.5.0"
 dependencies = [
  "async-std",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -2728,6 +2750,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4ca605381c017ec7a5fef5e548f1cfaa419ed0f6df6367339300db74c92aa7d"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "errno"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
+dependencies = [
+ "errno-dragonfly",
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "errno-dragonfly"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]
@@ -3189,7 +3232,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "bytes 1.4.0",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-core",
@@ -3421,6 +3464,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hermit-abi"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed44880c466736ef9a5c5b5facefb5ed0785676d0c02d612db14e54f0d84286"
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3562,6 +3611,18 @@ dependencies = [
  "bytes 1.4.0",
  "http",
  "pin-project-lite 0.2.9",
+]
+
+[[package]]
+name = "http-bug-server"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "clap 4.1.8",
+ "cyfs-base",
+ "cyfs-debug",
+ "cyfs-util",
+ "tide",
 ]
 
 [[package]]
@@ -3903,6 +3964,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-lifetimes"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfa919a82ea574332e2de6e74b4c36e74d41982b335080fa59d4ef31be20fdf3"
+dependencies = [
+ "libc",
+ "windows-sys 0.45.0",
+]
+
+[[package]]
 name = "iovec"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3928,6 +3999,18 @@ name = "ipnet"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30e22bd8629359895450b59ea7a776c850561b96a3b1d31321c1949d9e6c9146"
+
+[[package]]
+name = "is-terminal"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21b6b32576413a8e69b90e952e4a026476040d81017b80445deda5f2d3921857"
+dependencies = [
+ "hermit-abi 0.3.1",
+ "io-lifetimes",
+ "rustix",
+ "windows-sys 0.45.0",
+]
 
 [[package]]
 name = "itertools"
@@ -4125,6 +4208,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
+
+[[package]]
 name = "local-ip-address"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4282,7 +4371,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-meta",
  "log 0.4.17",
@@ -4726,7 +4815,7 @@ dependencies = [
  "async-h1",
  "async-std",
  "async-trait",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-client",
@@ -4761,7 +4850,7 @@ dependencies = [
  "app-manager",
  "async-std",
  "async-trait",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-client",
@@ -4855,6 +4944,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "os_str_bytes"
+version = "6.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
+
+[[package]]
 name = "os_type"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4867,7 +4962,7 @@ dependencies = [
 name = "pack-tools"
 version = "0.5.0"
 dependencies = [
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "log 0.4.17",
  "sha2 0.8.2",
@@ -5052,7 +5147,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -5176,7 +5271,7 @@ version = "0.5.0"
 dependencies = [
  "async-std",
  "async-trait",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -6095,6 +6190,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "0.36.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd5c6ff11fecd55b40746d1995a02f2eb375bf8c00d192d521ee09f42bef37bc"
+dependencies = [
+ "bitflags",
+ "errno",
+ "io-lifetimes",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.45.0",
+]
+
+[[package]]
 name = "rustls"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6619,7 +6728,7 @@ name = "sn-miner-rust"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -6632,7 +6741,7 @@ name = "sn-online-test"
 version = "0.1.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-util",
@@ -6646,7 +6755,7 @@ name = "sn-updater"
 version = "0.1.0"
 dependencies = [
  "async-std",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-meta-lib",
@@ -8189,7 +8298,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "bip39",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-cip",
@@ -8213,7 +8322,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "bip39",
- "clap",
+ "clap 2.34.0",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-cip",
