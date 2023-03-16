@@ -15,6 +15,7 @@ impl BackupLogFile {
             AppendCount::new(1024),
             ContentLimit::BytesSurpassed(1024 * 1024 * 10),
             Compression::None,
+            #[cfg(unix)] None,
         );
 
         Self { writer }
