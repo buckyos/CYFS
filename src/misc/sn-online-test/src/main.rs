@@ -79,6 +79,7 @@ async fn main() -> BuckyResult<()> {
     params.known_sn = Some(vec![sn_device]);
 
     let bdt_stack = cyfs_bdt::Stack::open(device, secret, params).await?;
+    bdt_stack.reset_sn_list(vec![sn_device]);
 
     // 创建bdt-stack协议栈后等待bdt-stack在SN上线
     info!(
