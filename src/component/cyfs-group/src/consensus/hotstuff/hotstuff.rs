@@ -1074,11 +1074,25 @@ impl HotstuffRunner {
             return None;
         }
 
+        let mut only_rebuild_result_state = false;
         if self.max_quorum_round >= self.round {
-            log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{}.",
-                self, block.block_id(), block.round(), self.max_quorum_round, self.round);
+            if let Some(result_state_id) = block.result_state_id() {
+                if self
+                    .make_sure_result_state(result_state_id, &[block.owner(), remote])
+                    .await
+                    .is_err()
+                {
+                    // download from remote failed, we need to calcute the result-state by the DEC.on_verify
+                    only_rebuild_result_state = true;
+                }
+            }
 
-            return None;
+            if !only_rebuild_result_state {
+                log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{}.",
+                    self, block.block_id(), block.round(), self.max_quorum_round, self.round);
+
+                return None;
+            }
         }
 
         // round只能逐个递增
@@ -1129,14 +1143,16 @@ impl HotstuffRunner {
             block.block_id()
         );
 
-        match self.check_group_is_latest(block.group_chunk_id()).await {
-            Ok(is_latest) if is_latest => {}
-            _ => {
-                log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for the group is not latest",
-                    self,
-                    block.block_id());
+        if !only_rebuild_result_state {
+            match self.check_group_is_latest(block.group_chunk_id()).await {
+                Ok(is_latest) if is_latest => {}
+                _ => {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for the group is not latest",
+                        self,
+                        block.block_id());
 
-                return None;
+                    return None;
+                }
             }
         }
 
@@ -1146,7 +1162,6 @@ impl HotstuffRunner {
             block.block_id()
         );
 
-        // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
         let mut proposal_temp: HashMap<ObjectId, GroupProposal> = HashMap::new();
         if proposals.len() == 0 && block.proposals().len() > 0 {
             match self
@@ -1174,7 +1189,10 @@ impl HotstuffRunner {
             block.block_id()
         );
 
-        if !Self::check_timestamp_precision(block, prev_block.as_ref(), proposals) {
+        // 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
+        if !only_rebuild_result_state
+            && !Self::check_timestamp_precision(block, prev_block.as_ref(), proposals)
+        {
             log::warn!(
                 "[hotstuff] local: {:?}, make vote to block {} ignore for timestamp mismatch",
                 self,
@@ -1183,7 +1201,7 @@ impl HotstuffRunner {
             return None;
         }
 
-        if proposals.len() != block.proposals().len() {
+        if !only_rebuild_result_state && proposals.len() != block.proposals().len() {
             let mut dup_proposals = block.proposals().clone();
             dup_proposals.sort_unstable_by_key(|p| p.proposal);
             log::warn!(
@@ -1227,6 +1245,12 @@ impl HotstuffRunner {
             block.block_id(),
             block.round()
         );
+
+        if only_rebuild_result_state {
+            log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{} rebuild only.",
+                self, block.block_id(), block.round(), self.max_quorum_round, self.round);
+            return None;
+        }
 
         let vote = match HotstuffBlockQCVote::new(block, self.local_device_id, &self.signer).await {
             Ok(vote) => {
