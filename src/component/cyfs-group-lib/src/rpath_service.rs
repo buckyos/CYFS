@@ -104,17 +104,13 @@ impl RPathService {
 
     pub(crate) async fn on_commited(
         &self,
-        proposal: &GroupProposal,
         prev_state_id: &Option<ObjectId>,
-        execute_result: &ExecuteResult,
         block: &GroupConsensusBlock,
     ) {
         self.0
             .delegate
             .on_commited(
-                proposal,
                 prev_state_id,
-                execute_result,
                 block,
                 &GroupObjectMapProcessorImpl {
                     stack: self.0.stack.clone(),

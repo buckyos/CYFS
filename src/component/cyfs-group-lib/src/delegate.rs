@@ -38,9 +38,7 @@ pub trait RPathDelegate: Sync + Send {
 
     async fn on_commited(
         &self,
-        proposal: &GroupProposal,
         prev_state_id: &Option<ObjectId>,
-        execute_result: &ExecuteResult,
         block: &GroupConsensusBlock,
         object_map_processor: &dyn GroupObjectMapProcessor,
     );

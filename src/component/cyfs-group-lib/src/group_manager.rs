@@ -5,7 +5,10 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
     RawConvertTo, RawDecode,
 };
-use cyfs_core::{CoreObjectType, DecAppId, GroupConsensusBlock, GroupProposalObject, GroupRPath};
+use cyfs_core::{
+    CoreObjectType, DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupProposalObject,
+    GroupRPath,
+};
 use cyfs_lib::{
     CyfsStackRequestorType, DeviceZoneCategory, HttpRequestorRef, NONObjectInfo,
     NONPostObjectInputResponse, RequestGlobalStatePath, RouterHandlerAction, RouterHandlerChain,
@@ -343,7 +346,7 @@ impl GroupManager {
     }
 
     async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
-        let rpath = cmd.proposal.rpath();
+        let rpath = cmd.block.rpath();
         let service = self
             .find_or_restart_service(
                 rpath.group_id(),
@@ -356,21 +359,13 @@ impl GroupManager {
             .map_err(|err| {
                 log::warn!(
                     "group on_commited find service {:?} failed, err: {:?}",
-                    cmd.proposal.rpath(),
+                    cmd.block.rpath(),
                     err
                 );
                 err
             })?;
 
-        let result = ExecuteResult {
-            result_state_id: cmd.result_state_id.take(),
-            receipt: cmd.receipt.take(),
-            context: cmd.context.take(),
-        };
-
-        service
-            .on_commited(&cmd.proposal, &cmd.prev_state_id, &result, &cmd.block)
-            .await;
+        service.on_commited(&cmd.prev_state_id, &cmd.block).await;
         Ok(())
     }
 

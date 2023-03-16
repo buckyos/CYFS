@@ -63,7 +63,17 @@ impl Sender {
         let mut buf = Vec::with_capacity(len);
         buf.resize(len, 0);
         let remain = pkg.raw_encode(buf.as_mut_slice(), &None).unwrap();
-        assert_eq!(remain.len(), 0);
+
+        assert_eq!(
+            remain.len(),
+            0,
+            "[group-sender] {:?}-{} post group message to {:?} encode err, pkg: {:?}, len: {}",
+            pkg.rpath(),
+            self.local_device_id,
+            remote,
+            pkg,
+            buf.len()
+        );
 
         log::debug!(
             "[group-sender] {:?}-{} post group message to {:?}, pkg: {:?}, len: {}",

@@ -260,11 +260,7 @@ impl ProtobufTransform<&GroupCommandVerify> for super::codec::protos::GroupComma
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::codec::protos::GroupCommandCommited)]
 pub struct GroupCommandCommited {
-    pub proposal: GroupProposal,
     pub prev_state_id: Option<ObjectId>,
-    pub result_state_id: Option<ObjectId>,
-    pub receipt: Option<NONObjectInfo>,
-    pub context: Option<Vec<u8>>,
     pub block: GroupConsensusBlock,
 }
 
@@ -275,17 +271,7 @@ impl ProtobufTransform<super::codec::protos::GroupCommandCommited> for GroupComm
                 Some(prev_state_id) => Some(ObjectId::raw_decode(prev_state_id.as_slice())?.0),
                 None => None,
             },
-            proposal: GroupProposal::raw_decode(value.proposal.as_slice())?.0,
-            result_state_id: match value.result_state_id.as_ref() {
-                Some(result_state_id) => Some(ObjectId::raw_decode(result_state_id.as_slice())?.0),
-                None => None,
-            },
-            receipt: match value.receipt.as_ref() {
-                Some(receipt) => Some(NONObjectInfo::raw_decode(receipt.as_slice())?.0),
-                None => None,
-            },
             block: GroupConsensusBlock::raw_decode(&value.block.as_slice())?.0,
-            context: value.context,
         })
     }
 }
@@ -293,20 +279,10 @@ impl ProtobufTransform<super::codec::protos::GroupCommandCommited> for GroupComm
 impl ProtobufTransform<&GroupCommandCommited> for super::codec::protos::GroupCommandCommited {
     fn transform(value: &GroupCommandCommited) -> BuckyResult<Self> {
         Ok(Self {
-            proposal: value.proposal.to_vec()?,
             prev_state_id: match value.prev_state_id.as_ref() {
                 Some(prev_state_id) => Some(prev_state_id.to_vec()?),
                 None => None,
             },
-            result_state_id: match value.result_state_id.as_ref() {
-                Some(result_state_id) => Some(result_state_id.to_vec()?),
-                None => None,
-            },
-            receipt: match value.receipt.as_ref() {
-                Some(receipt) => Some(receipt.to_vec()?),
-                None => None,
-            },
-            context: value.context.clone(),
             block: value.block.to_vec()?,
         })
     }
