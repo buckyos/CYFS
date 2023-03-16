@@ -1,4 +1,5 @@
 use cyfs_backup_lib::*;
+use cyfs_backup::*;
 use cyfs_base::*;
 use zone_simulator::*;
 
@@ -17,11 +18,13 @@ pub async fn test() {
         }
     };
 
+    let service = BackupService::new(&isolate).await.unwrap();
+
     let params = UniBackupParams {
         id: bucky_time_now().to_string(),
         isolate,
         target_file: LocalFileBackupParam::default(),
     };
 
-    user1_ood.backup_manager().run_uni_backup(params).await;
+    service.backup_manager().run_uni_backup(params).await;
 }

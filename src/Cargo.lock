@@ -2320,6 +2320,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
+ "cyfs-backup",
  "cyfs-backup-lib",
  "cyfs-base",
  "cyfs-bdt",

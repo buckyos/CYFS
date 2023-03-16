@@ -38,7 +38,6 @@ use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
-use cyfs_backup_lib::{BackupManager, BackupManagerRef};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -102,9 +101,6 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
-
-    // backup manager
-    backup_manager: BackupManagerRef,
 }
 
 impl CyfsStackImpl {
@@ -422,17 +418,6 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
-        // init backup manager
-        let ndc = Arc::new(named_data_components.ndc.clone());
-        let reader = Arc::new(named_data_components.new_chunk_reader());
-        let backup_manager = BackupManager::new(
-            noc.clone(),
-            ndc,
-            reader,
-        );
-        
-        let backup_manager = Arc::new(backup_manager);
-
         let mut stack = Self {
             config,
 
@@ -468,8 +453,6 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
-
-            backup_manager,
         };
 
         // init an system-dec router-handler processor for later use
@@ -532,7 +515,7 @@ impl CyfsStackImpl {
         // bind bdt stack and start sync
         sn_config_manager.bind_bdt_stack(stack.bdt_stack.clone());
 
-        // 初始化对外interface
+        // Init the interface for external service
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {
             bdt_stack: stack.bdt_stack.clone(),
@@ -541,7 +524,7 @@ impl CyfsStackImpl {
             ws_listener: None,
         };
 
-        // 如果开启了本地的sharestack，那么就需要初始化tcp-http接口
+        // If the local shared_stack is turned on, then need to initialize the TCP-HTTP interface
         if param.config.shared_stack {
             init_params.tcp_listeners = param.interface.tcp_listeners;
             init_params.ws_listener = param.interface.ws_listener;
@@ -1194,9 +1177,5 @@ impl CyfsStack {
 
     pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
         self.stack.open_uni_stack(dec_id).await
-    }
-
-    pub fn backup_manager(&self) -> &BackupManagerRef {
-        &self.stack.backup_manager
     }
 }
