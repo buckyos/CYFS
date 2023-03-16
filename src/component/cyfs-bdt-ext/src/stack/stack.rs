@@ -120,7 +120,7 @@ impl BdtStackHelper {
         };
 
         if wait_online {
-            BdtStackSNHelper::wait_sn_online(&bdt_stack, ping_clients).await;
+            BdtStackSNHelper::wait_sn_online(&bdt_stack, ping_clients).await?;
         }
 
         Ok(bdt_stack)

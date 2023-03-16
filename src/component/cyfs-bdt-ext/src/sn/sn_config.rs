@@ -40,12 +40,12 @@ impl BdtStackSNHelper {
 
             if let Some(sn_list) = sn_list {
                 let ping_clients = bdt_stack.reset_sn_list(sn_list);
-                Self::wait_sn_online(&bdt_stack, ping_clients).await;
+                let _ = Self::wait_sn_online(&bdt_stack, ping_clients).await;
             }
         }
     }
 
-    pub async fn wait_sn_online(bdt_stack: &StackGuard, ping_clients: PingClients) {
+    pub async fn wait_sn_online(bdt_stack: &StackGuard, ping_clients: PingClients) -> BuckyResult<()> {
         // Waiting for SN to go online
         info!(
             "now will wait for sn online {}......",
@@ -60,37 +60,42 @@ impl BdtStackSNHelper {
                     begin.elapsed().as_millis(),
                     e
                 );
+                Err(e)
             }
-            Ok(status) => match status {
-                SnStatus::Online => {
-                    info!(
-                        "bdt stack sn online success! {}, during={}ms",
-                        bdt_stack.local_device_id(),
-                        begin.elapsed().as_millis(),
-                    );
-                    let bdt_stack = bdt_stack.clone();
-                    async_std::task::spawn(async move {
-                        let _ = ping_clients.wait_offline().await;
+            Ok(status) => {
+                match status {
+                    SnStatus::Online => {
+                        info!(
+                            "bdt stack sn online success! {}, during={}ms",
+                            bdt_stack.local_device_id(),
+                            begin.elapsed().as_millis(),
+                        );
+                        let bdt_stack = bdt_stack.clone();
+                        async_std::task::spawn(async move {
+                            let _ = ping_clients.wait_offline().await;
+                            retry_sn_list_when_offline(
+                                bdt_stack.clone(),
+                                ping_clients,
+                                std::time::Duration::from_secs(30),
+                            );
+                        });
+                    }
+                    SnStatus::Offline => {
+                        error!(
+                            "bdt stack wait sn online failed! {}, during={}ms, offline",
+                            bdt_stack.local_device_id(),
+                            begin.elapsed().as_millis(),
+                        );
                         retry_sn_list_when_offline(
                             bdt_stack.clone(),
                             ping_clients,
                             std::time::Duration::from_secs(30),
                         );
-                    });
+                    }
                 }
-                SnStatus::Offline => {
-                    error!(
-                        "bdt stack wait sn online failed! {}, during={}ms, offline",
-                        bdt_stack.local_device_id(),
-                        begin.elapsed().as_millis(),
-                    );
-                    retry_sn_list_when_offline(
-                        bdt_stack.clone(),
-                        ping_clients,
-                        std::time::Duration::from_secs(30),
-                    );
-                }
-            },
+
+                Ok(())
+            }
         }
     }
 }
