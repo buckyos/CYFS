@@ -109,17 +109,11 @@ impl RPathEventNotifier {
 
     pub async fn on_commited(
         &self,
-        proposal: GroupProposal,
         prev_state_id: Option<ObjectId>,
-        execute_result: &ExecuteResult,
         block: GroupConsensusBlock,
     ) {
         let cmd = GroupCommandCommited {
-            proposal,
             prev_state_id,
-            result_state_id: execute_result.result_state_id.clone(),
-            receipt: execute_result.receipt.clone(),
-            context: execute_result.context.clone(),
             block,
         };
 

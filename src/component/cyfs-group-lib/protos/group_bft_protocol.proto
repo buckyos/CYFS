@@ -54,10 +54,6 @@ message GroupCommandVerify {
 }
 
 message GroupCommandCommited {
-    bytes proposal = 1; // Proposal.to_vec()
-    optional bytes prev_state_id = 2; // ObjectId
-    optional bytes result_state_id = 3; // ObjectId
-    optional bytes receipt = 4; // NONObjectInfo.to_vec()
-    optional bytes context = 5; // Vec<u8>
-    bytes block = 6; // Block.to_vec()
+    optional bytes prev_state_id = 1; // ObjectId
+    bytes block = 2; // Block.to_vec()
 }

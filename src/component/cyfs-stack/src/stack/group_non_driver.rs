@@ -31,7 +31,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo> {
-        log::debug!(
+        log::info!(
             "get object {}, local: {}, from: {:?}",
             object_id,
             self.local_device_id,
@@ -68,7 +68,7 @@ impl cyfs_group::NONDriver for GroupNONDriver {
     async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {
         let access = AccessString::full();
 
-        log::debug!(
+        log::info!(
             "put object {} with access {}, local: {}",
             obj.object_id,
             access,

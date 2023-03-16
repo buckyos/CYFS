@@ -461,7 +461,7 @@ impl RawEncode for HotstuffPackage {
             HotstuffPackage::SyncRequest(addr, min, max) => {
                 buf[0] = 4;
                 let buf = &mut buf[1..];
-                encode_with_length(buf, addr, purpose, 2)?;
+                let buf = encode_with_length(buf, addr, purpose, 2)?;
                 let buf = min.raw_encode(buf, purpose)?;
                 max.raw_encode(buf, purpose)
             }

@@ -575,10 +575,11 @@ mod GroupDecService {
         RPathService,
     };
     use cyfs_lib::{
-        CreateObjectMapOption, GlobalStatePathAccessItem, NONObjectInfo, NONPostObjectInputRequest,
-        NONPostObjectInputResponse, RequestGlobalStatePath, RequestSourceInfo, RouterHandlerAction,
-        RouterHandlerChain, RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest,
-        RouterHandlerPostObjectResult, SharedCyfsStack,
+        CreateObjectMapOption, GlobalStatePathAccessItem, NONAPILevel, NONGetObjectInputRequest,
+        NONGetObjectOutputRequest, NONInputRequestCommon, NONObjectInfo, NONOutputRequestCommon,
+        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestGlobalStatePath,
+        RequestSourceInfo, RouterHandlerAction, RouterHandlerChain, RouterHandlerManagerProcessor,
+        RouterHandlerPostObjectRequest, RouterHandlerPostObjectResult, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
@@ -598,6 +599,8 @@ mod GroupDecService {
                 cyfs_stack.clone(),
                 Box::new(GroupRPathDelegateFactory {
                     local_name: local_name.clone(),
+                    stack: cyfs_stack.clone(),
+                    dec_id: dec_app_id.object_id().clone(),
                 }),
                 &cyfs_lib::CyfsStackRequestorType::Http,
             )
@@ -610,7 +613,11 @@ mod GroupDecService {
                     .start_rpath_service(
                         group_id,
                         rpath.to_string(),
-                        Box::new(MyRPathDelegate::new(local_name.to_string())),
+                        Box::new(MyRPathDelegate::new(
+                            local_name.to_string(),
+                            cyfs_stack.clone(),
+                            dec_app_id.object_id().clone(),
+                        )),
                     )
                     .await
                     .unwrap(),
@@ -687,6 +694,8 @@ mod GroupDecService {
 
     pub struct GroupRPathDelegateFactory {
         local_name: String,
+        stack: SharedCyfsStack,
+        dec_id: ObjectId,
     }
 
     impl GroupRPathDelegateFactory {
@@ -712,7 +721,11 @@ mod GroupDecService {
         ) -> BuckyResult<Box<dyn RPathDelegate>> {
             if self.is_accept(group_id, rpath, with_block) {
                 // 如果接受，就提供该rpath的处理响应对象
-                Ok(Box::new(MyRPathDelegate::new(self.local_name.clone())))
+                Ok(Box::new(MyRPathDelegate::new(
+                    self.local_name.clone(),
+                    self.stack.clone(),
+                    self.dec_id.clone(),
+                )))
             } else {
                 Err(BuckyError::new(BuckyErrorCode::Reject, ""))
             }
@@ -721,14 +734,18 @@ mod GroupDecService {
 
     pub struct MyRPathDelegate {
         local_name: String,
+        stack: SharedCyfsStack,
+        dec_id: ObjectId,
         finished_proposals: Arc<Mutex<HashSet<ObjectId>>>,
     }
 
     impl MyRPathDelegate {
-        pub fn new(local_name: String) -> Self {
+        pub fn new(local_name: String, stack: SharedCyfsStack, dec_id: ObjectId) -> Self {
             MyRPathDelegate {
                 local_name,
                 finished_proposals: Arc::new(Mutex::new(HashSet::new())),
+                stack,
+                dec_id,
             }
         }
     }
@@ -918,18 +935,11 @@ mod GroupDecService {
 
         async fn on_commited(
             &self,
-            proposal: &GroupProposal,
             prev_state_id: &Option<cyfs_base::ObjectId>,
-            execute_result: &ExecuteResult,
             block: &GroupConsensusBlock,
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) {
             // 提交到共识链上了，可能有些善后事宜
-
-            let delta_buf = proposal.params().as_ref().unwrap().as_slice();
-            let mut delta = [0u8; 8];
-            delta.copy_from_slice(delta_buf);
-            let delta = u64::from_be_bytes(delta);
 
             let prev_value = match prev_state_id {
                 Some(prev_state_id) => {
@@ -958,14 +968,14 @@ mod GroupDecService {
                 u64::from_be_bytes(prev_value)
             });
 
-            let result_value = match execute_result.result_state_id {
+            let result_value = match block.result_state_id() {
                 Some(result_state_id) => {
                     let state_op_env = object_map_processor
                         .create_sub_tree_op_env(None)
                         .await
                         .expect(format!("create_sub_tree_op_env failed").as_str());
                     state_op_env
-                        .load(result_state_id)
+                        .load(result_state_id.clone())
                         .await
                         .expect(format!("load {} failed", result_state_id).as_str());
                     state_op_env
@@ -985,21 +995,53 @@ mod GroupDecService {
                 u64::from_be_bytes(result_value)
             });
 
-            let proposal_id = proposal.desc().object_id();
+            let proposal_infos =
+                futures::future::join_all(block.proposals().iter().map(|proposal_info| async {
+                    let proposal = self
+                        .stack
+                        .non_service()
+                        .get_object(NONGetObjectOutputRequest {
+                            common: NONOutputRequestCommon {
+                                req_path: None,
+                                source: None,
+                                dec_id: Some(self.dec_id),
+                                level: NONAPILevel::Router,
+                                target: Some(block.owner().clone()),
+                                flags: 0,
+                            },
+                            object_id: proposal_info.proposal,
+                            inner_path: None,
+                        })
+                        .await
+                        .unwrap();
+                    let proposal = proposal.object;
+                    let (proposal, _remain) =
+                        GroupProposal::raw_decode(proposal.object_raw.as_slice()).unwrap();
+
+                    let delta_buf = proposal.params().as_ref().unwrap().as_slice();
+                    let mut delta = [0u8; 8];
+                    delta.copy_from_slice(delta_buf);
+                    let delta = u64::from_be_bytes(delta);
+                    (proposal_info.proposal, delta)
+                }))
+                .await;
 
             log::info!(
-                "proposal commited: height: {}/{}, delta: {}, result: {} -> {}, proposal: {}, block: {}, local: {}",
+                "proposal commited: height: {}/{}, delta: {:?}, result: {} -> {}, proposal: {:?}, block: {}, local: {}",
                 block.height(), block.round(),
-                delta,
+                proposal_infos.iter().map(|(_, delta)| *delta).collect::<Vec<_>>(),
                 prev_value,
                 result_value,
-                proposal_id,
+                proposal_infos.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
                 block.block_id(),
                 self.local_name
             );
 
-            let is_new_finished = self.finished_proposals.lock().await.insert(proposal_id);
-            assert!(is_new_finished);
+            let mut finished_proposals = self.finished_proposals.lock().await;
+            block.proposals().iter().for_each(|proposal_info| {
+                let is_new_finished = finished_proposals.insert(proposal_info.proposal);
+                assert!(is_new_finished);
+            });
         }
     }
 }
@@ -1148,13 +1190,13 @@ async fn main_run() {
         member_group_mgrs.push(group_mgr);
     }
 
-    async_std::task::sleep(Duration::from_millis(10000)).await;
+    // async_std::task::sleep(Duration::from_millis(10000)).await;
 
     let mut proposals: Vec<GroupProposal> = vec![];
 
     log::info!("proposals will be prepared.");
 
-    let PROPOSAL_COUNT = 20usize;
+    let PROPOSAL_COUNT = 200usize;
     for i in 1..PROPOSAL_COUNT {
         let (_, stack) = member_stacks.get(i % member_stacks.len()).unwrap();
         let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
@@ -1187,13 +1229,7 @@ async fn main_run() {
         };
         noc.put_object(req).await;
         proposals.push(proposal);
-    }
 
-    // futures::future::join_all(prepare_futures).await;
-
-    log::info!("proposals prepared.");
-
-    for i in 1..PROPOSAL_COUNT {
         let proposal = proposals.get(i - 1).unwrap().clone();
         let stack = member_stacks.get(i % member_stacks.len()).unwrap();
         let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
@@ -1227,11 +1263,17 @@ async fn main_run() {
             );
         });
 
-        if i % 10 == 0 {
-            async_std::task::sleep(Duration::from_millis(1000)).await;
+        if i % 28 == 0 {
+            async_std::task::sleep(Duration::from_millis(4000)).await;
             log::info!("will push new proposals, i: {}", i);
         }
     }
+
+    // futures::future::join_all(prepare_futures).await;
+
+    log::info!("proposals prepared.");
+
+    // for i in 1..PROPOSAL_COUNT {}
 
     async_std::task::sleep(Duration::from_millis(20000)).await;
 
