@@ -426,12 +426,8 @@ impl CyfsStackImpl {
         let ndc = Arc::new(named_data_components.ndc.clone());
         let reader = Arc::new(named_data_components.new_chunk_reader());
         let backup_manager = BackupManager::new(
-            isolate,
-            device_id.object_id().to_owned(),
             noc.clone(),
             ndc,
-            global_state_manager.clone_processor(),
-            global_state_meta.clone_manager_raw_processor(),
             reader,
         );
         
@@ -1056,6 +1052,10 @@ impl CyfsStack {
 
     pub fn local_device(&self) -> Device {
         self.stack.bdt_stack.sn_client().ping().default_local()
+    }
+
+    pub fn config(&self) -> &StackGlobalConfig {
+        &self.stack.config
     }
 
     pub fn acl_manager(&self) -> &AclManager {

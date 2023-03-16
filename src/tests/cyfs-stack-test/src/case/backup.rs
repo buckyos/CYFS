@@ -8,9 +8,19 @@ pub async fn test() {
 
     let user1_ood = TestLoader::get_stack(DeviceIndex::User1OOD);
 
+    let isolate = match &user1_ood.config().get_stack_params().config.isolate {
+        Some(isolate) => {
+            isolate.to_owned()
+        }
+        None => {
+            "".to_owned()
+        }
+    };
+
     let params = UniBackupParams {
-        id: bucky_time_now(),
-        file: LocalFileBackupParam::default(),
+        id: bucky_time_now().to_string(),
+        isolate,
+        target_file: LocalFileBackupParam::default(),
     };
 
     user1_ood.backup_manager().run_uni_backup(params).await;

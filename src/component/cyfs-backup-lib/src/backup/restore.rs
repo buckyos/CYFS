@@ -74,4 +74,4 @@ impl RestoreManager {
     }
 }
 
-pub type BackupManagerRef = Arc<RestoreManager>;
+pub type RestoreManagerRef = Arc<RestoreManager>;
