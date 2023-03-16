@@ -71,36 +71,6 @@ $1"#;
 /// WORKDIR /opt/app
 /// ENTRYPOINT [\"bash\", \"/opt/start.sh\"]
 
-/// ---
-///
-/// # Build Image的准备工作
-///
-/// # Arguments
-/// - DecAppId decapp的id
-pub fn prepare(id: &str, version: &str) -> BuckyResult<()> {
-    info!("prepare docker build start {} {}", id, version);
-
-    // dockerfile  目录
-    let dockerfile_dir = get_app_dockerfile_dir(&id);
-    if !dockerfile_dir.exists() {
-        std::fs::create_dir_all(dockerfile_dir.clone())?;
-    }
-
-    // 构造 start.sh
-    let start_sh_path = dockerfile_dir.join("start.sh");
-    let gateway_ip = DockerApi::get_network_gateway_ip()?;
-    info!("get docker start shell 's gateway ip: {}", gateway_ip);
-
-    // network的 gateway_ip是manager启动后生成的。这里需要根据名字（名字是固定的）需要获取后替换进去启动脚本里
-    let shell = START_SHELL
-        .replace("{gateway_ip}", &gateway_ip);
-    info!("docker start shell content: {}", &shell);
-    std::fs::write(&start_sh_path, shell)?;
-
-    info!("prepare docker build finish  {} {}", id, version);
-    Ok(())
-}
-
 fn run_docker<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<Child> {
     let mut cmd = Command::new("docker");
     cmd.args(args);
@@ -237,13 +207,37 @@ impl DockerApi {
         }
     }
 
+    fn prepare(&self, id: &str) -> BuckyResult<()> {
+        info!("prepare docker build start {}", id);
+
+        // dockerfile  目录
+        let dockerfile_dir = get_app_dockerfile_dir(&id);
+        if !dockerfile_dir.exists() {
+            std::fs::create_dir_all(dockerfile_dir.clone())?;
+        }
+
+        // 构造 start.sh
+        let start_sh_path = dockerfile_dir.join("start.sh");
+        let gateway_ip = DockerApi::get_network_gateway_ip()?;
+        info!("get docker start shell 's gateway ip: {}", gateway_ip);
+
+        // network的 gateway_ip是manager启动后生成的。这里需要根据名字（名字是固定的）需要获取后替换进去启动脚本里
+        let shell = START_SHELL
+            .replace("{gateway_ip}", &gateway_ip);
+        info!("docker start shell content: {}", &shell);
+        std::fs::write(&start_sh_path, shell)?;
+
+        info!("prepare docker build finish {}", id);
+        Ok(())
+    }
+
     pub async fn install(
         &self,
         id: &str,
-        version: &str,
+        _version: &str,
         install_cmd: Vec<String>,
     ) -> BuckyResult<()> {
-        prepare(id, version)?;
+        self.prepare(id)?;
         // TODO 在容器内执行install命令
         for cmd in install_cmd {
             info!("start app {} install cmd {} in docker", id, cmd);
@@ -293,17 +287,27 @@ impl DockerApi {
     /// uninstall
     /// remove image, remove dockerfile.gz
     pub async fn uninstall(&self, id: &str) -> BuckyResult<()> {
-        let _ = self._remove_dockerfile(id).await;
+        let _ = self._remove_dockerfile(id);
 
         Ok(())
     }
 
-    async fn _remove_dockerfile(&self, id: &str) -> BuckyResult<()> {
+    fn _remove_dockerfile(&self, id: &str) -> BuckyResult<()> {
         let dockerfile_dir = get_app_dockerfile_dir(&id);
         if dockerfile_dir.exists() {
             std::fs::remove_dir_all(dockerfile_dir.clone())?;
         }
         Ok(())
+    }
+
+    fn check_prepared(&self, id: &str) -> BuckyResult<()> {
+        // start.sh path
+        let start_sh_path = get_app_dockerfile_dir(&id).join("start.sh");
+        if !start_sh_path.is_file() {
+            // 如果不是文件，那么删掉整个dockerfile_dir
+            let _ = self._remove_dockerfile(id);
+        }
+        self.prepare(id)
     }
 
     // 运行容器
@@ -318,11 +322,14 @@ impl DockerApi {
             info!("docker container is alreay running {}", id);
             return Ok(());
         }
-        // check image
-
+        let container_name = format!("decapp-{}", id.to_lowercase());
+        // 修正旧版本没有perpare的情况
+        self.check_prepared(id)?;
+        // 兼容：移除旧版本停止但没有删除的container
+        let _ = run_docker(vec!["rm", "-f", &container_name])?.wait();
         // build options
         // docker run --name ${container_name} --network none ${mounts} --cap-add NET_ADMIN --cap-add NET_RAW --sysctl net.ipv4.conf.eth0.route_localnet=1 --log-driver json-file --log-opt max-size=100m --log-opt max-file=3
-        let container_name = format!("decapp-{}", id.to_lowercase());
+
         let mut create_args = vec![
             "run".to_string(),
             "--name".to_string(), container_name.clone(),
