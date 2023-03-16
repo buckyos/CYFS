@@ -442,6 +442,7 @@ impl ZoneRoleManager {
             source: RequestSourceInfo::new_local_system(),
             object_id: people_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         if let Ok(Some(data)) = self.noc.get_object(&req).await {

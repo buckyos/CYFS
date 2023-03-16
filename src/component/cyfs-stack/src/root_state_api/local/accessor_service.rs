@@ -150,6 +150,7 @@ impl GlobalStateAccessorService {
             object_id: object_id.clone(),
             source,
             last_access_rpath: None,
+            flags: 0,
         };
 
         let resp = self.noc.get_object(&noc_req).await.map_err(|e| {

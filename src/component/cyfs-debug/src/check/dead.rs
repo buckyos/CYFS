@@ -206,6 +206,10 @@ mod tests {
         let s = bucky_time_to_system_time(t);
         println!("{:#?}", s);
 
+        let datetime = chrono::offset::Local::now();
+        // let time = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
+        println!("{:?}", datetime);
+
         let datetime: chrono::DateTime<chrono::Local> = s.into();
         let time_str = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
         println!("{}", time_str);

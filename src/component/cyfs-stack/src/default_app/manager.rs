@@ -89,6 +89,7 @@ impl DefaultAppManager {
             protocol: RequestProtocol::Native,
             object_id,
             source: self.device_id.clone(),
+            flags: 0,
         };
 
         if let Some(data) = self.noc.get_object(&req).await? {

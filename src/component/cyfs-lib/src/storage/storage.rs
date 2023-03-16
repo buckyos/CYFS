@@ -28,6 +28,7 @@ impl NOCStorageRawHelper {
             source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         let resp = self.noc.get_object(&req).await?;

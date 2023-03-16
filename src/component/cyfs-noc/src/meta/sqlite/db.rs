@@ -9,6 +9,7 @@ use cyfs_util::SqliteConnectionHolder;
 use rusqlite::{named_params, Connection, OptionalExtension, ToSql};
 use std::convert::{TryFrom, TryInto};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct UpdateObjectMetaRequest<'a> {
@@ -757,14 +758,16 @@ impl SqliteMetaStorage {
                     )
                     .await?;
 
-                // Update the last access info
-                let update_req = NamedObjectMetaUpdateLastAccessRequest {
-                    object_id: req.object_id.clone(),
-                    last_access_time: bucky_time_now(),
-                    last_access_rpath: req.last_access_rpath.clone(),
-                };
+                if !req.is_no_update_last_access() {
+                    // Update the last access info
+                    let update_req = NamedObjectMetaUpdateLastAccessRequest {
+                        object_id: req.object_id.clone(),
+                        last_access_time: bucky_time_now(),
+                        last_access_rpath: req.last_access_rpath.clone(),
+                    };
 
-                let _ = self.update_last_access(&update_req);
+                    let _ = self.update_last_access(&update_req);
+                }
 
                 Ok(Some(data))
             }
@@ -1298,6 +1301,91 @@ impl SqliteMetaStorage {
 
         Ok(Some(()))
     }
+
+    async fn select(
+        &self,
+        req: &NamedObjectMetaSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectMetaSelectObjectResponse> {
+        let mut querys = Vec::new();
+
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        if let Some(obj_type) = req.filter.obj_type {
+            params.push(Box::new(obj_type));
+
+            let query = format!("object_type=?{}", params.len());
+            querys.push(query);
+        }
+
+        let sql = if querys.len() > 0 {
+            "SELECT object_id FROM data_namedobject_meta WHERE ".to_owned() + &querys.join(" AND ")
+        } else {
+            "SELECT object_id FROM data_namedobject_meta ".to_owned()
+        };
+
+        // Sort by insert_time, decrease
+        let sql = sql + " ORDER BY insert_time DESC ";
+
+        // Add pagination
+        let sql = sql
+            + &format!(
+                " LIMIT {} OFFSET {}",
+                req.opt.page_size,
+                req.opt.page_size * req.opt.page_index
+            );
+
+        info!(
+            "will select from meta: sql={} filter={:?}, opt={:?}",
+            sql, req.filter, req.opt
+        );
+
+        let (conn, _lock) = self.conn.get_read_conn()?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| {
+            let msg = format!("prepare select meta sql error: {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::SqliteError, msg)
+        })?;
+
+        let mut rows = stmt
+            .query(
+                params
+                    .iter()
+                    .map(|item| item.as_ref())
+                    .collect::<Vec<&dyn ToSql>>()
+                    .as_slice(),
+            )
+            .map_err(|e| {
+                let msg = format!("exec query error: {}", e);
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
+
+        let mut list = Vec::new();
+        while let Some(row) = rows.next()? {
+            let object_id: String = row.get(0).map_err(|e| {
+                let msg = format!("get object_id from query row failed! {}", e);
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
+
+            let ret = ObjectId::from_str(&object_id);
+            if ret.is_err() {
+                error!("invalid object_id str: {}, {}", object_id, ret.unwrap_err());
+                continue;
+            }
+
+            let object_id = ret.unwrap();
+            let data = NamedObjectCacheSelectObjectData { object_id };
+
+            list.push(data);
+        }
+
+        let resp = NamedObjectMetaSelectObjectResponse { list };
+
+        Ok(resp)
+    }
 }
 
 #[async_trait::async_trait]
@@ -1355,6 +1443,13 @@ impl NamedObjectMeta for SqliteMetaStorage {
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {
         perf_scope_request!("noc.meta.stat", { Self::stat(&self).await })
+    }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectMetaSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectMetaSelectObjectResponse> {
+        Self::select(self, req).await
     }
 
     fn bind_object_meta_access_provider(

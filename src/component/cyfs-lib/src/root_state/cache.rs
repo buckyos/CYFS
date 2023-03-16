@@ -47,6 +47,7 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
             source: RequestSourceInfo::new_local_dec_or_system(dec_id),
             object_id: object_id.clone(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         let resp = self.noc.get_object(&noc_req).await.map_err(|e| {

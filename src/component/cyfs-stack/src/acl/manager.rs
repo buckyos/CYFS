@@ -27,6 +27,7 @@ impl AclMatchInstance {
             source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {

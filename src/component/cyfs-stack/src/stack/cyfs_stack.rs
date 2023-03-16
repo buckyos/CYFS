@@ -517,7 +517,7 @@ impl CyfsStackImpl {
         // bind bdt stack and start sync
         sn_config_manager.bind_bdt_stack(stack.bdt_stack.clone());
 
-        // 初始化对外interface
+        // Init the interface for external service
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {
             bdt_stack: stack.bdt_stack.clone(),
@@ -526,7 +526,7 @@ impl CyfsStackImpl {
             ws_listener: None,
         };
 
-        // 如果开启了本地的sharestack，那么就需要初始化tcp-http接口
+        // If the local shared_stack is turned on, then need to initialize the TCP-HTTP interface
         if param.config.shared_stack {
             init_params.tcp_listeners = param.interface.tcp_listeners;
             init_params.ws_listener = param.interface.ws_listener;
@@ -559,6 +559,7 @@ impl CyfsStackImpl {
             unreachable!();
         }
 
+        
         // finally start interface
         stack.interface.get().unwrap().start().await?;
 
@@ -1077,6 +1078,10 @@ impl CyfsStack {
 
     pub fn local_device(&self) -> Device {
         self.stack.bdt_stack.sn_client().ping().default_local()
+    }
+
+    pub fn config(&self) -> &StackGlobalConfig {
+        &self.stack.config
     }
 
     pub fn acl_manager(&self) -> &AclManager {

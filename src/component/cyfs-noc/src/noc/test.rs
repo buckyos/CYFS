@@ -94,18 +94,13 @@ async fn test_noc() {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         last_access_rpath: Some("/test/dec1".to_owned()),
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await.unwrap();
     assert!(ret.is_some());
     let data = ret.unwrap();
-    let got_update_time = data
-        .object
-        .object
-        .as_ref()
-        .unwrap()
-        .update_time()
-        .unwrap();
+    let got_update_time = data.object.object.as_ref().unwrap().update_time().unwrap();
     assert_eq!(got_update_time, update_time);
 
     // update meta
@@ -132,14 +127,21 @@ async fn test_noc() {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await.unwrap();
     assert!(ret.is_some());
     let data = ret.unwrap();
     assert_eq!(*data.meta.context.as_ref().unwrap(), context);
-    assert_eq!(*data.meta.last_access_rpath.as_ref().unwrap(), last_access_rpath);
-    assert_eq!(data.meta.storage_category, NamedObjectStorageCategory::Cache);
+    assert_eq!(
+        *data.meta.last_access_rpath.as_ref().unwrap(),
+        last_access_rpath
+    );
+    assert_eq!(
+        data.meta.storage_category,
+        NamedObjectStorageCategory::Cache
+    );
     assert_eq!(data.meta.access_string, access.value());
 
     // get by unknown device
@@ -158,6 +160,7 @@ async fn test_noc() {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     if let Err(e) = noc.get_object(&get_req).await {
@@ -182,6 +185,7 @@ async fn test_noc() {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let ret = noc.get_object(&get_req).await;
@@ -193,6 +197,15 @@ async fn test_noc() {
             unreachable!();
         }
     }
+
+    // select
+    let select_req = NamedObjectCacheSelectObjectRequest {
+        filter: NamedObjectCacheSelectObjectFilter { obj_type: None },
+        opt: NamedObjectCacheSelectObjectOption::default(),
+    };
+
+    let resp = noc.select_object(&select_req).await.unwrap();
+    info!("select result: {:?}", resp);
 
     // delete by system
     let delete_req = NamedObjectCacheDeleteObjectRequest {
@@ -213,6 +226,15 @@ async fn test_noc() {
         .update_time()
         .unwrap();
     assert_eq!(got_update_time, update_time);
+
+    // select
+    let select_req = NamedObjectCacheSelectObjectRequest {
+        filter: NamedObjectCacheSelectObjectFilter { obj_type: None },
+        opt: NamedObjectCacheSelectObjectOption::default(),
+    };
+
+    let resp = noc.select_object(&select_req).await.unwrap();
+    info!("select result: {:?}", resp);
 }
 
 async fn test_error_blob() {
@@ -240,13 +262,13 @@ async fn test_error_blob() {
         source,
         object_id: object_id.clone(),
         last_access_rpath: None,
+        flags: 0,
     };
 
     let resp = noc.get_object(&get_req).await.unwrap();
     let data = resp.unwrap();
     let _data = Storage::raw_decode(&data.object.object_raw).unwrap();
     info!("test complete!");
-    
 }
 
 #[test]

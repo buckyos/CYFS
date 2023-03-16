@@ -194,6 +194,14 @@ impl NamedDataCache for MemTracker {
                 relation: ChunkObjectRelation::FileBody
             }).collect())
     }
+
+    async fn select_chunk(&self, _req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
+        unimplemented!();
+    }
+
+    async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
+        unimplemented!();
+    }
 }
 
 #[async_trait::async_trait]

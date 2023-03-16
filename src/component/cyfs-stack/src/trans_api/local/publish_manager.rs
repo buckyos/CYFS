@@ -332,6 +332,7 @@ impl PublishLocalDirTask {
                                     )),
                                     object_id: object_id.clone(),
                                     last_access_rpath: None,
+                                    flags: 0,
                                 })
                                 .await?;
                             if resp.is_some() {

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use int_enum::IntEnum;
 use std::convert::TryFrom;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum)]
@@ -174,6 +175,8 @@ pub trait TrackerCache: Sync + Send + 'static {
         req: &GetTrackerPositionRequest,
     ) -> BuckyResult<Vec<TrackerPositionCacheData>>;
 }
+
+pub type TrackerCacheRef = Arc<Box<dyn TrackerCache>>;
 
 #[cfg(test)]
 mod tests {

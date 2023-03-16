@@ -166,6 +166,13 @@ impl NamedObjectCache for RemoteNamedObjectCache {
         unimplemented!();
     }
 
+    async fn select_object(
+        &self,
+        _req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        unimplemented!();
+    }
+
     fn bind_object_meta_access_provider(
         &self,
         _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,

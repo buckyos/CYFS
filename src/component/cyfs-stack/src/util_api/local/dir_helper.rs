@@ -16,6 +16,7 @@ impl DirHelper {
                 source: source.to_owned(),
                 object_id,
                 last_access_rpath: None,
+                flags: 0,
             })
             .await?;
 

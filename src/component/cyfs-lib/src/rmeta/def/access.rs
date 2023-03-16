@@ -4,6 +4,7 @@ use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathSpecifiedGroup {
@@ -225,6 +226,26 @@ impl Ord for GlobalStatePathAccessItem {
         self.partial_cmp(other).unwrap()
     }
 }
+
+pub struct GlobalStateAccessRequest<'d, 'a, 'b> {
+    pub dec: Cow<'d, ObjectId>,
+    pub path: Cow<'a, str>,
+    pub source: Cow<'b, RequestSourceInfo>,
+    pub permissions: AccessPermissions,
+}
+
+impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "path={}, {}, permissions={}",
+            self.path,
+            self.source,
+            self.permissions.as_str()
+        )
+    }
+}
+
 
 #[cfg(test)]
 mod test {
