@@ -62,6 +62,14 @@ impl BdtHttpRequestor {
         }
     }
 
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn device_id(&self) -> &DeviceId {
+        &self.device_id
+    }
+
     async fn connect(&self, with_remote_desc: bool) -> BuckyResult<StreamGuard> {
         let begin = std::time::Instant::now();
 

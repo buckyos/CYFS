@@ -293,7 +293,7 @@ impl CyfsStackImpl {
 
         // non和router通用的转发器，不带权限检查(non和router内部根据层级选择正确的acl适配器)
         let forward_manager =
-            ForwardProcessorManager::new(bdt_stack.clone(), device_manager.clone_cache());
+            ForwardProcessorManager::new(bdt_stack.clone(), device_manager.clone_cache(), fail_handler.clone());
         forward_manager.start();
 
         // ood_resolver
