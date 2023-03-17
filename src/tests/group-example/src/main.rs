@@ -197,6 +197,7 @@ mod Common {
 
         log::info!("create group: {:?}", group.desc().object_id());
 
+        let desc_hash = group.desc().raw_hash_value().unwrap();
         let body_hash = group.body().as_ref().unwrap().raw_hash_value().unwrap();
         let signers = [admins, members].concat();
         signers
@@ -205,6 +206,17 @@ mod Common {
                 let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
 
                 async_std::task::block_on(async move {
+                    let desc_signature = signer
+                        .sign(
+                            desc_hash.as_slice(),
+                            &cyfs_base::SignatureSource::Object(ObjectLink {
+                                obj_id: owner.desc().object_id(),
+                                obj_owner: None,
+                            }),
+                        )
+                        .await
+                        .unwrap();
+
                     let body_signature = signer
                         .sign(
                             body_hash.as_slice(),
@@ -215,10 +227,13 @@ mod Common {
                         )
                         .await
                         .unwrap();
-                    body_signature
+                    (desc_signature, body_signature)
                 })
             })
-            .for_each(|signature| group.signs_mut().push_body_sign(signature));
+            .for_each(|(desc_signature, body_signature)| {
+                group.signs_mut().push_desc_sign(desc_signature);
+                group.signs_mut().push_body_sign(body_signature);
+            });
 
         group
     }
