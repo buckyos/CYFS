@@ -5,12 +5,12 @@ use crate::meta::*;
 use crate::resolver::DeviceCache;
 use cyfs_base::*;
 use cyfs_core::{Zone, ZoneId, ZoneObj};
-use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use cyfs_util::*;
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
+use async_std::sync::Mutex as AsyncMutex;
 
 // zone发生改变
 pub type FnZoneChanged = dyn EventListenerAsyncRoutine<ZoneId, ()>;
@@ -62,7 +62,7 @@ pub struct ZoneManager {
     zones: ZoneContainer,
 
     // 当前的zone信息
-    current_info: Arc<Mutex<Option<Arc<CurrentZoneInfo>>>>,
+    current_info: Arc<AsyncMutex<Option<Arc<CurrentZoneInfo>>>>,
 
     meta_cache: Arc<MetaCacheRef>,
 
@@ -103,7 +103,7 @@ impl ZoneManager {
             device_id: device_id.clone(),
             device_category,
             zones: ZoneContainer::new(device_id, local_cache, noc),
-            current_info: Arc::new(Mutex::new(None)),
+            current_info: Arc::new(AsyncMutex::new(None)),
             meta_cache,
             zone_changed_event: ZoneChangeEventManager::new(),
             failed_cache: ZoneFailedCache::new(),
@@ -169,62 +169,68 @@ impl ZoneManager {
         Ok(true)
     }
 
-    // 获取当前协议栈的zone信息
+    // Get the zone information of the current stack
     pub async fn get_current_info(&self) -> BuckyResult<Arc<CurrentZoneInfo>> {
-        // current_info只需要初始化一次即可
-        let current_info = self.current_info.lock().unwrap().clone();
+        
+        let mut current_info = self.current_info.lock().await;
         if current_info.is_none() {
-            let mut zone = self.get_zone(&self.device_id, None).await?;
-            let zone_id = zone.zone_id();
-
-            // load current zone's owner
-            let owner_id = zone.owner().to_owned();
-            let owner = self.search_object(&owner_id).await?;
-
-            info!("current zone owner: {}", owner.format_json().to_string());
-
-            // verify if owner object changed
-            if let Ok(false) = Self::compare_zone_with_owner(&zone, &owner) {
-                self.remove_zone(&zone_id).await;
-                zone = self.get_zone(&self.device_id, None).await?;
-            }
-
-            let zone_device_ood_id = zone.ood().to_owned();
-
-            let ood_work_mode = zone.ood_work_mode().to_owned();
-            let zone_role = if self.device_id == zone_device_ood_id {
-                ZoneRole::ActiveOOD
-            } else if zone.is_ood(&self.device_id) {
-                match ood_work_mode {
-                    OODWorkMode::Standalone => ZoneRole::ReservedOOD,
-                    OODWorkMode::ActiveStandby => ZoneRole::StandbyOOD,
-                }
-            } else {
-                ZoneRole::Device
-            };
-
-            let info = CurrentZoneInfo {
-                device_id: self.device_id.clone(),
-                device_category: self.device_category.clone(),
-                zone_device_ood_id,
-                zone_id,
-                zone_role,
-                ood_work_mode,
-                owner_id,
-                owner: Arc::new(owner),
-            };
-
-            info!("current zone info: {}", info,);
-
+            let info = self.init_current_zone_info().await?;
+            
             let info = Arc::new(info);
-            {
-                let mut slot = self.current_info.lock().unwrap();
-                *slot = Some(info.clone());
-            }
+            *current_info = Some(info.clone());
+   
             Ok(info)
         } else {
-            Ok(current_info.unwrap())
+            Ok(current_info.clone().unwrap())
         }
+    }
+
+    async fn init_current_zone_info(&self) -> BuckyResult<CurrentZoneInfo> {
+        info!("will init current zone info! device={}", self.device_id);
+
+        let mut zone = self.get_zone(&self.device_id, None).await?;
+        let zone_id = zone.zone_id();
+
+        // load current zone's owner
+        let owner_id = zone.owner().to_owned();
+        let owner = self.search_object(&owner_id).await?;
+
+        info!("current zone owner: {}", owner.format_json().to_string());
+
+        // verify if owner object changed
+        if let Ok(false) = Self::compare_zone_with_owner(&zone, &owner) {
+            self.remove_zone(&zone_id).await;
+            zone = self.get_zone(&self.device_id, None).await?;
+        }
+
+        let zone_device_ood_id = zone.ood().to_owned();
+
+        let ood_work_mode = zone.ood_work_mode().to_owned();
+        let zone_role = if self.device_id == zone_device_ood_id {
+            ZoneRole::ActiveOOD
+        } else if zone.is_ood(&self.device_id) {
+            match ood_work_mode {
+                OODWorkMode::Standalone => ZoneRole::ReservedOOD,
+                OODWorkMode::ActiveStandby => ZoneRole::StandbyOOD,
+            }
+        } else {
+            ZoneRole::Device
+        };
+
+        let info = CurrentZoneInfo {
+            device_id: self.device_id.clone(),
+            device_category: self.device_category.clone(),
+            zone_device_ood_id,
+            zone_id,
+            zone_role,
+            ood_work_mode,
+            owner_id,
+            owner: Arc::new(owner),
+        };
+
+        info!("current zone info: {}", info,);
+
+        Ok(info)
     }
 
     pub fn get_current_device_id(&self) -> &DeviceId {
@@ -492,7 +498,7 @@ impl ZoneManager {
             );
         }
 
-        let mut slot = self.current_info.lock().unwrap();
+        let mut slot = self.current_info.lock().await;
         if let Some(info) = &*slot {
             if info.zone_id == *zone_id {
                 drop(info);
