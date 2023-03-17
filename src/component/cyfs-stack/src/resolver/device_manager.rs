@@ -128,6 +128,7 @@ impl DeviceInfoManagerImpl {
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
     ) -> BuckyResult<()> {
+        // TODO: 先验证所有成员签名，但这跟Group的变更策略有关，最终可能要跟链上比对才能验证，因为如果Group变更只需要部分成员签名，这将导致Group上只携带部分成员的签名
         if object_id.obj_type_code() != ObjectTypeCode::Group {
             let msg = format!(
                 "verify object own's body sign by owner failed for expect group, id = {}",
@@ -181,7 +182,7 @@ impl DeviceInfoManagerImpl {
 
         let singer_obj_any = signer_obj.object.take();
         let req = VerifyObjectInnerRequest {
-            sign_type: VerifySignType::Body,
+            sign_type: VerifySignType::Both,
             object: ObjectInfo {
                 object_id: object_id.clone(),
                 object: object.clone(),
