@@ -226,6 +226,8 @@ impl CyfsStackImpl {
         );
         zone_manager.init().await?;
 
+        fail_handler.bind_zone_manager(zone_manager.clone());
+
         // first init current zone info
         let zm = zone_manager.clone();
         async_std::task::spawn(async move { zm.get_current_info().await }).await?;

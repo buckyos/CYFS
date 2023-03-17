@@ -1,5 +1,6 @@
 use crate::meta::*;
 use crate::resolver::DeviceCache;
+use crate::zone::*;
 use cyfs_base::*;
 
 use cyfs_debug::Mutex;
@@ -11,6 +12,7 @@ const FAIL_CHECK_INTERVAL: u64 = 1000 * 1000 * 60 * 60;
 struct DeviceFailHandlerImpl {
     meta_cache: MetaCacheRef,
     device_manager: Box<dyn DeviceCache>,
+    zone_manager: once_cell::sync::OnceCell<ZoneManagerRef>,
 
     state: Mutex<LruCache<ObjectId, ()>>,
 }
@@ -20,23 +22,29 @@ impl DeviceFailHandlerImpl {
         Self {
             meta_cache,
             device_manager,
+            zone_manager: once_cell::sync::OnceCell::new(),
+
             state: Mutex::new(LruCache::with_expiry_duration_and_capacity(
-                std::time::Duration::from_secs(60 * 30), 
-                1024)
-            ),
+                std::time::Duration::from_secs(60 * 30),
+                1024,
+            )),
+        }
+    }
+
+    fn bind_zone_manager(&self, zone_manager: ZoneManagerRef) {
+        if let Err(_) = self.zone_manager.set(zone_manager) {
+            unreachable!();
         }
     }
 
     fn on_fail(&self, object_id: &ObjectId) -> bool {
         let mut state = self.state.lock().unwrap();
-        
+
         // remove expired objects
         state.iter();
 
         match state.peek(object_id) {
-            Some(_) => {
-                false
-            }
+            Some(_) => false,
             None => {
                 state.insert(object_id.to_owned(), ());
                 true
@@ -69,6 +77,11 @@ impl DeviceFailHandlerImpl {
                     "flush device's owner and changed! device={}, owner={}",
                     device_id, owner
                 );
+
+                // try reflush current zone's info
+                if let Some(zone_manager) = self.zone_manager.get() {
+                    zone_manager.remove_zone_by_device(device_id).await;
+                }
             } else {
                 debug!(
                     "flush device's owner and unchanged! device={}, owner={}",
@@ -109,6 +122,10 @@ impl ObjectFailHandler {
             meta_cache,
             device_manager,
         )))
+    }
+
+    pub fn bind_zone_manager(&self, zone_manager: ZoneManagerRef) {
+        self.0.bind_zone_manager(zone_manager)
     }
 
     pub fn on_device_fail(&self, device_id: &DeviceId) {
