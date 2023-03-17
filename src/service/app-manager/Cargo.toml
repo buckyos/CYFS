@@ -36,11 +36,7 @@ cyfs-debug = { path = "../../component/cyfs-debug" }
 walkdir = "2.3"
 which = "4.2.5"
 regex = "1.5"
-flate2 = "1.0.23"
-tar = "0.4.38"
 chrono = "0.4"
-bollard = "0.11"
-futures-util = "0.3"
 version-compare = "0.1"
 app-manager-lib = { path = "../app-manager-lib" }
 toml = "0.5"
@@ -48,3 +44,4 @@ clap = '2.34.0'
 wait-timeout = '0.2.0'
 once_cell = "1.17.0"
 surf = { version = '2.3.2', default-features = false, features = ['h1-client-rustls'] }
+itertools = "0.10"

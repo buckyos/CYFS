@@ -14,7 +14,7 @@ use wait_timeout::ChildExt;
 const STATUS_CMD_TIME_OUT_IN_SECS: u64 = 15;
 const STOP_CMD_TIME_OUT_IN_SECS: u64 = 60;
 const START_CMD_TIME_OUT_IN_SECS: u64 = 5 * 60;
-const INSTALL_CMD_TIME_OUT_IN_SECS: u64 = 15 * 60;
+pub(crate) const INSTALL_CMD_TIME_OUT_IN_SECS: u64 = 15 * 60;
 
 #[derive(Deserialize, Clone)]
 pub struct DAppInfo {
@@ -218,8 +218,8 @@ impl DApp {
         }
     }
 
-    pub fn get_start_cmd(&self) -> BuckyResult<&str> {
-        Ok(&self.info.start)
+    pub fn get_start_cmd(&self) -> String {
+        self.info.start.clone()
     }
 
     pub fn get_executable_binary(&self) -> BuckyResult<Vec<String>> {
@@ -492,7 +492,8 @@ impl DApp {
         Ok(())
     }
 
-    pub fn install(&self) -> BuckyResult<bool> {
+    // 这里做DecApp被安装后，执行前，根据配置文件需要做的预配置
+    pub fn prepare(&self) -> BuckyResult<()> {
         // 非windows下，设置executable对应的文件为可执行
         #[cfg(not(windows))]
         {
@@ -504,20 +505,27 @@ impl DApp {
                     &self.work_dir,
                     false,
                     None,
-                    INSTALL_CMD_TIME_OUT_IN_SECS,
+                    0,
                 );
             }
         }
+        Ok(())
+    }
+
+    pub fn get_install_cmd(&self) -> Vec<String> {
+        self.info.install.clone()
+    }
+
+    pub fn install(&self) -> BuckyResult<bool> {
         let mut cmd_index = 0;
         for cmd in &self.info.install {
             let log_file = self.work_dir.join(format!("install_{}.log", cmd_index));
-            let file = std::fs::File::create(log_file).ok();
 
             match self.run_cmd(
                 cmd,
                 &self.work_dir,
                 false,
-                file,
+                File::create(log_file).ok(),
                 INSTALL_CMD_TIME_OUT_IN_SECS,
             ) {
                 Err(e) => {
