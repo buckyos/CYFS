@@ -1,7 +1,6 @@
 use super::super::acl::*;
 use super::super::handler::*;
 use super::super::local::ObjectCrypto;
-use super::fail_handler::CryptoOutputFailHandleProcessor;
 use crate::acl::AclManagerRef;
 use crate::crypto::*;
 use crate::forward::ForwardProcessorManager;
@@ -103,13 +102,6 @@ impl CryptoRouter {
 
         // 这里不指定dec_id，使用forward request里面的dec_id
         let processor = CryptoRequestor::new(None, requestor).into_processor();
-
-        // 增加一层错误处理
-        let processor = CryptoOutputFailHandleProcessor::new(
-            target.clone(),
-            self.fail_handler.clone(),
-            processor,
-        );
 
         // 转换为input processor
         let input_processor = CryptoInputTransformer::new(processor);

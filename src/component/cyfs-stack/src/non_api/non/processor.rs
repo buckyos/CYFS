@@ -1,7 +1,6 @@
 use super::super::acl::*;
 use super::super::handler::*;
 use super::super::validate::NONGlobalStateValidatorProcessor;
-use super::fail_handler::NONOutputFailHandleProcessor;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::router_handler::RouterHandlersManager;
@@ -76,10 +75,6 @@ impl NONLevelInputProcessor {
 
         // 这里不指定dec_id，使用forward request里面的dec_id
         let processor = NONRequestor::new(None, requestor).into_processor();
-
-        // 增加一层错误监测处理
-        let processor =
-            NONOutputFailHandleProcessor::new(target.clone(), self.fail_handler.clone(), processor);
 
         // 转换为input processor
         let input_processor = NONInputTransformer::new(processor);
