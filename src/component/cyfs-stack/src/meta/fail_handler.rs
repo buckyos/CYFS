@@ -3,7 +3,7 @@ use crate::resolver::DeviceCache;
 use cyfs_base::*;
 
 use cyfs_debug::Mutex;
-use std::collections::{hash_map::Entry, HashMap};
+use lru_time_cache::LruCache;
 use std::sync::Arc;
 
 const FAIL_CHECK_INTERVAL: u64 = 1000 * 1000 * 60 * 60;
@@ -12,8 +12,7 @@ struct DeviceFailHandlerImpl {
     meta_cache: MetaCacheRef,
     device_manager: Box<dyn DeviceCache>,
 
-    // FIXME limit max cache count
-    state: Mutex<HashMap<ObjectId, u64>>,
+    state: Mutex<LruCache<ObjectId, ()>>,
 }
 
 impl DeviceFailHandlerImpl {
@@ -21,29 +20,28 @@ impl DeviceFailHandlerImpl {
         Self {
             meta_cache,
             device_manager,
-            state: Mutex::new(HashMap::new()),
+            state: Mutex::new(LruCache::with_expiry_duration_and_capacity(
+                std::time::Duration::from_secs(60 * 30), 
+                1024)
+            ),
         }
     }
 
     fn on_fail(&self, object_id: &ObjectId) -> bool {
-        {
-            let now = bucky_time_now();
-            let mut state = self.state.lock().unwrap();
-            match state.entry(object_id.to_owned()) {
-                Entry::Occupied(mut v) => {
-                    if now - v.get() < FAIL_CHECK_INTERVAL {
-                        return false;
-                    }
+        let mut state = self.state.lock().unwrap();
+        
+        // remove expired objects
+        state.iter();
 
-                    v.insert(now);
-                }
-                Entry::Vacant(v) => {
-                    v.insert(now);
-                }
+        match state.peek(object_id) {
+            Some(_) => {
+                false
+            }
+            None => {
+                state.insert(object_id.to_owned(), ());
+                true
             }
         }
-
-        true
     }
 
     async fn flush_device(&self, device_id: &DeviceId) -> BuckyResult<()> {
@@ -63,7 +61,7 @@ impl DeviceFailHandlerImpl {
             e
         })?;
 
-        // TODO 这里是否要支持多级owner，支持递归刷新？
+        // TODO Need support multi-level OWNER here, support recursive refresh?
         if let Some(owner) = device.desc().owner() {
             let ret = self.meta_cache.flush_object(owner).await?;
             if ret {
@@ -90,7 +88,7 @@ impl DeviceFailHandlerImpl {
         match self.meta_cache.flush_object(&object_id).await {
             Ok(ret) => {
                 if ret {
-                    info!("object udpated: {}", object_id);
+                    info!("object updated: {}", object_id);
                     Ok(true)
                 } else {
                     info!("flush object but not updated: {}", object_id);
@@ -135,7 +133,7 @@ impl ObjectFailHandler {
         }
     }
 
-    // 如果获取到一个对象状态不对，那么尝试从meta上更新一下
+    // If the state is wrong, then try to flush object from Meta
     pub async fn try_flush_object(&self, object_id: &ObjectId) -> BuckyResult<bool> {
         if !self.0.on_fail(object_id) {
             return Ok(false);
