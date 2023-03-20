@@ -12,6 +12,8 @@ pub struct ObjectPackSerializeReader {
 
     current: Option<Box<dyn ObjectPackReader>>,
     next_zip_file_index: usize,
+
+    crypto: Option<AesKey>,
 }
 
 impl ObjectPackSerializeReader {
@@ -19,6 +21,7 @@ impl ObjectPackSerializeReader {
         format: ObjectPackFormat,
         root: PathBuf,
         file_list: Vec<ObjectPackFileInfo>,
+        crypto: Option<AesKey>,
     ) -> Self {
         Self {
             format,
@@ -27,6 +30,7 @@ impl ObjectPackSerializeReader {
             current: None,
             next_file_index: 0,
             next_zip_file_index: 0,
+            crypto,
         }
     }
 
@@ -42,7 +46,7 @@ impl ObjectPackSerializeReader {
             file_path.display()
         );
 
-        let mut reader = ObjectPackFactory::create_reader(self.format, file_path);
+        let mut reader = ObjectPackFactory::create_reader(self.format, file_path, self.crypto.clone());
         reader.open().await?;
 
         self.current = Some(reader);
@@ -91,6 +95,7 @@ pub struct ObjectPackRandomReader {
 
     root: PathBuf,
     file_list: Vec<FileItem>,
+    crypto: Option<AesKey>,
 }
 
 impl ObjectPackRandomReader {
@@ -98,6 +103,7 @@ impl ObjectPackRandomReader {
         format: ObjectPackFormat,
         root: PathBuf,
         file_list: Vec<ObjectPackFileInfo>,
+        crypto: Option<AesKey>,
     ) -> Self {
         Self {
             format,
@@ -106,6 +112,7 @@ impl ObjectPackRandomReader {
                 .into_iter()
                 .map(|info| FileItem { info, reader: None })
                 .collect(),
+            crypto,
         }
     }
 
@@ -117,7 +124,8 @@ impl ObjectPackRandomReader {
 
             info!("will open pack file: file={}", file_path.display());
 
-            let mut reader = ObjectPackFactory::create_reader(self.format, file_path);
+            let mut reader =
+                ObjectPackFactory::create_reader(self.format, file_path, self.crypto.clone());
             reader.open().await?;
             item.reader = Some(reader);
         }
@@ -125,7 +133,10 @@ impl ObjectPackRandomReader {
         Ok(())
     }
 
-    pub async fn get_data(&mut self, object_id: &ObjectId) -> BuckyResult<Option<ObjectPackInnerFile>> {
+    pub async fn get_data(
+        &mut self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectPackInnerFile>> {
         for item in self.file_list.iter_mut() {
             let reader = item.reader.as_mut().unwrap();
             match reader.get_data(object_id).await {

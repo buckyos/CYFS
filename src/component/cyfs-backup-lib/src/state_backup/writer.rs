@@ -25,6 +25,7 @@ impl StateBackupDataLocalFileWriter {
         format: ObjectPackFormat,
         archive_file_max_size: u64,
         loader: ObjectTraverserLoaderRef,
+        crypto: Option<AesKey>,
     ) -> BuckyResult<Self> {
         let log_dir = root.join("log");
         if !log_dir.is_dir() {
@@ -38,7 +39,7 @@ impl StateBackupDataLocalFileWriter {
         let log = BackupLogManager::new(Some(state_default_isolate), log_dir);
         let meta = ObjectArchiveStateMetaHolder::new();
 
-        let archive = ArchiveLocalFileWriter::new(id, root, format, ObjectBackupStrategy::State, archive_file_max_size)?;
+        let archive = ArchiveLocalFileWriter::new(id, root, format, ObjectBackupStrategy::State, archive_file_max_size, crypto)?;
 
         Ok(Self {
             archive,

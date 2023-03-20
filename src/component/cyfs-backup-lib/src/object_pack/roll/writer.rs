@@ -13,6 +13,7 @@ pub struct ObjectPackRollWriter {
     size_limit: u64,
     total_bytes_before_flush: u64,
     file_list: Vec<ObjectPackFileInfo>,
+    crypto: Option<AesKey>,
 }
 
 impl ObjectPackRollWriter {
@@ -21,6 +22,7 @@ impl ObjectPackRollWriter {
         root: PathBuf,
         base_file_name: &str,
         size_limit: u64,
+        crypto: Option<AesKey>,
     ) -> Self {
         Self {
             format,
@@ -31,6 +33,7 @@ impl ObjectPackRollWriter {
             size_limit,
             total_bytes_before_flush: 0,
             file_list: vec![],
+            crypto,
         }
     }
 
@@ -44,7 +47,7 @@ impl ObjectPackRollWriter {
 
         info!("new object pack file: {}", file_path.display());
 
-        let mut writer = ObjectPackFactory::create_writer(self.format, file_path);
+        let mut writer = ObjectPackFactory::create_writer(self.format, file_path, self.crypto.clone());
         writer.open().await?;
 
         self.current = Some(writer);

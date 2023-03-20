@@ -14,8 +14,9 @@ pub struct ArchiveLocalFileLoader {
 impl ArchiveLocalFileLoader {
     pub async fn load(
         archive_dir: PathBuf,
+        crypto: Option<AesKey>,
     ) -> BuckyResult<Self> {
-        let archive = ObjectArchiveLoader::load(archive_dir.clone()).await?;
+        let archive = ObjectArchiveLoader::load(archive_dir.clone(), crypto).await?;
 
         Ok(Self {
             archive_dir,

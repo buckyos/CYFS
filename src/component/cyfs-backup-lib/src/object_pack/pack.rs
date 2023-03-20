@@ -93,29 +93,53 @@ pub enum ObjectPackFormat {
 pub struct ObjectPackFactory {}
 
 impl ObjectPackFactory {
-    pub fn create_reader(format: ObjectPackFormat, path: PathBuf) -> Box<dyn ObjectPackReader> {
-        match format {
+    pub fn create_reader(
+        format: ObjectPackFormat,
+        path: PathBuf,
+        crypto: Option<AesKey>,
+    ) -> Box<dyn ObjectPackReader> {
+        let reader = match format {
             ObjectPackFormat::Zip => {
                 let ret = super::zip::ZipObjectPackReader::new(path);
                 Box::new(ret)
             }
+        };
+
+        match crypto {
+            Some(aes_key) => {
+                let ret = super::aes::AesObjectPackReader::new(aes_key, reader);
+                Box::new(ret)
+            }
+            None => reader,
         }
     }
 
-    pub fn create_writer(format: ObjectPackFormat, path: PathBuf) -> Box<dyn ObjectPackWriter> {
-        match format {
+    pub fn create_writer(
+        format: ObjectPackFormat,
+        path: PathBuf,
+        crypto: Option<AesKey>,
+    ) -> Box<dyn ObjectPackWriter> {
+        let writer = match format {
             ObjectPackFormat::Zip => {
                 let ret = super::zip::ZipObjectPackWriter::new(path);
                 Box::new(ret)
             }
+        };
+
+        match crypto {
+            Some(aes_key) => {
+                let ret = super::aes::AesObjectPackWriter::new(aes_key, writer);
+                Box::new(ret)
+            }
+            None => writer,
         }
     }
 
-    pub fn create_zip_reader(path: PathBuf) -> Box<dyn ObjectPackReader> {
-        Self::create_reader(ObjectPackFormat::Zip, path)
+    pub fn create_zip_reader(path: PathBuf, crypto: Option<AesKey>,) -> Box<dyn ObjectPackReader> {
+        Self::create_reader(ObjectPackFormat::Zip, path, crypto)
     }
 
-    pub fn create_zip_writer(path: PathBuf) -> Box<dyn ObjectPackWriter> {
-        Self::create_writer(ObjectPackFormat::Zip, path)
+    pub fn create_zip_writer(path: PathBuf, crypto: Option<AesKey>,) -> Box<dyn ObjectPackWriter> {
+        Self::create_writer(ObjectPackFormat::Zip, path, crypto)
     }
 }

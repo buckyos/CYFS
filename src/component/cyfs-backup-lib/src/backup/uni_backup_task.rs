@@ -214,6 +214,7 @@ impl UniBackupTask {
             params.target_file.format,
             params.target_file.file_max_size,
             self.loader.clone(),
+            None,
         )?;
 
         let data_writer = uni_data_writer.clone().into_writer();

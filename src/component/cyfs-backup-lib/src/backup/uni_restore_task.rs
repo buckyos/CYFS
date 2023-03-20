@@ -62,7 +62,7 @@ impl UniRestoreTask {
             .update_phase(RestoreTaskPhase::LoadAndVerify);
 
         // First load the archive dir and verify all pack files
-        let loader = ArchiveLocalFileLoader::load(params.archive).await?;
+        let loader = ArchiveLocalFileLoader::load(params.archive, None).await?;
 
         let loader: BackupDataLoaderRef = Arc::new(Box::new(loader));
 
