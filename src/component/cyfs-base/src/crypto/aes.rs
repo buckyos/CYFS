@@ -371,7 +371,7 @@ mod test_aes {
         let array = GenericArray::<u8, U48>::clone_from_slice(key);
         let aes_key = AesKey(array);
         let mut data: [u8; 128] = [30; 128];
-        let d = b"dsfasdfsdsdSome Crypto Text11111dsfasdfsdsdSome Crypto Text11111";
+        let d = b"Some Crypto Text11111dsfasdfsdsdSome Crypto Text1111";
         data[..d.len()].copy_from_slice(d);
 
         assert!(aes_key.inplace_encrypt(data.as_mut(), d.len()).is_ok());

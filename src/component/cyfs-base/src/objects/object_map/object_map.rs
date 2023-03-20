@@ -3316,7 +3316,7 @@ mod test {
         let id = map.flush_id();
         info!("obj map id={}", id);
 
-        cache.put_object_map(&id, map).unwrap();
+        cache.put_object_map(&id, map, None).unwrap();
         cache.gc(true, &id).await.unwrap();
     }
 

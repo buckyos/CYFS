@@ -891,7 +891,7 @@ mod test {
         }
 
         let id = map.flush_id();
-        cache.put_object_map(&id, map).unwrap();
+        cache.put_object_map(&id, map, None).unwrap();
 
         id
     }
@@ -919,7 +919,7 @@ mod test {
         }
 
         let id = map.flush_id();
-        cache.put_object_map(&id, map).unwrap();
+        cache.put_object_map(&id, map, None).unwrap();
 
         id
     }
@@ -947,7 +947,7 @@ mod test {
         }
 
         let id = map.flush_id();
-        cache.put_object_map(&id, map).unwrap();
+        cache.put_object_map(&id, map, None).unwrap();
 
         id
     }
@@ -1040,7 +1040,7 @@ mod test_path_diff {
         .no_create_time()
         .build();
         let root_id = root.flush_id();
-        cache.put_object_map(&root_id, root).unwrap();
+        cache.put_object_map(&root_id, root, None).unwrap();
         info!("new root: {}", root_id);
 
         let path1 = gen_path1(cache, &root_id).await;
