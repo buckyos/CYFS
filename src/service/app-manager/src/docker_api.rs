@@ -196,7 +196,7 @@ impl DockerApi {
         })?;
 
         if output.status.success() {
-            let ip = String::from_utf8(output.stdout).unwrap();
+            let ip = String::from_utf8(output.stdout).unwrap().replace("'", "").trim().to_string();
             info!("get network Gateway ip {}", ip);
             Ok(ip)
         } else {
@@ -208,8 +208,6 @@ impl DockerApi {
     }
 
     fn prepare(&self, id: &str) -> BuckyResult<()> {
-        info!("prepare docker build start {}", id);
-
         // dockerfile  目录
         let dockerfile_dir = get_app_dockerfile_dir(&id);
         if !dockerfile_dir.exists() {
@@ -226,8 +224,6 @@ impl DockerApi {
             .replace("{gateway_ip}", &gateway_ip);
         info!("docker start shell content: {}", &shell);
         std::fs::write(&start_sh_path, shell)?;
-
-        info!("prepare docker build finish {}", id);
         Ok(())
     }
 
@@ -300,16 +296,6 @@ impl DockerApi {
         Ok(())
     }
 
-    fn check_prepared(&self, id: &str) -> BuckyResult<()> {
-        // start.sh path
-        let start_sh_path = get_app_dockerfile_dir(&id).join("start.sh");
-        if !start_sh_path.is_file() {
-            // 如果不是文件，那么删掉整个dockerfile_dir
-            let _ = self._remove_dockerfile(id);
-        }
-        self.prepare(id)
-    }
-
     // 运行容器
     pub async fn start(
         &self,
@@ -323,8 +309,8 @@ impl DockerApi {
             return Ok(());
         }
         let container_name = format!("decapp-{}", id.to_lowercase());
-        // 修正旧版本没有perpare的情况
-        self.check_prepared(id)?;
+        // 每次启动前都prepare，对应start脚本修改的情况
+        self.prepare(id)?;
         // 兼容：移除旧版本停止但没有删除的container
         let _ = run_docker(vec!["rm", "-f", &container_name])?.wait();
         // build options
