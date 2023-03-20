@@ -189,14 +189,15 @@ impl DockerApi {
         // docker network inspect --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' cyfs_br
         let output = run_docker(vec!["network",
                                      "inspect",
-                                     "--format='{{range .IPAM.Config}}{{.Gateway}}{{end}}'",
+                                     "--format",
+                                     "{{range .IPAM.Config}}{{.Gateway}}{{end}}",
                                      CYFS_BRIDGE_NAME])?.wait_with_output().map_err(|e| {
             error!("get_network_gateway_ip cmd error {:?}", e);
             e
         })?;
 
         if output.status.success() {
-            let ip = String::from_utf8(output.stdout).unwrap().replace("'", "").trim().to_string();
+            let ip = String::from_utf8(output.stdout).unwrap().trim().to_string();
             info!("get network Gateway ip {}", ip);
             Ok(ip)
         } else {
