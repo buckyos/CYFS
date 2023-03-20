@@ -91,10 +91,16 @@ impl UniBackupTask {
     }
 
     pub async fn run(&self, params: UniBackupParams) -> BuckyResult<()> {
+        let device_file_name = if params.isolate.len() > 0 {
+            format!("{}/device", params.isolate)
+        } else {
+            "device".to_owned()
+        };
+
         let device = cyfs_util::LOCAL_DEVICE_MANAGER
-            .load("device")
+            .load(&device_file_name)
             .map_err(|e| {
-                let msg = format!(r#"invalid {{cyfs}}/etc/desc/device.desc: {}"#, e);
+                let msg = format!(r#"invalid device.desc: {}, {}"#, device_file_name, e);
                 error!("msg");
                 BuckyError::new(e.code(), msg)
             })?;
