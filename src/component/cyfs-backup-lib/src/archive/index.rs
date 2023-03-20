@@ -1,3 +1,4 @@
+use crate::crypto::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -17,6 +18,13 @@ pub struct ObjectArchiveIndex {
 
     pub format: ObjectPackFormat,
     pub strategy: ObjectBackupStrategy,
+
+    pub device_id: DeviceId,
+    pub owner: Option<ObjectId>,
+
+    pub crypto: CryptoMode,
+    pub en_device_id: Option<String>,
+
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
 
@@ -31,12 +39,39 @@ impl ObjectArchiveIndex {
         Self {
             id,
             time,
+
             format,
             strategy,
+
+            device_id: DeviceId::default(),
+            owner: None,
+            crypto: CryptoMode::None,
+            en_device_id: None,
+
             object_files: vec![],
             chunk_files: vec![],
             meta: None,
         }
+    }
+
+    pub fn init_device_id(&mut self, device_id: DeviceId, owner: Option<ObjectId>, crypto: Option<&AesKey>) {
+        let mode;
+        let en_device_id;
+        match crypto {
+            Some(aes_key) => {
+                mode = CryptoMode::AES;
+                en_device_id = Some(AesKeyHelper::encrypt_device_id(&aes_key, &device_id));
+            }
+            None => {
+                mode = CryptoMode::None;
+                en_device_id = None;
+            }
+        }
+
+        self.device_id = device_id;
+        self.owner = owner;
+        self.crypto = mode;
+        self.en_device_id = en_device_id;
     }
 
     pub async fn load(dir: &Path) -> BuckyResult<Self> {

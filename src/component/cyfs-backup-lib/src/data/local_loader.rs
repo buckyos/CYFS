@@ -1,4 +1,4 @@
-use crate::archive::*;
+use crate::{archive::*, crypto::ProtectedPassword};
 use cyfs_base::*;
 use super::loader::*;
 
@@ -14,9 +14,9 @@ pub struct ArchiveLocalFileLoader {
 impl ArchiveLocalFileLoader {
     pub async fn load(
         archive_dir: PathBuf,
-        crypto: Option<AesKey>,
+        password: Option<ProtectedPassword>,
     ) -> BuckyResult<Self> {
-        let archive = ObjectArchiveLoader::load(archive_dir.clone(), crypto).await?;
+        let archive = ObjectArchiveLoader::load(archive_dir.clone(), password).await?;
 
         Ok(Self {
             archive_dir,

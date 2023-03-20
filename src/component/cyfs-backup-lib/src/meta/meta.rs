@@ -5,9 +5,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
-    pub device_id: DeviceId,
-    pub owner: Option<ObjectId>,
-
     pub object: T,
     pub key_data: Vec<KeyDataMeta>,
 }
@@ -16,18 +13,8 @@ impl<T> ObjectArchiveMeta<T>
 where
     T: std::fmt::Debug + Serialize + for<'de> Deserialize<'de>,
 {
-    pub fn new(
-        device_id: DeviceId,
-        owner: Option<ObjectId>,
-        object: T,
-        key_data: Vec<KeyDataMeta>,
-    ) -> Self {
-        Self {
-            device_id,
-            owner,
-            object,
-            key_data,
-        }
+    pub fn new(object: T, key_data: Vec<KeyDataMeta>) -> Self {
+        Self { object, key_data }
     }
 
     pub fn load(value: serde_json::Value) -> BuckyResult<Self> {

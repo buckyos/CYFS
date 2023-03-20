@@ -1,4 +1,5 @@
 use super::restore_status::*;
+use crate::crypto::*;
 use crate::data::*;
 use crate::key_data::*;
 use crate::meta::*;
@@ -16,6 +17,7 @@ pub struct UniRestoreParams {
     pub cyfs_root: String,
     pub isolate: String,
     pub archive: PathBuf,
+    pub password: Option<ProtectedPassword>,
 }
 
 #[derive(Clone)]
@@ -62,18 +64,19 @@ impl UniRestoreTask {
             .update_phase(RestoreTaskPhase::LoadAndVerify);
 
         // First load the archive dir and verify all pack files
-        let loader = ArchiveLocalFileLoader::load(params.archive, None).await?;
+        let loader = ArchiveLocalFileLoader::load(params.archive, params.password).await?;
 
         let loader: BackupDataLoaderRef = Arc::new(Box::new(loader));
 
         // Load meta
         let meta_value = loader.meta().await?;
 
-        let meta: ObjectArchiveMetaForUniBackup = serde_json::from_value(meta_value).map_err(|e| {
-            let msg = format!("invalid uni meta info format! {}", e,);
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidData, msg)
-        })?;
+        let meta: ObjectArchiveMetaForUniBackup =
+            serde_json::from_value(meta_value).map_err(|e| {
+                let msg = format!("invalid uni meta info format! {}", e,);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::InvalidData, msg)
+            })?;
 
         self.status_manager.init_stat(&meta);
 

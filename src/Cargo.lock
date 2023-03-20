@@ -1501,6 +1501,7 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-trait",
+ "base58",
  "byteorder",
  "chrono",
  "cyfs-base",
@@ -1515,7 +1516,9 @@ dependencies = [
  "cyfs-tracker-cache",
  "cyfs-util",
  "file-rotate",
+ "hmac 0.12.1",
  "log 0.4.17",
+ "pbkdf2",
  "prost 0.9.0",
  "prost-build 0.9.0",
  "protobuf",
@@ -1524,6 +1527,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "sha2 0.10.6",
  "walkdir",
  "zip",
 ]

@@ -25,6 +25,7 @@ pub async fn test() {
         id: bucky_time_now().to_string(),
         isolate: isolate.clone(),
         target_file: LocalFileBackupParam::default(),
+        password: Some(ProtectedPassword::new("123456")),
     };
 
     let target_dir = params.dir().to_path_buf();
@@ -37,6 +38,7 @@ pub async fn test() {
         cyfs_root: get_cyfs_root_path_ref().join("tmp/restore").as_os_str().to_string_lossy().to_string(),
         isolate,
         archive: target_dir,
+        password: Some(ProtectedPassword::new("123456")),
     };
 
     service.restore_manager().run_uni_restore(params).await.unwrap();

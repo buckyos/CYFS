@@ -87,7 +87,8 @@ async fn test_archive() {
 
     index.save(&path).await.unwrap();
 
-    let mut loader = ObjectArchiveSerializeLoader::load(path, Some(aes_key.clone())).await.unwrap();
+    let index  = ObjectArchiveIndex::load(&path).await.unwrap();
+    let mut loader = ObjectArchiveSerializeLoader::load(path, index, Some(aes_key.clone())).await.unwrap();
 
     let ret = loader.verify().await.unwrap();
     assert!(ret.valid);

@@ -1,5 +1,6 @@
 use super::backup_status::*;
 use crate::archive::ObjectArchiveIndex;
+use crate::crypto::*;
 use crate::key_data::*;
 use crate::meta::*;
 use crate::object_pack::*;
@@ -29,11 +30,11 @@ impl Default for LocalFileBackupParam {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct UniBackupParams {
     pub id: String,
     pub isolate: String,
+    pub password: Option<ProtectedPassword>,
 
     pub target_file: LocalFileBackupParam,
 }
@@ -107,7 +108,7 @@ impl UniBackupTask {
 
         let device_id = device.device.desc().device_id();
         let owner = device.device.desc().owner().to_owned();
-        
+
         info!("now will backup: device={}, owner={:?}", device_id, owner);
 
         self.status_manager.update_phase(BackupTaskPhase::Stat);
@@ -208,13 +209,18 @@ impl UniBackupTask {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
+        let crypto = match &params.password {
+            Some(pw) => Some(AesKeyHelper::gen(pw.as_str(), &device_id)),
+            None => None,
+        };
+
         let uni_data_writer = UniBackupDataLocalFileWriter::new(
             params.id.clone(),
             backup_dir.to_path_buf(),
             params.target_file.format,
             params.target_file.file_max_size,
             self.loader.clone(),
-            None,
+            crypto.clone(),
         )?;
 
         let data_writer = uni_data_writer.clone().into_writer();
@@ -245,9 +251,11 @@ impl UniBackupTask {
         let (mut index, uni_meta) = uni_data_writer.finish().await?;
 
         let backup_meta =
-            ObjectArchiveMetaForUniBackup::new(device_id, owner, uni_meta, keydata_meta);
+            ObjectArchiveMetaForUniBackup::new(uni_meta, keydata_meta);
         let backup_meta_value = backup_meta.save()?;
         index.meta = Some(backup_meta_value);
+
+        index.init_device_id(device_id, owner, crypto.as_ref());
 
         index.save(&backup_dir).await?;
 

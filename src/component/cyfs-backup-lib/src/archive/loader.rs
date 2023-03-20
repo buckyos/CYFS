@@ -1,6 +1,7 @@
 use super::file_meta::ArchiveInnerFileMeta;
 use super::index::*;
 use super::verifier::*;
+use crate::crypto::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -22,15 +23,12 @@ pub struct ObjectArchiveSerializeLoader {
 }
 
 impl ObjectArchiveSerializeLoader {
-    pub async fn load(root: PathBuf, crypto: Option<AesKey>) -> BuckyResult<Self> {
+    pub async fn load(root: PathBuf, index: ObjectArchiveIndex, crypto: Option<AesKey>) -> BuckyResult<Self> {
         if !root.is_dir() {
             let msg = format!("invalid object archive root dir: {}", root.display());
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
-
-        // First load index into meta
-        let index = ObjectArchiveIndex::load(&root).await?;
 
         let data_dir = root.join("data");
         let object_reader = ObjectPackSerializeReader::new(
@@ -138,15 +136,12 @@ pub struct ObjectArchiveRandomLoader {
 }
 
 impl ObjectArchiveRandomLoader {
-    pub async fn load(root: PathBuf, crypto: Option<AesKey>) -> BuckyResult<Self> {
+    pub async fn load(root: PathBuf, index: ObjectArchiveIndex, crypto: Option<AesKey>) -> BuckyResult<Self> {
         if !root.is_dir() {
             let msg = format!("invalid object archive root dir: {}", root.display());
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
-
-        // First load index into meta
-        let index = ObjectArchiveIndex::load(&root).await?;
 
         let data_dir = root.join("data");
         let mut object_reader = ObjectPackRandomReader::new(
@@ -235,9 +230,36 @@ pub struct ObjectArchiveLoader {
 }
 
 impl ObjectArchiveLoader {
-    pub async fn load(root: PathBuf, crypto: Option<AesKey>) -> BuckyResult<Self> {
-        let random_loader = ObjectArchiveRandomLoader::load(root.clone(), crypto.clone()).await?;
-        let serialize_loader = ObjectArchiveSerializeLoader::load(root.clone(), crypto).await?;
+    pub async fn load(root: PathBuf, password: Option<ProtectedPassword>) -> BuckyResult<Self> {
+        // First load index into meta
+        let index = ObjectArchiveIndex::load(&root).await?;
+
+        // Check if need password and verify the password
+        let crypto = match index.crypto {
+            CryptoMode::AES => {
+                if password.is_none() {
+                    let msg = format!("password required! crypto mode={:?}", index.crypto);
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                if index.en_device_id.is_none() {
+                    let msg = format!("password required but en_device_id field is none!");
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+                }
+
+                let aes_key = AesKeyHelper::gen(password.as_ref().unwrap(), &index.device_id);
+                AesKeyHelper::verify_device_id(&aes_key, &index.device_id, index.en_device_id.as_ref().unwrap())?;
+                Some(aes_key)
+            }
+            CryptoMode::None => {
+                None
+            }
+        };
+
+        let random_loader = ObjectArchiveRandomLoader::load(root.clone(), index.clone(), crypto.clone()).await?;
+        let serialize_loader = ObjectArchiveSerializeLoader::load(root.clone(), index, crypto).await?;
 
         random_loader.verify().await.map_err(|e| {
             let msg = format!(
