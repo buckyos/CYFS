@@ -29,12 +29,31 @@ impl Default for LocalFileBackupParam {
     }
 }
 
+
 #[derive(Debug, Clone)]
 pub struct UniBackupParams {
     pub id: String,
     pub isolate: String,
 
     pub target_file: LocalFileBackupParam,
+}
+
+impl UniBackupParams {
+    pub fn dir(&self) -> std::borrow::Cow<PathBuf> {
+        match &self.target_file.dir {
+            Some(dir) => std::borrow::Cow::Borrowed(dir),
+            None => {
+                let dir = if self.isolate.is_empty() {
+                    cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", self.id))
+                } else {
+                    cyfs_util::get_cyfs_root_path_ref()
+                        .join(format!("data/backup/{}/{}", self.isolate, self.id))
+                };
+
+                std::borrow::Cow::Owned(dir)
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -72,12 +91,25 @@ impl UniBackupTask {
     }
 
     pub async fn run(&self, params: UniBackupParams) -> BuckyResult<()> {
+        let device = cyfs_util::LOCAL_DEVICE_MANAGER
+            .load("device")
+            .map_err(|e| {
+                let msg = format!(r#"invalid {{cyfs}}/etc/desc/device.desc: {}"#, e);
+                error!("msg");
+                BuckyError::new(e.code(), msg)
+            })?;
+
+        let device_id = device.device.desc().device_id();
+        let owner = device.device.desc().owner().to_owned();
+        
+        info!("now will backup: device={}, owner={:?}", device_id, owner);
+
         self.status_manager.update_phase(BackupTaskPhase::Stat);
 
         self.run_stat(params.clone()).await?;
 
         self.status_manager.update_phase(BackupTaskPhase::Backup);
-        let ret = self.run_backup(params).await;
+        let ret = self.run_backup(device_id, owner, params).await;
 
         let ret = match ret {
             Ok((index, uni_meta)) => Ok(BackupResult {
@@ -88,10 +120,8 @@ impl UniBackupTask {
         };
 
         let r = match ret.as_ref() {
-            Ok(_) => { Ok(()) },
-            Err(e) => {
-                Err(e.clone())
-            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.clone()),
         };
 
         self.status_manager.on_complete(ret);
@@ -152,25 +182,17 @@ impl UniBackupTask {
 
     async fn run_backup(
         &self,
+        device_id: DeviceId,
+        owner: Option<ObjectId>,
         params: UniBackupParams,
     ) -> BuckyResult<(ObjectArchiveIndex, ObjectArchiveMetaForUniBackup)> {
-        let backup_dir = match params.target_file.dir {
-            Some(dir) => dir,
-            None => {
-                if params.isolate.is_empty() {
-                    cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id))
-                } else {
-                    cyfs_util::get_cyfs_root_path_ref()
-                        .join(format!("data/backup/{}/{}", params.isolate, params.id))
-                }
-            }
-        };
+        let backup_dir = params.dir();
 
         Self::check_target_dir(&backup_dir)?;
 
         info!("backup local dir is: {}", backup_dir.display());
 
-        std::fs::create_dir_all(&backup_dir).map_err(|e| {
+        std::fs::create_dir_all(backup_dir.as_path()).map_err(|e| {
             let msg = format!(
                 "create backup dir error: {}, err={}",
                 backup_dir.display(),
@@ -182,7 +204,7 @@ impl UniBackupTask {
 
         let uni_data_writer = UniBackupDataLocalFileWriter::new(
             params.id.clone(),
-            backup_dir.clone(),
+            backup_dir.to_path_buf(),
             params.target_file.format,
             params.target_file.file_max_size,
             self.loader.clone(),
@@ -213,12 +235,14 @@ impl UniBackupTask {
             })?
         };
 
-        let (index, uni_meta) = uni_data_writer.finish().await?;
+        let (mut index, uni_meta) = uni_data_writer.finish().await?;
 
-        let backup_meta = ObjectArchiveMetaForUniBackup::new(params.id, uni_meta, keydata_meta);
+        let backup_meta =
+            ObjectArchiveMetaForUniBackup::new(device_id, owner, uni_meta, keydata_meta);
+        let backup_meta_value = backup_meta.save()?;
+        index.meta = Some(backup_meta_value);
 
         index.save(&backup_dir).await?;
-        backup_meta.save(&backup_dir).await?;
 
         Ok((index, backup_meta))
     }

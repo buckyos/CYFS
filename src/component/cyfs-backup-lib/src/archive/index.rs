@@ -14,10 +14,13 @@ pub enum ObjectBackupStrategy {
 pub struct ObjectArchiveIndex {
     pub id: String,
     pub time: String,
+
     pub format: ObjectPackFormat,
     pub strategy: ObjectBackupStrategy,
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
+
+    pub meta: Option<serde_json::Value>,
 }
 
 impl ObjectArchiveIndex {
@@ -32,6 +35,7 @@ impl ObjectArchiveIndex {
             strategy,
             object_files: vec![],
             chunk_files: vec![],
+            meta: None,
         }
     }
 

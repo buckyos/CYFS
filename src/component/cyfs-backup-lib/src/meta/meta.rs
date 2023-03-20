@@ -2,13 +2,12 @@ use super::{data::KeyDataMeta, state::ObjectArchiveStateMeta, ObjectArchiveUniMe
 use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectArchiveMeta<T> {
-    pub id: String,
-    pub time: String,
+    pub device_id: DeviceId,
+    pub owner: Option<ObjectId>,
+
     pub object: T,
     pub key_data: Vec<KeyDataMeta>,
 }
@@ -17,18 +16,40 @@ impl<T> ObjectArchiveMeta<T>
 where
     T: std::fmt::Debug + Serialize + for<'de> Deserialize<'de>,
 {
-    pub fn new(id: String, object: T, key_data: Vec<KeyDataMeta>) -> Self {
-        let datetime = chrono::offset::Local::now();
-        let time = format!("{:?}", datetime);
-
+    pub fn new(
+        device_id: DeviceId,
+        owner: Option<ObjectId>,
+        object: T,
+        key_data: Vec<KeyDataMeta>,
+    ) -> Self {
         Self {
-            id,
-            time,
+            device_id,
+            owner,
             object,
             key_data,
         }
     }
 
+    pub fn load(value: serde_json::Value) -> BuckyResult<Self> {
+        let s = serde_json::to_string(&value).unwrap();
+        let ret: Self = serde_json::from_value(value).map_err(|e| {
+            let msg = format!("invalid meta info format! meta={}, {}", s, e,);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })?;
+
+        Ok(ret)
+    }
+
+    pub fn save(&self) -> BuckyResult<serde_json::Value> {
+        serde_json::to_value(&self).map_err(|e| {
+            let msg = format!("save meta to serde value faild! value={:?}, {}", self, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })
+    }
+
+    /*
     pub async fn load(dir: &Path) -> BuckyResult<Self> {
         let meta_file = dir.join("meta");
         let s = async_std::fs::read_to_string(&meta_file)
@@ -70,10 +91,15 @@ where
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        info!("save backup meta success! meta={}, file={}", meta, meta_file.display());
+        info!(
+            "save backup meta success! meta={}, file={}",
+            meta,
+            meta_file.display()
+        );
 
         Ok(())
     }
+    */
 }
 
 pub type ObjectArchiveMetaForUniBackup = ObjectArchiveMeta<ObjectArchiveUniMeta>;

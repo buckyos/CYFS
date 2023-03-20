@@ -9,7 +9,7 @@ pub trait BackupDataLoader: Send + Sync {
 
     async fn index(&self) -> ObjectArchiveIndex;
 
-    async fn meta(&self) -> BuckyResult<String>;
+    async fn meta(&self) -> BuckyResult<serde_json::Value>;
 
     // serialize methods
     async fn reset_object(&self);

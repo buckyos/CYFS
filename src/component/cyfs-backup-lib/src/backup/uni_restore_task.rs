@@ -67,10 +67,10 @@ impl UniRestoreTask {
         let loader: BackupDataLoaderRef = Arc::new(Box::new(loader));
 
         // Load meta
-        let meta_str = loader.meta().await?;
+        let meta_value = loader.meta().await?;
 
-        let meta: ObjectArchiveMetaForUniBackup = serde_json::from_str(&meta_str).map_err(|e| {
-            let msg = format!("invalid uni meta info format! value={}, {}", meta_str, e,);
+        let meta: ObjectArchiveMetaForUniBackup = serde_json::from_value(meta_value).map_err(|e| {
+            let msg = format!("invalid uni meta info format! {}", e,);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
