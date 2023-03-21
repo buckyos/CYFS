@@ -111,7 +111,7 @@ impl AppPackage {
                     common: NDNOutputRequestCommon::new(NDNAPILevel::NDC),
                     owner,
                     local_path: path.to_owned(),
-                    chunk_size: 1024 * 1024,
+                    chunk_size: 1024 * 1024 * 4,
                     file_id: None,
                     dirs: None,
                     access: None,
