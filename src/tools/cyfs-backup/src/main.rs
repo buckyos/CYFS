@@ -95,6 +95,7 @@ async fn main_run() {
         .level("info")
         .console("info")
         .enable_bdt(Some("info"), Some("info"))
+        .debug_info_flags(cyfs_debug::LogDebugInfoFlags::default().without_args().into())
         .build()
         .unwrap()
         .start();
