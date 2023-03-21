@@ -62,6 +62,11 @@ async fn main_run() {
             .takes_value(true)
             .required_if("mode", ServiceMode::Restore.as_str())
             .help("The local directory where the backup file been stored"),
+    ).arg(
+        Arg::with_name("password")
+            .long("password")
+            .takes_value(true)
+            .help("The password used to encrypt or decrypt the target archive"),
     )
     .get_matches();
 
@@ -90,6 +95,7 @@ async fn main_run() {
         .level("info")
         .console("info")
         .enable_bdt(Some("info"), Some("info"))
+        .debug_info_flags(cyfs_debug::LogDebugInfoFlags::default().without_args().into())
         .build()
         .unwrap()
         .start();
@@ -109,6 +115,10 @@ async fn main_run() {
         ServiceMode::Backup | ServiceMode::Restore => {
             let id = matches.value_of("id").unwrap();
             let isolate = matches.value_of("isolate").unwrap_or("");
+            let password = match matches.value_of("password") {
+                Some(pw) => Some(ProtectedPassword::new(pw)),
+                None => None,
+            };
 
             match mode {
                 ServiceMode::Backup => {
@@ -133,6 +143,7 @@ async fn main_run() {
                         id: id.to_owned(),
                         isolate: isolate.to_owned(),
                         target_file,
+                        password,
                     };
 
                     let backup_manager = backup::BackupService::new(&params.isolate)
@@ -155,6 +166,7 @@ async fn main_run() {
                             .to_string(),
                         isolate: isolate.to_owned(),
                         archive: PathBuf::from(archive),
+                        password,
                     };
 
                     let restore_manager = restore::RestoreService::new(&params.isolate)

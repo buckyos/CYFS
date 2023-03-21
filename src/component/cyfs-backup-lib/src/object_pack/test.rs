@@ -8,6 +8,8 @@ async fn test_pack() {
     let count: usize = 1024 * 10;
     let file_buffer: Vec<u8> = (0..1024 * 4).map(|_| rand::random::<u8>()).collect();
 
+    let aes_key = AesKey::random();
+
     let path = cyfs_util::get_temp_path().join("test_pack");
     if !path.is_dir() {
         std::fs::create_dir_all(&path).unwrap();
@@ -15,7 +17,7 @@ async fn test_pack() {
 
     let backup_file = path.join("backup.zip");
 
-    let mut pack = ObjectPackFactory::create_zip_writer(backup_file.clone());
+    let mut pack = ObjectPackFactory::create_zip_writer(backup_file.clone(), Some(aes_key.clone()));
     pack.open().await.unwrap();
 
     for i in 0..count {
@@ -40,7 +42,7 @@ async fn test_pack() {
 
     pack.finish().await.unwrap();
 
-    let mut pack_reader = ObjectPackFactory::create_zip_reader(backup_file);
+    let mut pack_reader = ObjectPackFactory::create_zip_reader(backup_file, Some(aes_key.clone()));
     pack_reader.open().await.unwrap();
 
     let mut all = HashSet::new();
@@ -50,6 +52,7 @@ async fn test_pack() {
 
         all.insert(id.clone());
 
+        info!("will get data {}", i);
         let data = pack_reader.get_data(&id).await.unwrap().unwrap();
         let buf = data.data.into_buffer().await.unwrap();
         assert_eq!(buf, file_buffer);
@@ -80,5 +83,6 @@ async fn test_pack() {
 
 #[test]
 fn test() {
+    cyfs_util::init_log("test-backup-object-pack", Some("debug"));
     async_std::task::block_on(test_pack());
 }

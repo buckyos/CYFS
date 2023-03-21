@@ -95,7 +95,7 @@ impl TestStack {
 
         param.bdt_port = bdt_port;
 
-        param.device_file_name = device_id_str.clone();
+        param.device_file_name = format!("{}/device", param.isolate.as_ref().unwrap());
         param.device = Some(self.device_info.clone());
         param.shared_stack = true;
         param.shared_stack_stub = true;

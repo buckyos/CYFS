@@ -36,6 +36,8 @@ async fn test_archive() {
         std::fs::create_dir_all(&data_dir).unwrap();
     }
 
+    let aes_key = AesKey::random();
+
     let mut objects = HashMap::new();
     let mut generator = ObjectArchiveGenerator::new(
         bucky_time_now().to_string(),
@@ -43,6 +45,7 @@ async fn test_archive() {
         ObjectBackupStrategy::Uni,
         data_dir.clone(),
         1024 * 1024 * 10,
+        Some(aes_key.clone()),
     );
     for i in 0..1024 * 10 {
         let obj = Text::create(&format!("test{}", i), "", "");
@@ -84,7 +87,8 @@ async fn test_archive() {
 
     index.save(&path).await.unwrap();
 
-    let mut loader = ObjectArchiveSerializeLoader::load(path).await.unwrap();
+    let index  = ObjectArchiveIndex::load(&path).await.unwrap();
+    let mut loader = ObjectArchiveSerializeLoader::load(path, index, Some(aes_key.clone())).await.unwrap();
 
     let ret = loader.verify().await.unwrap();
     assert!(ret.valid);

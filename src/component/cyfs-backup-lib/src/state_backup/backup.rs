@@ -73,6 +73,7 @@ impl StateBackupManager {
             self.format,
             1024 * 1024 * 128,
             self.loader.clone(),
+            None,
         )?;
 
         let writer = data_writer.clone().into_writer();

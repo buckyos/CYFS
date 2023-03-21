@@ -1,4 +1,4 @@
-use crate::archive::*;
+use crate::{archive::*, crypto::ProtectedPassword};
 use cyfs_base::*;
 use super::loader::*;
 
@@ -14,8 +14,9 @@ pub struct ArchiveLocalFileLoader {
 impl ArchiveLocalFileLoader {
     pub async fn load(
         archive_dir: PathBuf,
+        password: Option<ProtectedPassword>,
     ) -> BuckyResult<Self> {
-        let archive = ObjectArchiveLoader::load(archive_dir.clone()).await?;
+        let archive = ObjectArchiveLoader::load(archive_dir.clone(), password).await?;
 
         Ok(Self {
             archive_dir,
@@ -23,29 +24,18 @@ impl ArchiveLocalFileLoader {
         })
     }
 
-    async fn load_meta(&self) -> BuckyResult<String> {
-        let meta_file = self.archive_dir.join("meta");
-        if !meta_file.is_file() {
+    async fn load_meta(&self) -> BuckyResult<serde_json::Value> {
+        let index = self.index().await;
+        if index.meta.is_none() {
             let msg = format!(
-                "load meta info from file but not exists! file={}",
-                meta_file.display(),
+                "load meta info from index but not exists! index={:?}",
+                index,
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let s = async_std::fs::read_to_string(&meta_file)
-            .await
-            .map_err(|e| {
-                let msg = format!(
-                    "load meta info from file failed! file={}, {}",
-                    meta_file.display(),
-                    e
-                );
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
-        Ok(s)
+        Ok(index.meta.as_ref().unwrap().clone())
     }
 }
 
@@ -61,7 +51,7 @@ impl BackupDataLoader for ArchiveLocalFileLoader {
         loader.random_reader().index().to_owned()
     }
 
-    async fn meta(&self) -> BuckyResult<String> {
+    async fn meta(&self) -> BuckyResult<serde_json::Value> {
         Self::load_meta(&self).await
     }
 
