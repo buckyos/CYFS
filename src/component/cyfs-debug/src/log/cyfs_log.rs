@@ -112,6 +112,11 @@ impl CyfsLoggerBuilder {
         self
     }
 
+    pub fn debug_info_flags(mut self, flags: u32) -> Self {
+        self.config.global.set_debug_info_flags(flags);
+        self
+    }
+
     pub fn build(mut self) -> BuckyResult<CyfsLogger> {
         self.config.disable_async_std_log();
 
@@ -185,18 +190,23 @@ impl CyfsLogger {
         println!("log max level: {}", max_level);
         log::set_max_level(max_level.into());
 
+        let flags = self.config.global.get_debug_info_flags();
+
         if let Err(e) = log::set_boxed_logger(self.into()) {
             let msg = format!("call set_boxed_logger failed! {}", e);
             println!("{}", msg);
         }
 
-        Self::display_debug_info();
+        Self::display_debug_info(flags);
     }
 
-    pub fn display_debug_info() {
-        // 输出环境信息，用以诊断一些环境问题
-        for argument in std::env::args() {
-            info!("arg: {}", argument);
+    pub fn display_debug_info(flags: LogDebugInfoFlags) {
+        
+        // Output environmental information to diagnose some environmental problems
+        if flags.is_args_present() {
+            for argument in std::env::args() {
+                info!("arg: {}", argument);
+            }
         }
 
         // info!("current exe: {:?}", std::env::current_exe());
@@ -204,8 +214,10 @@ impl CyfsLogger {
 
         info!("current version: {}", cyfs_base::get_version());
 
-        for (key, value) in std::env::vars() {
-            info!("env: {}: {}", key, value);
+        if flags.is_env_present() {
+            for (key, value) in std::env::vars() {
+                info!("env: {}: {}", key, value);
+            }
         }
     }
 
