@@ -112,6 +112,10 @@ pub fn get_app_web_dir(app_id: &str) -> PathBuf {
     get_cyfs_root_path().join("app").join("web").join(app_id)
 }
 
+pub fn get_app_web_dir2(app_id: &str, version: &str) -> PathBuf {
+    get_cyfs_root_path().join("app").join("web2").join(app_id).join(version)
+}
+
 pub fn get_app_acl_dir(app_id: &str) -> PathBuf {
     get_cyfs_root_path().join("app").join("acl").join(app_id)
 }

@@ -144,54 +144,18 @@ impl AppController {
             error!("get app {} owner id failed", &app_id);
             SubErrorCode::LoadFailed
         })?;
-        AppPackage::install(&app_id, &source_id, &owner_id, self.named_cache_client.get().unwrap(), self.config.config.repo_mode.clone())
+        let web_dir_id = AppPackage::install(&app_id, version,
+                                             &source_id, &owner_id,
+                                             self.named_cache_client.get().unwrap(),
+                                             self.config.config.repo_mode.clone(),
+                                             self.shared_stack.get().unwrap().clone())
             .await
             .map_err(|e| {
                 error!("install app:{} failed, {}", app_id, e);
                 SubErrorCode::DownloadFailed
             })?;
         let service_dir = get_app_dir(&app_id.to_string());
-        let web_dir = get_app_web_dir(&app_id.to_string());
 
-        let web_dir_id = if web_dir.exists() {
-            let pub_resp = self
-                .shared_stack
-                .get()
-                .unwrap()
-                .trans()
-                .publish_file(TransPublishFileOutputRequest {
-                    common: NDNOutputRequestCommon {
-                        req_path: None,
-                        dec_id: Some(cyfs_core::get_system_dec_app().clone()),
-                        level: Default::default(),
-                        target: None,
-                        referer_object: vec![],
-                        flags: 0,
-                    },
-                    owner: self.owner.clone(),
-                    local_path: web_dir,
-                    chunk_size: 1024 * 1024,
-                    file_id: None,
-                    dirs: None,
-                    access: None,
-                    chunk_method: TransPublishChunkMethod::Track,
-                })
-                .await
-                .map_err(|e| {
-                    error!(
-                        "pub web dir failed when install. app:{} failed, err:,{}",
-                        app_id, e
-                    );
-                    SubErrorCode::PubDirFailed
-                })?;
-            info!(
-                "publish web file, app:{}, fileid:{}",
-                app_id, pub_resp.file_id
-            );
-            Some(pub_resp.file_id)
-        } else {
-            None
-        };
         let no_service = !service_dir.exists();
 
         if !no_service {
@@ -231,7 +195,7 @@ impl AppController {
         Ok((no_service, web_dir_id))
     }
 
-    pub async fn uninstall_app(&self, app_id: &DecAppId) -> AppActionResult<()> {
+    pub async fn uninstall_app(&self, app_id: &DecAppId, ver: &str) -> AppActionResult<()> {
         let _ = self.stop_app(app_id).await;
         info!("try to uninstall after stop. appid:{}", app_id);
         // 删除主机上的app目录
@@ -246,6 +210,14 @@ impl AppController {
         if app_web_dir.exists() {
             std::fs::remove_dir_all(app_web_dir).map_err(|e| {
                 warn!("remove app web dir failed, app:{}, err:{}", app_id, e);
+                SubErrorCode::RemoveFailed
+            })?;
+        }
+
+        let app_web_dir = get_app_web_dir2(&app_id.to_string(), ver);
+        if app_web_dir.exists() {
+            std::fs::remove_dir_all(app_web_dir).map_err(|e| {
+                warn!("remove app web dir2 failed, app:{}, err:{}", app_id, e);
                 SubErrorCode::RemoveFailed
             })?;
         }
