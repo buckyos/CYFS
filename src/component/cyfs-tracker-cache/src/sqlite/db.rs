@@ -231,6 +231,8 @@ impl SqliteDBDataCache {
         }
 
         let sql = sql.to_owned() + &querys.join(" AND ");
+        let sql = sql + " ORDER BY update_time DESC";
+
         let (conn, _lock) = self.conn.get_read_conn()?;
         let mut stmt = conn.prepare(&sql).map_err(|e| {
             let msg = format!("prepare select pos error: sql={}, {}", sql, e);
