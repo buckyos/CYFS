@@ -631,7 +631,7 @@ impl Task for DownloadFileTask {
                         error!("download session finished but task state is not running or paused! task={}, task state={:?}", self.task_id, task_status.status);
                         DownloadTaskState {
                             task_status: task_status.status,
-                            err_code: None,
+                            err_code: task_status.err_code,
                             speed: 0,
                             upload_speed: 0,
                             downloaded_progress: 100,
@@ -717,6 +717,14 @@ impl Task for DownloadFileTask {
             changed = true;
             task_status.state.download_progress = ret.downloaded_progress;
         }
+        if task_status.err_code != ret.err_code {
+            info!(
+                "download task err code updated! {:?} -> {:?}",
+                task_status.err_code, ret.err_code
+            );
+            changed = true;
+            task_status.err_code = ret.err_code;
+        }
 
         if changed {
             self.save_task_status(&task_status).await?;
@@ -751,6 +759,7 @@ impl DownloadFileTaskState {
 pub(super) struct DownloadFileTaskStatus {
     status: TaskStatus,
     state: DownloadFileTaskState,
+    err_code: Option<BuckyErrorCode>,
 }
 
 impl DownloadFileTaskStatus {
@@ -758,6 +767,7 @@ impl DownloadFileTaskStatus {
         Self {
             status: TaskStatus::Stopped,
             state: DownloadFileTaskState::new(0),
+            err_code: None,
         }
     }
 
@@ -766,6 +776,7 @@ impl DownloadFileTaskStatus {
             Self {
                 status: TaskStatus::Stopped,
                 state: DownloadFileTaskState::clone_from_slice(data)?,
+                err_code: None,
             }
         } else {
             Self::new()

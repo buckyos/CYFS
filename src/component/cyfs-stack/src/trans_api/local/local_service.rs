@@ -444,7 +444,17 @@ impl LocalTransService {
                 }
             }
             TaskStatus::Finished => TransTaskState::Finished(0),
-            TaskStatus::Failed => TransTaskState::Err(task_state.err_code.unwrap()),
+            TaskStatus::Failed => {
+                let err_code = match task_state.err_code {
+                    Some(err_code) => err_code,
+                    None => {
+                        error!("get task state with failed status but err_code field missing! task={}", task_id);
+                        BuckyErrorCode::Failed
+                    }
+                };
+
+                TransTaskState::Err(err_code) 
+            }
         };
 
         let resp = TransGetTaskStateInputResponse {
