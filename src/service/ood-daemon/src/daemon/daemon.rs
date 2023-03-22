@@ -2,7 +2,7 @@ use super::gateway_monitor::GATEWAY_MONITOR;
 use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER, SystemConfigMonitor};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
-use crate::status::OOD_STATUS_MANAGER;
+use crate::status::{OOD_STATUS_MANAGER, OODStatusInterfaceHost};
 use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
@@ -64,12 +64,12 @@ impl Daemon {
         }
     }
 
-    pub async fn run(&self) -> BuckyResult<()> {
+    pub async fn run(&self, status_host: OODStatusInterfaceHost) -> BuckyResult<()> {
         init_system_config().await?;
 
         DEVICE_CONFIG_MANAGER.init()?;
 
-        OOD_STATUS_MANAGER.start().await?;
+        OOD_STATUS_MANAGER.start(status_host).await?;
 
         // 关注绑定事件
         let notify = BindNotify {

@@ -2,6 +2,7 @@ use cyfs_base::*;
 use cyfs_lib::RequestorHelper;
 use ood_control::*;
 use super::service_status::*;
+use super::interface::*;
 
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -18,7 +19,7 @@ struct ServiceStatusCache {
 #[derive(Clone)]
 pub struct OODStatusManager {
     service_list: Arc<Mutex<Vec<ServiceStatusCache>>>,
-    interface: Arc<OnceCell<HttpTcpListener>>,
+    interface: Arc<OnceCell<OODStatusInterface>>,
 
     generator: Arc<OODDaemonStatusGenerator>,
 }
@@ -31,26 +32,24 @@ impl OODStatusManager {
             generator: Arc::new(OODDaemonStatusGenerator::new()),
         };
 
-        ret.init_interface();
         ret
     }
 
-    fn init_interface(&self) {
+    fn init_interface(&self, host: OODStatusInterfaceHost) {
+        info!("init status service interface: {:?}", host);
+        
         let mut server = HttpServer::new_server();
         self.register(&mut server);
 
-        let addr = std::net::SocketAddr::new(
-            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-            OOD_DAEMON_LOCAL_STATUS_PORT,
-        );
+        let interface = OODStatusInterface::new(host, server);
 
-        let interface = HttpTcpListener::new_with_raw_server(addr, Arc::new(server));
         if let Err(_) = self.interface.set(interface) {
             unreachable!();
         }
     }
 
-    pub async fn start(&self) -> BuckyResult<()> {
+    pub async fn start(&self, host: OODStatusInterfaceHost) -> BuckyResult<()> {
+        self.init_interface(host);
         self.interface.get().unwrap().start().await
     }
 
