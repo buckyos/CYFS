@@ -1,11 +1,8 @@
 use cyfs_base::*;
 use cyfs_bdt::ChunkReader;
 use cyfs_chunk_cache::{ChunkManager, ChunkRead, ChunkType};
-use cyfs_util::cache::{
-    GetChunkRequest, GetTrackerPositionRequest, NamedDataCache, RemoveTrackerPositionRequest,
-    TrackerCache, TrackerDirection, TrackerPostion,
-};
-use cyfs_util::{AsyncReadWithSeek, ChunkReaderWithHash, ReaderWithLimit};
+use cyfs_util::cache::*;
+use cyfs_util::{AsyncReadWithSeek, ChunkHashErrorHandler, ChunkReaderWithHash, ReaderWithLimit};
 
 use async_std::fs::OpenOptions;
 use futures::AsyncSeekExt;
@@ -15,7 +12,7 @@ use std::sync::Arc;
 
 pub struct ChunkStoreReader {
     ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>,
+    tracker: TrackerCacheRef,
     chunk_manager: Arc<ChunkManager>,
 }
 
@@ -37,7 +34,7 @@ impl ChunkStoreReader {
     ) -> Self {
         Self {
             ndc,
-            tracker,
+            tracker: Arc::new(tracker),
             chunk_manager,
         }
     }
@@ -46,6 +43,7 @@ impl ChunkStoreReader {
         chunk: &ChunkId,
         path: &Path,
         offset: u64,
+        fixer: Box<dyn ChunkHashErrorHandler>,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         debug!(
             "begin read chunk from file, chunk={}, offset={}, len={}, path={}",
@@ -81,7 +79,10 @@ impl ChunkStoreReader {
         if actual_offset != offset {
             let msg = format!(
                 "seek file to offset but unmatch! chunk={}, path={}, except offset={}, got={}",
-                chunk, path.display(), offset, actual_offset
+                chunk,
+                path.display(),
+                offset,
+                actual_offset
             );
             error!("{}", msg);
 
@@ -97,6 +98,7 @@ impl ChunkStoreReader {
             path.to_string_lossy().to_string(),
             chunk.to_owned(),
             limit_reader,
+            Some(fixer),
         );
 
         Ok(Box::new(hash_reader))
@@ -125,14 +127,16 @@ impl ChunkStoreReader {
                     //FIXME
                     TrackerPostion::File(path) => {
                         info!("will read chunk from file: chunk={}, file={}", chunk, path);
-                        Self::read_chunk(chunk, Path::new(path), 0).await
+                        let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
+                        Self::read_chunk(chunk, Path::new(path), 0, fixer).await
                     }
                     TrackerPostion::FileRange(fr) => {
                         info!(
                             "will read chunk from file range: chunk={}, file={}, range={}:{}",
                             chunk, fr.path, fr.range_begin, fr.range_end
                         );
-                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
+                        let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
+                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin, fixer).await
                     }
                     TrackerPostion::ChunkManager => {
                         info!("will read chunk from chunk manager: chunk={}", chunk);
@@ -161,7 +165,7 @@ impl ChunkStoreReader {
                     }
                     Err(e) => {
                         if read_indeed {
-                            // 如果tracker中的pos无法正确读取，从tracker中删除这条记录
+                            // If the pos in the tracker cannot be read correctly, this record is deleted from the tracker
                             let _ = self
                                 .tracker
                                 .remove_position(&RemoveTrackerPositionRequest {
@@ -281,5 +285,36 @@ impl ChunkReader for ChunkStoreReader {
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         let (reader, _) = self.read_impl(chunk).await?;
         Ok(reader)
+    }
+}
+
+pub struct ChunkTrackerPosFixer {
+    tracker: TrackerCacheRef,
+    pos: TrackerPostion,
+}
+
+impl ChunkTrackerPosFixer {
+    pub fn new(tracker: TrackerCacheRef, pos: TrackerPostion) -> Box<dyn ChunkHashErrorHandler> {
+        let ret = Self { tracker, pos };
+        Box::new(ret)
+    }
+}
+
+#[async_trait::async_trait]
+impl ChunkHashErrorHandler for ChunkTrackerPosFixer {
+    fn on_hash_error(&self, chunk_id: &ChunkId, _path: &str) {
+        let tracker = self.tracker.clone();
+        let chunk_id = chunk_id.to_string();
+        let pos = self.pos.clone();
+
+        async_std::task::spawn(async move {
+            let _ = tracker
+                .remove_position(&RemoveTrackerPositionRequest {
+                    id: chunk_id,
+                    direction: Some(TrackerDirection::Store),
+                    pos: Some(pos),
+                })
+                .await;
+        });
     }
 }

@@ -92,11 +92,17 @@ impl async_std::io::Seek for ReaderWithLimit {
 
 impl AsyncReadWithSeek for ReaderWithLimit {}
 
+#[async_trait::async_trait]
+pub trait ChunkHashErrorHandler: Send + Sync {
+    fn on_hash_error(&self, chunk_id: &ChunkId, path: &str);
+}
+
 pub struct ChunkReaderWithHash {
     path: String,
     chunk_id: ChunkId,
     reader: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
     hash: sha2::Sha256,
+    error_handler: Option<Box<dyn ChunkHashErrorHandler>>,
 }
 
 impl ChunkReaderWithHash {
@@ -104,12 +110,14 @@ impl ChunkReaderWithHash {
         path: String,
         chunk_id: ChunkId,
         reader: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        error_handler: Option<Box<dyn ChunkHashErrorHandler>>,
     ) -> Self {
         Self {
             path,
             chunk_id,
             reader,
             hash: sha2::Sha256::new(),
+            error_handler,
         }
     }
 }
@@ -143,6 +151,11 @@ impl async_std::io::Read for ChunkReaderWithHash {
                                 self.chunk_id, self.path, self.chunk_id, actual_id
                             );
                             error!("{}", msg);
+
+                            if let Some(error_handler) = self.error_handler.take() {
+                                error_handler.on_hash_error(&self.chunk_id, &self.path);
+                            }
+
                             let err = BuckyError::new(BuckyErrorCode::InvalidData, msg);
                             Poll::Ready(Err(err.into()))
                         }
@@ -187,7 +200,7 @@ mod tests {
         //assert_eq!(real_id, chunk_id);
 
         let reader = async_std::fs::File::open(file).await.unwrap();
-        let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader));
+        let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader), None);
 
         let mut buf2 = vec![];
         reader.read_to_end(&mut buf2).await.unwrap();
@@ -200,7 +213,7 @@ mod tests {
         {
             let buf_reader = Box::new(async_std::io::Cursor::new(buf.clone()));
             let mut reader =
-                ChunkReaderWithHash::new("test1".to_owned(), chunk_id.clone(), buf_reader);
+                ChunkReaderWithHash::new("test1".to_owned(), chunk_id.clone(), buf_reader, None);
 
             let mut buf2 = vec![];
             reader.read_to_end(&mut buf2).await.unwrap();
@@ -223,6 +236,7 @@ mod tests {
                 "test2".to_owned(),
                 sub_chunk_id.clone(),
                 Box::new(sub_reader),
+                None,
             );
 
             let mut buf2 = vec![];
@@ -242,6 +256,7 @@ mod tests {
                 "test2".to_owned(),
                 sub_chunk_id.clone(),
                 Box::new(sub_reader),
+                None,
             );
 
             let mut buf2 = vec![];
