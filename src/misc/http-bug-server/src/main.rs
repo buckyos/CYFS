@@ -44,6 +44,9 @@ async fn main() {
             let info = req.body_json::<PanicReportRequest>().await?;
 
             let path = get_panic_file_path(&info);
+
+            info!("recv panic: service {}, version {}, hash {}, save to {}", info.service_name, info.version, info.info.hash, path.display());
+
             let content = format!(
                 "CYFS service panic report: \nproduct:{}\nservice:{}\nbin:{}\nchannel:{}\ntarget:{}\nversion:{}\nmsg:{}",
                 info.product_name,

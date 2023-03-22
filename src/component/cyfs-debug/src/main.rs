@@ -1,24 +1,24 @@
 use log::*;
-use http_types::Url;
+//use http_types::Url;
 
 use cyfs_debug::*;
-use crate::HttpLogReporter;
+//use crate::HttpLogReporter;
 
 async fn main_run() {
-    let http_reporter = HttpLogReporter::new(Url::parse("http://127.0.0.1:9550/logs").unwrap(), vec![], 100);
-    http_reporter.start();
+    //let http_reporter = HttpLogReporter::new(Url::parse("http://127.0.0.1:9550/logs").unwrap(), vec![], 100);
+    //http_reporter.start();
     CyfsLoggerBuilder::new_app("cyfs-debug")
         .level("trace")
         .console("trace")
         .enable_bdt(Some("warn"), Some("warn"))
-        .target(Box::new(http_reporter))
+        //.target(Box::new(http_reporter))
         .build()
         .unwrap()
         .start();
 
     PanicBuilder::new("tools", "cyfs-debug")
         .exit_on_panic(true)
-        .http_bug_report("http://127.0.0.1:9550/panic/")
+        .http_bug_report("http://panic.report.cyfs.com/beta/")
         .build()
         .start();
 
@@ -31,7 +31,7 @@ async fn main_run() {
 
     
     async_std::task::spawn(async move {
-        async_std::task::sleep(std::time::Duration::from_secs(30)).await;
+        async_std::task::sleep(std::time::Duration::from_secs(3)).await;
         unreachable!("test cyfs-debug panic");
     });
 
