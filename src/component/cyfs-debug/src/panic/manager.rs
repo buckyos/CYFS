@@ -79,9 +79,9 @@ impl PanicManager {
             let pinfo = CyfsPanicInfo::new(backtrace, info);
             let this = this.clone();
 
-            std::thread::spawn(move || {
+            let _ = std::thread::spawn(move || {
                 this.on_panic(pinfo);
-            });
+            }).join();
         }));
     }
 

@@ -39,13 +39,13 @@ impl HttpBugReporter {
         let mut resp = surf::post(report_url).body_json(&req)?.await?;
         match resp.status() {
             StatusCode::Ok => {
-                info!("post to notify addr success");
+                info!("post to http notify addr success");
 
                 Ok(())
             }
             code @ _ => {
                 let body = resp.body_string().await;
-                let msg = format!("post to notify addr failed! addr={}, status={}, msg={:?}", 
+                let msg = format!("post to http notify addr failed! addr={}, status={}, msg={:?}", 
                     self.notify_addr, code, body);
                 error!("{}", msg);
                 Err(BuckyError::from(msg))
