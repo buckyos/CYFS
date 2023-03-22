@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 use clap::{Arg, Command, value_parser};
-use tide::http::headers::HeaderValue;
 use tide::{Request, Response};
-use tide::log::info;
-use tide::security::CorsMiddleware;
 use cyfs_debug::{CyfsLoggerBuilder, LogRecordMeta, PanicReportRequest, ReportLogItem};
 use cyfs_util::get_service_data_dir;
+use log::*;
 
 const SERVICE_NAME: &str = "bug-server";
 
@@ -46,7 +44,11 @@ async fn main() {
             let path = get_panic_file_path(&info);
 
             info!("recv panic: service {}, version {}, hash {}, save to {}", info.service_name, info.version, info.info.hash, path.display());
-
+            let msg = serde_json::to_string_pretty(&info.info).unwrap_or_else(|e| {
+                let msg = format!("encode panic info to string error: {:?}, {}", &info.info, e);
+                error!("{}", msg);
+                msg
+            }).replace("\\n", "\n");
             let content = format!(
                 "CYFS service panic report: \nproduct:{}\nservice:{}\nbin:{}\nchannel:{}\ntarget:{}\nversion:{}\nmsg:{}",
                 info.product_name,
@@ -55,7 +57,7 @@ async fn main() {
                 info.channel,
                 info.target,
                 info.version,
-                info.info_to_string(),
+                msg,
             );
 
             std::fs::write(path, content)?;
