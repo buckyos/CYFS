@@ -136,7 +136,7 @@ impl DockerApi {
 
         // mount log 目录
         let log_dir = get_app_log_dir(id);
-        let default_log_dir = default_cyfs_root_path().join("log").join("app").join(id);
+        let default_log_dir = default_cyfs_root_path().join("log").join("app");
 
         let app_data_dir = get_app_data_dir(id);
         let default_app_data_dir = get_app_data_dir_ex(id, &default_cyfs_root_path());
