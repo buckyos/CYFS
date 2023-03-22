@@ -5,9 +5,6 @@ use cyfs_util::get_cyfs_root_path_ref;
 use zone_simulator::*;
 
 pub async fn test() {
-    // 使用协议栈本身的dec_id
-    let dec_id = TestLoader::get_dec_id();
-
     let user1_ood = TestLoader::get_stack(DeviceIndex::User1OOD);
 
     let isolate = match &user1_ood.config().get_stack_params().config.isolate {

@@ -40,7 +40,7 @@ pub async fn test_restart() {
 
 pub async fn test() {
     backup::test().await;
-    return;
+    //return;
     
     async_std::task::spawn(async move {
         shared_stack::test().await;
