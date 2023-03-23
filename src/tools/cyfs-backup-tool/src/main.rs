@@ -3,7 +3,7 @@ mod def;
 mod restore;
 mod stack;
 
-use cyfs_backup_lib::*;
+use cyfs_backup::*;
 use cyfs_base::BuckyErrorCode;
 use def::*;
 

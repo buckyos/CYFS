@@ -1,5 +1,5 @@
 use cyfs_base::*;
-use cyfs_backup_lib::RestoreManager;
+use cyfs_backup::RestoreManager;
 
 
 pub struct RestoreService {

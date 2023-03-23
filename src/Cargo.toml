@@ -3,7 +3,7 @@ resolver = "2"
 
 members = [
     "./component/cyfs-base",
-    "./component/cyfs-backup-lib",
+    "./component/cyfs-backup",
     "./component/cyfs-core",
     "./component/cyfs-base-derive",
     "./component/cyfs-chunk",
@@ -52,7 +52,7 @@ members = [
     "./tools/bdt-debuger-deamon",
     "./tools/cyfs-check",
     "./tools/sn-updater",
-    "./tools/cyfs-backup",
+    "./tools/cyfs-backup-tool",
 
     "./meta/browser-meta-spv",
     "./meta/cyfs-meta",

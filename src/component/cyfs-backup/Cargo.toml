@@ -1,5 +1,5 @@
 [package]
-name = "cyfs-backup-lib"
+name = "cyfs-backup"
 version = "0.1.0"
 authors = ["liyaxing <liyaxing@buckyos.com>"]
 edition = "2021"

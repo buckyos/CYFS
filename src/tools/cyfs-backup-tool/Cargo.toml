@@ -1,7 +1,11 @@
 [package]
-name = "cyfs-backup"
+name = "cyfs-backup-tool"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "cyfs-backup"
+path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +16,7 @@ cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-noc = { path = "../../component/cyfs-noc" }
 cyfs-ndc = { path = "../../component/cyfs-ndc" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
-cyfs-backup-lib = { path = "../../component/cyfs-backup-lib" }
+cyfs-backup = { path = "../../component/cyfs-backup" }
 cyfs-chunk-cache = { path = "../../component/cyfs-chunk-cache" }
 cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.7' }
 cyfs-bdt-ext = { path = "../../component/cyfs-bdt-ext" }

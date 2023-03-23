@@ -1513,27 +1513,6 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "async-trait",
- "clap 2.34.0",
- "cyfs-backup-lib",
- "cyfs-base",
- "cyfs-bdt",
- "cyfs-bdt-ext",
- "cyfs-chunk-cache",
- "cyfs-debug",
- "cyfs-lib",
- "cyfs-ndc",
- "cyfs-noc",
- "cyfs-tracker-cache",
- "cyfs-util",
- "log 0.4.17",
-]
-
-[[package]]
-name = "cyfs-backup-lib"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "async-trait",
  "base58",
  "byteorder",
  "chrono",
@@ -1563,6 +1542,27 @@ dependencies = [
  "sha2 0.10.6",
  "walkdir",
  "zip",
+]
+
+[[package]]
+name = "cyfs-backup-tool"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "clap 2.34.0",
+ "cyfs-backup",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-bdt-ext",
+ "cyfs-chunk-cache",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-ndc",
+ "cyfs-noc",
+ "cyfs-tracker-cache",
+ "cyfs-util",
+ "log 0.4.17",
 ]
 
 [[package]]
@@ -2362,7 +2362,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cyfs-backup",
- "cyfs-backup-lib",
+ "cyfs-backup-tool",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-chunk-lib",

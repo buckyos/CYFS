@@ -1,5 +1,5 @@
 use super::stack::StackComponentsHelper;
-use cyfs_backup_lib::BackupManager;
+use cyfs_backup::BackupManager;
 use cyfs_base::*;
 
 pub struct BackupService {
