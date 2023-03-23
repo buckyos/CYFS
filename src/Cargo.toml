@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "./component/cyfs-base",
     "./component/cyfs-backup",
+    "./component/cyfs-backup-lib",
     "./component/cyfs-core",
     "./component/cyfs-base-derive",
     "./component/cyfs-chunk",

@@ -1,8 +1,9 @@
+use super::ObjectArchiveIndexHelper;
 use super::file_meta::ArchiveInnerFileMeta;
-use super::index::*;
 use super::verifier::*;
 use crate::crypto::*;
 use crate::object_pack::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use std::path::PathBuf;
@@ -23,7 +24,11 @@ pub struct ObjectArchiveSerializeLoader {
 }
 
 impl ObjectArchiveSerializeLoader {
-    pub async fn load(root: PathBuf, index: ObjectArchiveIndex, crypto: Option<AesKey>) -> BuckyResult<Self> {
+    pub async fn load(
+        root: PathBuf,
+        index: ObjectArchiveIndex,
+        crypto: Option<AesKey>,
+    ) -> BuckyResult<Self> {
         if !root.is_dir() {
             let msg = format!("invalid object archive root dir: {}", root.display());
             error!("{}", msg);
@@ -136,7 +141,11 @@ pub struct ObjectArchiveRandomLoader {
 }
 
 impl ObjectArchiveRandomLoader {
-    pub async fn load(root: PathBuf, index: ObjectArchiveIndex, crypto: Option<AesKey>) -> BuckyResult<Self> {
+    pub async fn load(
+        root: PathBuf,
+        index: ObjectArchiveIndex,
+        crypto: Option<AesKey>,
+    ) -> BuckyResult<Self> {
         if !root.is_dir() {
             let msg = format!("invalid object archive root dir: {}", root.display());
             error!("{}", msg);
@@ -232,7 +241,7 @@ pub struct ObjectArchiveLoader {
 impl ObjectArchiveLoader {
     pub async fn load(root: PathBuf, password: Option<ProtectedPassword>) -> BuckyResult<Self> {
         // First load index into meta
-        let index = ObjectArchiveIndex::load(&root).await?;
+        let index = ObjectArchiveIndexHelper::load(&root).await?;
 
         // Check if need password and verify the password
         let crypto = match index.crypto {
@@ -250,16 +259,20 @@ impl ObjectArchiveLoader {
                 }
 
                 let aes_key = AesKeyHelper::gen(password.as_ref().unwrap(), &index.device_id);
-                AesKeyHelper::verify_device_id(&aes_key, &index.device_id, index.en_device_id.as_ref().unwrap())?;
+                AesKeyHelper::verify_device_id(
+                    &aes_key,
+                    &index.device_id,
+                    index.en_device_id.as_ref().unwrap(),
+                )?;
                 Some(aes_key)
             }
-            CryptoMode::None => {
-                None
-            }
+            CryptoMode::None => None,
         };
 
-        let random_loader = ObjectArchiveRandomLoader::load(root.clone(), index.clone(), crypto.clone()).await?;
-        let serialize_loader = ObjectArchiveSerializeLoader::load(root.clone(), index, crypto).await?;
+        let random_loader =
+            ObjectArchiveRandomLoader::load(root.clone(), index.clone(), crypto.clone()).await?;
+        let serialize_loader =
+            ObjectArchiveSerializeLoader::load(root.clone(), index, crypto).await?;
 
         random_loader.verify().await.map_err(|e| {
             let msg = format!(

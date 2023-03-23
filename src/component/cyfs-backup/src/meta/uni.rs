@@ -1,22 +1,10 @@
-use super::data::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
-use serde::{Deserialize, Serialize};
-use std::ops::DerefMut;
+
 use std::sync::{Arc, Mutex};
+use std::ops::DerefMut;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveUniMeta {
-    pub meta: ObjectArchiveDataSeriesMeta,
-}
-
-impl ObjectArchiveUniMeta {
-    pub fn new() -> Self {
-        Self {
-            meta: ObjectArchiveDataSeriesMeta::default(),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct ObjectArchiveUniMetaHolder {

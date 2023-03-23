@@ -1,5 +1,5 @@
 use crate::archive::*;
-use crate::object_pack::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::{AsyncReadWithSeek, AsyncReadWithSeekAdapter};
@@ -35,7 +35,14 @@ impl ArchiveLocalFileWriter {
             })?;
         }
 
-        let archive = ObjectArchiveGenerator::new(id, format, strategy, data_dir, archive_file_max_size, crypto);
+        let archive = ObjectArchiveGenerator::new(
+            id,
+            format,
+            strategy,
+            data_dir,
+            archive_file_max_size,
+            crypto,
+        );
 
         Ok(Self {
             archive: Arc::new(AsyncMutex::new(archive)),

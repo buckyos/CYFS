@@ -1,5 +1,6 @@
 use crate::archive::*;
 use cyfs_base::*;
+use cyfs_backup_lib::*;
 
 use async_std::sync::Arc;
 

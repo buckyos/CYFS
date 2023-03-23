@@ -1516,6 +1516,7 @@ dependencies = [
  "base58",
  "byteorder",
  "chrono",
+ "cyfs-backup-lib",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-bdt-ext",
@@ -1545,6 +1546,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-backup-lib"
+version = "0.1.0"
+dependencies = [
+ "async-h1",
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-util",
+ "hex",
+ "http-types",
+ "log 0.4.17",
+ "serde",
+ "serde_json",
+ "tide",
+]
+
+[[package]]
 name = "cyfs-backup-tool"
 version = "0.1.0"
 dependencies = [
@@ -1552,6 +1572,7 @@ dependencies = [
  "async-trait",
  "clap 2.34.0",
  "cyfs-backup",
+ "cyfs-backup-lib",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-bdt-ext",

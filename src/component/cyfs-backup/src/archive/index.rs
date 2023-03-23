@@ -1,42 +1,17 @@
 use crate::crypto::*;
-use crate::object_pack::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Clone, Debug, Copy, Eq, PartialEq, Serialize, Deserialize)]
-pub enum ObjectBackupStrategy {
-    State,
-    Uni,
-}
+pub struct ObjectArchiveIndexHelper;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ObjectArchiveIndex {
-    pub id: String,
-    pub time: String,
-
-    pub format: ObjectPackFormat,
-    pub strategy: ObjectBackupStrategy,
-
-    pub device_id: DeviceId,
-    pub owner: Option<ObjectId>,
-
-    pub crypto: CryptoMode,
-    pub en_device_id: Option<String>,
-
-    pub object_files: Vec<ObjectPackFileInfo>,
-    pub chunk_files: Vec<ObjectPackFileInfo>,
-
-    pub meta: Option<serde_json::Value>,
-}
-
-impl ObjectArchiveIndex {
-    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> Self {
+impl ObjectArchiveIndexHelper {
+    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> ObjectArchiveIndex {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 
-        Self {
+        ObjectArchiveIndex {
             id,
             time,
 
@@ -54,7 +29,12 @@ impl ObjectArchiveIndex {
         }
     }
 
-    pub fn init_device_id(&mut self, device_id: DeviceId, owner: Option<ObjectId>, crypto: Option<&AesKey>) {
+    pub fn init_device_id(
+        index: &mut ObjectArchiveIndex,
+        device_id: DeviceId,
+        owner: Option<ObjectId>,
+        crypto: Option<&AesKey>,
+    ) {
         let mode;
         let en_device_id;
         match crypto {
@@ -68,13 +48,13 @@ impl ObjectArchiveIndex {
             }
         }
 
-        self.device_id = device_id;
-        self.owner = owner;
-        self.crypto = mode;
-        self.en_device_id = en_device_id;
+        index.device_id = device_id;
+        index.owner = owner;
+        index.crypto = mode;
+        index.en_device_id = en_device_id;
     }
 
-    pub async fn load(dir: &Path) -> BuckyResult<Self> {
+    pub async fn load(dir: &Path) -> BuckyResult<ObjectArchiveIndex> {
         let index_file = dir.join("index");
         let s = async_std::fs::read_to_string(&index_file)
             .await
@@ -88,7 +68,7 @@ impl ObjectArchiveIndex {
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
-        let ret: Self = serde_json::from_str(&s).map_err(|e| {
+        let ret: ObjectArchiveIndex = serde_json::from_str(&s).map_err(|e| {
             let msg = format!(
                 "invalid index info format! file={}, content={}, {}",
                 index_file.display(),
@@ -107,10 +87,10 @@ impl ObjectArchiveIndex {
         Ok(ret)
     }
 
-    pub async fn save(&self, dir: &Path) -> BuckyResult<()> {
+    pub async fn save(index: &ObjectArchiveIndex, dir: &Path) -> BuckyResult<()> {
         let index_file = dir.join("index");
 
-        let data = serde_json::to_string_pretty(&self).unwrap();
+        let data = serde_json::to_string_pretty(&index).unwrap();
         async_std::fs::write(&index_file, &data)
             .await
             .map_err(|e| {
@@ -128,21 +108,7 @@ impl ObjectArchiveIndex {
             data,
             index_file.display()
         );
+
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ObjectArchiveDataType {
-    Object,
-    Chunk,
-}
-
-impl ObjectArchiveDataType {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Object => "object",
-            Self::Chunk => "chunk",
-        }
     }
 }

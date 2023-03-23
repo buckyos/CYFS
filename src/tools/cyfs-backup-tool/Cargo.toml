@@ -17,6 +17,7 @@ cyfs-noc = { path = "../../component/cyfs-noc" }
 cyfs-ndc = { path = "../../component/cyfs-ndc" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-backup = { path = "../../component/cyfs-backup" }
+cyfs-backup-lib = { path = "../../component/cyfs-backup-lib" }
 cyfs-chunk-cache = { path = "../../component/cyfs-chunk-cache" }
 cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.7' }
 cyfs-bdt-ext = { path = "../../component/cyfs-bdt-ext" }

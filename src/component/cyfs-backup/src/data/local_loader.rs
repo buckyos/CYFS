@@ -1,6 +1,7 @@
-use crate::{archive::*, crypto::ProtectedPassword};
-use cyfs_base::*;
 use super::loader::*;
+use crate::archive::*;
+use cyfs_backup_lib::*;
+use cyfs_base::*;
 
 use async_std::sync::{Arc, Mutex as AsyncMutex};
 use std::path::PathBuf;
@@ -77,11 +78,13 @@ impl BackupDataLoader for ArchiveLocalFileLoader {
     }
 
     // random methods
-    async fn get_object(&self, object_id: &ObjectId)
-        -> BuckyResult<Option<ObjectArchiveInnerFile>> {
-            let mut loader = self.archive.lock().await;
-            loader.random_reader().get_object(object_id).await
-        }
+    async fn get_object(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Option<ObjectArchiveInnerFile>> {
+        let mut loader = self.archive.lock().await;
+        loader.random_reader().get_object(object_id).await
+    }
 
     async fn get_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Option<ObjectArchiveInnerFile>> {
         let mut loader = self.archive.lock().await;

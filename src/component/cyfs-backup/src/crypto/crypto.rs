@@ -2,13 +2,7 @@ use cyfs_base::*;
 
 use base58::{FromBase58, ToBase58};
 use hmac::Hmac;
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum CryptoMode {
-    None,
-    AES,
-}
 
 pub struct AesKeyHelper {}
 

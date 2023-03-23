@@ -1,5 +1,5 @@
-use super::backup_status::BackupStatus;
 use super::uni_backup_task::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_bdt::ChunkReaderRef;
 use cyfs_lib::*;

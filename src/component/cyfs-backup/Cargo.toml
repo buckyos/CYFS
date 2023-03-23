@@ -24,6 +24,7 @@ cyfs-bdt = { path = "../cyfs-bdt" }
 cyfs-noc = { path = "../cyfs-noc" }
 cyfs-chunk-cache = { path = "../cyfs-chunk-cache" }
 cyfs-chunk-lib = { path = "../cyfs-chunk-lib" }
+cyfs-backup-lib = { path = "../cyfs-backup-lib" }
 cyfs-bdt-ext = { path = "../cyfs-bdt-ext" }
 cyfs-tracker-cache = { path = "../cyfs-tracker-cache" }
 log = "0.4"

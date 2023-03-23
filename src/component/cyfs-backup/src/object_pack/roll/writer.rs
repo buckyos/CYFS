@@ -1,4 +1,5 @@
 use super::super::pack::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
@@ -47,7 +48,8 @@ impl ObjectPackRollWriter {
 
         info!("new object pack file: {}", file_path.display());
 
-        let mut writer = ObjectPackFactory::create_writer(self.format, file_path, self.crypto.clone());
+        let mut writer =
+            ObjectPackFactory::create_writer(self.format, file_path, self.crypto.clone());
         writer.open().await?;
 
         self.current = Some(writer);
@@ -111,7 +113,6 @@ impl ObjectPackRollWriter {
                 self.finish().await?;
             }
         }
-
 
         Ok(())
     }

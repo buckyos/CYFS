@@ -1,5 +1,5 @@
-use super::file_meta::ArchiveInnerFileMeta;
-use super::index::*;
+use super::{file_meta::ArchiveInnerFileMeta, ObjectArchiveIndexHelper};
+use cyfs_backup_lib::*;
 use crate::object_pack::*;
 use cyfs_base::*;
 
@@ -44,7 +44,7 @@ impl ObjectArchiveGenerator {
 
         Self {
             root,
-            index: ObjectArchiveIndex::new(id, format, strategy),
+            index: ObjectArchiveIndexHelper::new(id, format, strategy),
             size_limit,
 
             object_writer,

@@ -1,8 +1,8 @@
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use async_std::io::Read as AsyncRead;
 use async_std::io::ReadExt;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub enum ObjectPackInnerFileData {
@@ -77,19 +77,6 @@ pub trait ObjectPackWriter: Send {
     async fn finish(&mut self) -> BuckyResult<()>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObjectPackFileInfo {
-    pub name: String,
-    pub hash: HashValue,
-    pub file_len: u64,
-    pub data_len: u64,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
-pub enum ObjectPackFormat {
-    Zip,
-}
-
 pub struct ObjectPackFactory {}
 
 impl ObjectPackFactory {
@@ -135,11 +122,11 @@ impl ObjectPackFactory {
         }
     }
 
-    pub fn create_zip_reader(path: PathBuf, crypto: Option<AesKey>,) -> Box<dyn ObjectPackReader> {
+    pub fn create_zip_reader(path: PathBuf, crypto: Option<AesKey>) -> Box<dyn ObjectPackReader> {
         Self::create_reader(ObjectPackFormat::Zip, path, crypto)
     }
 
-    pub fn create_zip_writer(path: PathBuf, crypto: Option<AesKey>,) -> Box<dyn ObjectPackWriter> {
+    pub fn create_zip_writer(path: PathBuf, crypto: Option<AesKey>) -> Box<dyn ObjectPackWriter> {
         Self::create_writer(ObjectPackFormat::Zip, path, crypto)
     }
 }

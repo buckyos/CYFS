@@ -1,24 +1,15 @@
 use super::restore_status::*;
-use crate::crypto::*;
 use crate::data::*;
 use crate::key_data::*;
-use crate::meta::*;
 use crate::restore::StackLocalObjectRestorer;
 use crate::restore::*;
 use crate::uni_backup::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
-pub struct UniRestoreParams {
-    pub id: String,
-    pub cyfs_root: String,
-    pub isolate: String,
-    pub archive: PathBuf,
-    pub password: Option<ProtectedPassword>,
-}
 
 #[derive(Clone)]
 pub struct UniRestoreTask {
