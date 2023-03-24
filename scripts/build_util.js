@@ -31,7 +31,7 @@ function build(prog, buildType, target, version, channel) {
     if (buildType === "release") {
         cmd += " --release"
     }
-    let bin_name = prog.name;
+    let bin_name = prog.bin || prog.name;
     let ext = '';
     if (target.includes("windows")) {
         ext = ".exe"

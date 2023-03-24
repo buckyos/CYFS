@@ -43,7 +43,8 @@ const tools = [
     },
     {
         "name": "cyfs-backup-tool",
-        "include": formal_platform
+        "include": formal_platform,
+        "bin": "cyfs-backup"
     },
 ]
 
