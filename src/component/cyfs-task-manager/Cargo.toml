@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-task-manager'
-version = '0.6.3'
+version = '0.6.4'
 edition = '2021'
 license = 'BSD-2-Clause'
 description = 'Rust cyfs-task-manager package'

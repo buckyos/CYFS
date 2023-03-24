@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.6.10"
+version = "0.6.11"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1659,7 +1659,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1873,7 +1873,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-core"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-debug"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "async-h1",
  "async-std",
@@ -1945,7 +1945,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "async-h1",
  "async-std",
@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-meta-lib"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "cyfs-base",
@@ -2181,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-perf-base"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "cyfs-base",
@@ -2200,7 +2200,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-perf-client"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "android_logger",
  "async-std",
@@ -2407,7 +2407,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-task-manager"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-std",
  "async-trait",
@@ -2436,7 +2436,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-util"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "async-h1",
  "async-std",
