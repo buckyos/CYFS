@@ -9,6 +9,51 @@ use std::path::{Path, PathBuf};
 const CYFS_CONSOLE_LOG_LEVEL_KEY: &str = "CYFS_CONSOLE_LOG_LEVEL";
 const CYFS_FILE_LOG_LEVEL_KEY: &str = "CYFS_FILE_LOG_LEVEL";
 
+
+pub enum LogDebugInfoFlag {
+    Args = 0x01,
+    Env = 0x02,
+}
+
+#[derive(Clone, Debug)]
+pub struct LogDebugInfoFlags(u32);
+
+impl Default for LogDebugInfoFlags {
+    fn default() -> Self {
+        Self(u32::MAX)
+    }
+}
+
+impl LogDebugInfoFlags {
+    pub fn new(flags: u32) -> Self {
+        Self(flags)
+    }
+
+    pub fn without_args(mut self) -> Self {
+        self.0 &= !(LogDebugInfoFlag::Args as u32);
+        self
+    }
+
+    pub fn is_args_present(&self) -> bool {
+        self.0 & LogDebugInfoFlag::Args as u32 == LogDebugInfoFlag::Args as u32
+    }
+
+    pub fn without_env(mut self) -> Self {
+        self.0 &= !(LogDebugInfoFlag::Env as u32);
+        self
+    }
+
+    pub fn is_env_present(&self) -> bool {
+        self.0 & LogDebugInfoFlag::Env as u32 == LogDebugInfoFlag::Env as u32
+    }
+}
+
+impl Into<u32> for LogDebugInfoFlags {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
 #[derive(Clone)]
 pub struct LogModuleConfig {
     pub name: String,
@@ -29,6 +74,9 @@ pub struct LogModuleConfig {
 
     // 日志文件最大个数，滚动输出
     pub file_max_count: u32,
+
+    // flags to output debug info
+    pub debug_info_flags: u32,
 }
 
 impl LogModuleConfig {
@@ -42,6 +90,7 @@ impl LogModuleConfig {
             file_name: Some(name.to_string()),
             file_max_size: 1024 * 1024 * 10,
             file_max_count: 10,
+            debug_info_flags: LogDebugInfoFlags::default().into(),
         }
     }
 
@@ -71,6 +120,14 @@ impl LogModuleConfig {
 
     pub fn set_file_max_count(&mut self, file_max_count: u32) {
         self.file_max_count = file_max_count;
+    }
+
+    pub fn set_debug_info_flags(&mut self, flags: u32) {
+        self.debug_info_flags = flags;
+    }
+
+    pub fn get_debug_info_flags(&self) -> LogDebugInfoFlags {
+        LogDebugInfoFlags::new(self.debug_info_flags)
     }
 
     // 加载环境变量配置的日志级别

@@ -91,7 +91,7 @@ async fn run_bind(matches: &ArgMatches<'_>) -> ! {
 async fn main_run() {
     let matches = App::new("ood installer tools")
         .version(cyfs_base::get_version())
-        .about("ood installer tools for ffs system")
+        .about("ood installer tools for cyfs system")
         .author("CYFS <cyfs@buckyos.com>")
         .arg(
             Arg::with_name("force")

@@ -34,16 +34,22 @@ struct PanicManagerImpl {
 
     on_panic: OnPanicEventManager,
 
-    // 上报器
-    reporter: Box<dyn BugReportHandler>,
+    // reporters
+    reporter: Option<Box<dyn BugReportHandler>>,
 }
 
 impl PanicManagerImpl {
     pub fn new(builder: PanicBuilder) -> Self {
-        let mut reporter = BugReportManager::new(builder.bug_reporter);
-        if reporter.is_empty() {
-            reporter.load_from_config();
-        }
+        let reporter = if !builder.disable_bug_report {
+            let mut reporter = BugReportManager::new(builder.bug_reporter);
+            if reporter.is_empty() {
+                reporter.load_from_config();
+            }
+
+            Some(Box::new(reporter) as Box<dyn BugReportHandler>)
+        } else {
+            None
+        };
 
         Self {
             product_name: builder.product_name,
@@ -53,7 +59,7 @@ impl PanicManagerImpl {
             exit_on_panic: builder.exit_on_panic,
 
             on_panic: OnPanicEventManager::new(),
-            reporter: Box::new(reporter),
+            reporter,
         }
     }
 }
@@ -73,9 +79,9 @@ impl PanicManager {
             let pinfo = CyfsPanicInfo::new(backtrace, info);
             let this = this.clone();
 
-            std::thread::spawn(move || {
+            let _ = std::thread::spawn(move || {
                 this.on_panic(pinfo);
-            });
+            }).join();
         }));
     }
 
@@ -88,11 +94,10 @@ impl PanicManager {
             self.log_to_file(&info);
         }
 
-        info!("will report panic......");
-        let _ = self
-            .0
-            .reporter
-            .notify(&self.0.product_name, &self.0.service_name, &info);
+        if let Some(reporter) = &self.0.reporter {
+            info!("will report panic......");
+            let _ = reporter.notify(&self.0.product_name, &self.0.service_name, &info);
+        }
 
         // 触发事件
         let _ = self.0.on_panic.emit(&info);
@@ -148,9 +153,10 @@ pub struct PanicBuilder {
     log_to_file: bool,
     log_dir: PathBuf,
 
+    disable_bug_report: bool,
     bug_reporter: Vec<Box<dyn BugReportHandler>>,
 
-    // panic后是否结束进程
+    // Whether to end the process after PANIC
     exit_on_panic: bool,
 }
 
@@ -168,6 +174,7 @@ impl PanicBuilder {
             service_name: service_name.to_owned(),
             log_to_file: true,
             log_dir: root,
+            disable_bug_report: false,
             bug_reporter: vec![],
             exit_on_panic: false,
         }
@@ -197,10 +204,15 @@ impl PanicBuilder {
         self
     }
 
-    // use dingtalk bug_report 
+    // use dingtalk bug_report
     pub fn dingtalk_bug_report(mut self, dingtalk_url: &str) -> Self {
         let handler = DingtalkNotifier::new(dingtalk_url);
         self.bug_reporter.push(Box::new(handler));
+        self
+    }
+
+    pub fn disable_bug_report(mut self) -> Self {
+        self.disable_bug_report = true;
         self
     }
 

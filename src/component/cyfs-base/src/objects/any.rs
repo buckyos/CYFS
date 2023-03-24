@@ -289,6 +289,10 @@ impl AnyNamedObject {
         match_any_obj!(self, o, { o.desc().create_time() }, _chunk_id, { 0 })
     }
 
+    pub fn option_create_time(&self) -> Option<u64> {
+        match_any_obj!(self, o, { o.desc().option_create_time() }, _chunk_id, { None })
+    }
+
     pub fn expired_time(&self) -> Option<u64> {
         match_any_obj!(self, o, { o.desc().expired_time() }, _chunk_id, { None })
     }
@@ -340,6 +344,162 @@ impl AnyNamedObject {
     pub fn nonce(&self) -> &Option<u128> {
         match_any_obj!(self, o, { o.nonce() }, _chunk_id, { &None })
     }
+
+    fn raw_decode_device<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (device, buf) = Device::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/device error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::Device(device)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_people<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (people, buf) = People::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/people error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::People(people)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_app_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (app_group, buf) = AppGroup::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/app_group error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::AppGroup(app_group)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_simple_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
+            e
+        })?;
+        return Ok((
+            AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
+            buf,
+        ));
+    }
+
+    fn raw_decode_org<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (org, buf) = Org::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/org error:{}", e);
+            e
+        })?;
+        return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
+    }
+
+    fn raw_decode_union_account<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (ua, buf) = UnionAccount::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/ua error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::UnionAccount(ua)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_file<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (file, buf) = File::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/file error:{}", e);
+            e
+        })?;
+        Ok((AnyNamedObject::Standard(StandardObject::File(file)), buf))
+    }
+
+    fn raw_decode_dir<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (dir, buf) = Dir::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/dir error:{}", e);
+            e
+        })?;
+        Ok((AnyNamedObject::Standard(StandardObject::Dir(dir)), buf))
+    }
+
+    fn raw_decode_diff<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (diff, buf) = Diff::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/diff error:{}", e);
+            e
+        })?;
+        Ok((AnyNamedObject::Standard(StandardObject::Diff(diff)), buf))
+    }
+
+    fn raw_decode_proof_of_service<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (prof, buf) = ProofOfService::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/prof error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::ProofOfService(prof)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_tx<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (tx, buf) = Tx::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/tx error:{}", e);
+            e
+        })?;
+        Ok((AnyNamedObject::Standard(StandardObject::Tx(tx)), buf))
+    }
+
+    fn raw_decode_action<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (action, buf) = Action::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/action error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::Action(action)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_object_map<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (relation, buf) = ObjectMap::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/relation error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::ObjectMap(relation)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_contract<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (contract, buf) = Contract::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/contract error:{}", e);
+            e
+        })?;
+        Ok((
+            AnyNamedObject::Standard(StandardObject::Contract(contract)),
+            buf,
+        ))
+    }
+
+    fn raw_decode_custom<'de>(
+        buf: &'de [u8],
+        is_dec_app_object: bool,
+    ) -> Result<(Self, &'de [u8]), BuckyError> {
+        if is_dec_app_object {
+            // println!("is dec app object");
+
+            let (dec_obj, buf) = TypelessDECAppObject::raw_decode(buf)?;
+            Ok((AnyNamedObject::DECApp(dec_obj), buf))
+        } else {
+            // println!("is core object");
+
+            let (core_obj, buf) = TypelessCoreObject::raw_decode(buf)?;
+            Ok((AnyNamedObject::Core(core_obj), buf))
+        }
+    }
 }
 
 impl RawEncode for AnyNamedObject {
@@ -372,147 +532,26 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
         })?;
 
         match obj_type_info.obj_type_code() {
-            ObjectTypeCode::Device => {
-                let (device, buf) = Device::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/device error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::Device(device)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::People => {
-                let (people, buf) = People::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/people error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::People(people)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::Org => {
-                let (org, buf) = Org::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/org error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
-            }
-            ObjectTypeCode::AppGroup => {
-                let (app_group, buf) = AppGroup::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/app_group error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::AppGroup(app_group)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::SimpleGroup => {
-                let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::UnionAccount => {
-                let (ua, buf) = UnionAccount::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/ua error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::UnionAccount(ua)),
-                    buf,
-                ));
-            }
+            ObjectTypeCode::Device => Self::raw_decode_device(buf),
+            ObjectTypeCode::People => Self::raw_decode_people(buf),
+            ObjectTypeCode::AppGroup => Self::raw_decode_app_group(buf),
+            ObjectTypeCode::UnionAccount => Self::raw_decode_union_account(buf),
             ObjectTypeCode::Chunk => {
                 unreachable!();
             }
-            ObjectTypeCode::File => {
-                let (file, buf) = File::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/file error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::File(file)), buf));
-            }
-            ObjectTypeCode::Dir => {
-                let (dir, buf) = Dir::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/dir error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Dir(dir)), buf));
-            }
-            ObjectTypeCode::Diff => {
-                let (diff, buf) = Diff::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/diff error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Diff(diff)), buf));
-            }
-            ObjectTypeCode::ProofOfService => {
-                let (prof, buf) = ProofOfService::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/prof error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::ProofOfService(prof)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::Tx => {
-                let (tx, buf) = Tx::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/tx error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Tx(tx)), buf));
-            }
-            ObjectTypeCode::Action => {
-                let (action, buf) = Action::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/action error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::Action(action)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::ObjectMap => {
-                let (relation, buf) = ObjectMap::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/relation error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::ObjectMap(relation)),
-                    buf,
-                ));
-            }
-            ObjectTypeCode::Contract => {
-                let (contract, buf) = Contract::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/contract error:{}", e);
-                    e
-                })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::Contract(contract)),
-                    buf,
-                ));
-            }
+            ObjectTypeCode::File => Self::raw_decode_file(buf),
+            ObjectTypeCode::Dir => Self::raw_decode_dir(buf),
+            ObjectTypeCode::Diff => Self::raw_decode_diff(buf),
+            ObjectTypeCode::ProofOfService => Self::raw_decode_proof_of_service(buf),
+            ObjectTypeCode::Tx => Self::raw_decode_tx(buf),
+            ObjectTypeCode::Action => Self::raw_decode_action(buf),
+            ObjectTypeCode::ObjectMap => Self::raw_decode_object_map(buf),
+            ObjectTypeCode::Contract => Self::raw_decode_contract(buf),
             ObjectTypeCode::Custom => {
-                return if obj_type_info.is_decapp_object() {
-                    // println!("is dec app object");
-
-                    let (dec_obj, buf) = TypelessDECAppObject::raw_decode(buf)?;
-                    Ok((AnyNamedObject::DECApp(dec_obj), buf))
-                } else {
-                    // println!("is core object");
-
-                    let (core_obj, buf) = TypelessCoreObject::raw_decode(buf)?;
-                    Ok((AnyNamedObject::Core(core_obj), buf))
-                };
+                Self::raw_decode_custom(buf, obj_type_info.is_decapp_object())
             }
+            ObjectTypeCode::SimpleGroup => Self::raw_decode_simple_group(buf),
+            ObjectTypeCode::Org => Self::raw_decode_org(buf),
         }
     }
 }

@@ -29,6 +29,7 @@ mod mime;
 mod object_meta_access;
 mod shared_stack;
 mod context;
+mod backup;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -38,6 +39,9 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
+    backup::test().await;
+    //return;
+    
     async_std::task::spawn(async move {
         shared_stack::test().await;
     });

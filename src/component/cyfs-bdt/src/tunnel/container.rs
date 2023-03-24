@@ -36,6 +36,7 @@ use super::{
     udp, 
     tcp
 };
+use core::mem;
 
 #[derive(Clone)]
 pub struct BuildTunnelParams {
@@ -807,12 +808,16 @@ impl TunnelOwner for TunnelContainer {
                         TunnelStateImpl::Connecting(connecting) => {
                             info!("{} connecting=>active with default {}", self, tunnel.as_ref().as_ref());
                             connecting.waiter.transfer_into(&mut next_step.waiters);
+
+                            mem::swap(&mut next_step.packages, &mut connecting.packages);
+
                             state.tunnel_state = TunnelStateImpl::Active(TunnelActiveState {
                                 default_tunnel: tunnel.clone(), 
                                 remote_timestamp: remote_timestamp
                             });
 
                             next_step.new_default = Some(tunnel.clone());
+
                             true
                         },
                         TunnelStateImpl::Dead(_) => {

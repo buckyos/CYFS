@@ -41,6 +41,11 @@ const tools = [
         "name": "zone-simulator",
         "include": formal_platform
     },
+    {
+        "name": "cyfs-backup-tool",
+        "include": formal_platform,
+        "bin": "cyfs-backup"
+    },
 ]
 
 const service_default_cfg = {
@@ -136,6 +141,10 @@ const misc = [
     },
     {
         "name": "sn-online-test",
+        "include": formal_platform
+    },
+    {
+        "name": "http-bug-server",
         "include": formal_platform
     },
 ]

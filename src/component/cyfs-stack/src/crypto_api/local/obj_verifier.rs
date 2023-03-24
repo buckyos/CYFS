@@ -440,6 +440,7 @@ impl ObjectVerifier {
             object_id: object_id.clone(),
             source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
+            flags: 0,
         };
         if let Ok(Some(obj)) = self.noc().get_object(&req).await {
             return Ok(obj.object.object_raw);

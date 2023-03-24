@@ -5,11 +5,13 @@ use std::path::{Path};
 use fs_extra::dir;
 use app_manager_lib::RepoMode;
 
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, get_cyfs_root_path, get_temp_path};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectId, OwnerObjectDesc};
+use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir2, get_cyfs_root_path, get_temp_path};
 use cyfs_client::NamedCacheClient;
 use cyfs_core::DecAppId;
+use cyfs_lib::{NDNAPILevel, NDNOutputRequestCommon, SharedCyfsStack, TransPublishChunkMethod, TransPublishFileOutputRequest};
 use ood_daemon::get_system_config;
+use crate::dapp::DApp;
 
 /**
  AppPackage是无状态的辅助类，用于准备DApp文件，并将其拷贝到指定位置
@@ -25,17 +27,17 @@ pub struct AppPackage {
 }
 
 impl AppPackage {
-    pub async fn install(app_id: &DecAppId, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, repo_mode: RepoMode) -> BuckyResult<()> {
+    pub async fn install(app_id: &DecAppId, version: &str, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, repo_mode: RepoMode, stack: SharedCyfsStack) -> BuckyResult<Option<ObjectId>> {
         match repo_mode {
             RepoMode::NamedData => {
                 // 先下载到/cyfs/tmp/app/{appid}下
                 let tmp_path = get_temp_path().join("app").join(app_id.to_string());
                 Self::download(dir, owner, client, &tmp_path).await?;
-                Self::install_from_local(app_id, &tmp_path, true)
+                Self::install_from_local(app_id, version, &tmp_path, true, stack).await
             }
             RepoMode::Local => {
                 let repo_path = get_cyfs_root_path().join("app_repo").join(dir.to_string());
-                Self::install_from_local(app_id, &repo_path, false)
+                Self::install_from_local(app_id, version, &repo_path, false, stack).await
             }
         }
     }
@@ -63,7 +65,7 @@ impl AppPackage {
         Ok(())
     }
 
-    pub fn install_from_local(app_id: &DecAppId, local_path: &Path, delete_source: bool) -> BuckyResult<()> {
+    pub async fn install_from_local(app_id: &DecAppId, version: &str, local_path: &Path, delete_source: bool, stack: SharedCyfsStack) -> BuckyResult<Option<ObjectId>> {
         info!("install app {} from local path {}", app_id, local_path.display());
         if !local_path.exists() {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, format!("local path {} not found", local_path.display())));
@@ -79,14 +81,49 @@ impl AppPackage {
         // 拷贝service
         Self::copy_dir_contents(&local_path.join("service"), &service_path)?;
         // 拷贝webdir
-        let web_path = get_app_web_dir(&app_str);
+        let web_path = get_app_web_dir2(&app_str, version);
         Self::copy_dir_contents(&local_path.join("web"), &web_path)?;
 
         if delete_source {
             let _ = fs::remove_dir_all(local_path);
         }
 
-        Ok(())
+        // 文件就绪后，尝试load app，并做app的前期准备
+        let dapp = DApp::load_from(&service_path)?;
+        dapp.prepare()?;
+
+        // publish web dir
+        Self::publish_dir(&web_path, stack).await.map_err(|e| {
+            error!("app {} publish web dir {} err {}", app_id, web_path.display(), e);
+            e
+        })
+    }
+
+    async fn publish_dir(path: &Path, stack: SharedCyfsStack) -> BuckyResult<Option<ObjectId>> {
+        let web_dir_id = if path.exists() {
+            let owner = stack.local_device()
+                .desc()
+                .owner()
+                .to_owned()
+                .unwrap_or_else(|| stack.local_device_id().object_id().clone());
+            info!("publish dir {} use owner {}", path.display(), &owner);
+            let pub_resp = stack.trans().publish_file(TransPublishFileOutputRequest {
+                    common: NDNOutputRequestCommon::new(NDNAPILevel::NDC),
+                    owner,
+                    local_path: path.to_owned(),
+                    chunk_size: 1024 * 1024 * 4,
+                    file_id: None,
+                    dirs: None,
+                    access: None,
+                    chunk_method: TransPublishChunkMethod::Track,
+                }).await?;
+            info!("publish dir {}, object id {}", path.display(), &pub_resp.file_id);
+            Some(pub_resp.file_id)
+        } else {
+            None
+        };
+
+        Ok(web_dir_id)
     }
 
     pub async fn download_acl(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<bool> {

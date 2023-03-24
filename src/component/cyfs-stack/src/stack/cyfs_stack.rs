@@ -123,6 +123,8 @@ impl CyfsStackImpl {
         };
 
         let noc = Self::init_raw_noc(isolate, known_objects).await?;
+        let noc_relation = NamedObjectRelationCacheManager::create(isolate)
+        .await?;
 
         // meta with cache
         let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
@@ -224,6 +226,8 @@ impl CyfsStackImpl {
         );
         zone_manager.init().await?;
 
+        fail_handler.bind_zone_manager(zone_manager.clone());
+
         // first init current zone info
         let zm = zone_manager.clone();
         async_std::task::spawn(async move { zm.get_current_info().await }).await?;
@@ -291,7 +295,7 @@ impl CyfsStackImpl {
 
         // non和router通用的转发器，不带权限检查(non和router内部根据层级选择正确的acl适配器)
         let forward_manager =
-            ForwardProcessorManager::new(bdt_stack.clone(), device_manager.clone_cache());
+            ForwardProcessorManager::new(bdt_stack.clone(), device_manager.clone_cache(), fail_handler.clone());
         forward_manager.start();
 
         // ood_resolver
@@ -332,6 +336,7 @@ impl CyfsStackImpl {
 
         let (non_service, ndn_service) = NONService::new(
             noc.clone(),
+            noc_relation,
             bdt_stack.clone(),
             &named_data_components,
             forward_manager.clone(),
@@ -514,7 +519,7 @@ impl CyfsStackImpl {
         // bind bdt stack and start sync
         sn_config_manager.bind_bdt_stack(stack.bdt_stack.clone());
 
-        // 初始化对外interface
+        // Init the interface for external service
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {
             bdt_stack: stack.bdt_stack.clone(),
@@ -523,7 +528,7 @@ impl CyfsStackImpl {
             ws_listener: None,
         };
 
-        // 如果开启了本地的sharestack，那么就需要初始化tcp-http接口
+        // If the local shared_stack is turned on, then need to initialize the TCP-HTTP interface
         if param.config.shared_stack {
             init_params.tcp_listeners = param.interface.tcp_listeners;
             init_params.ws_listener = param.interface.ws_listener;
@@ -556,6 +561,7 @@ impl CyfsStackImpl {
             unreachable!();
         }
 
+        
         // finally start interface
         stack.interface.get().unwrap().start().await?;
 
@@ -1074,6 +1080,10 @@ impl CyfsStack {
 
     pub fn local_device(&self) -> Device {
         self.stack.bdt_stack.sn_client().ping().default_local()
+    }
+
+    pub fn config(&self) -> &StackGlobalConfig {
+        &self.stack.config
     }
 
     pub fn acl_manager(&self) -> &AclManager {

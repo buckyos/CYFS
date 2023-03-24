@@ -11,6 +11,9 @@ pub(crate) struct BugReportManager {
 // only used on nightly env!!!
 const DINGTALK_NIGHTLY_URL: &str = "https://oapi.dingtalk.com/robot/send?access_token=f44614438c8f63c7ccdd01ae1c83a062291e01b71b888aa21b7fa2b6588e4a9d";
 
+// only used on beta env!!!
+const HTTP_BETA_URL: &str = "http://panic.report.cyfs.com/beta/";
+
 impl BugReportManager {
     pub fn new(list: Vec<Box<dyn BugReportHandler>>) -> Self {
         Self { list }
@@ -27,9 +30,18 @@ impl BugReportManager {
             }
         }
 
-        if self.list.is_empty() && *get_channel() == CyfsChannel::Nightly {
-            let reporter = DingtalkNotifier::new(DINGTALK_NIGHTLY_URL);
-            self.list.push(Box::new(reporter));
+        if self.list.is_empty() {
+            match *get_channel() {
+                CyfsChannel::Nightly => {
+                    let reporter = DingtalkNotifier::new(DINGTALK_NIGHTLY_URL);
+                    self.list.push(Box::new(reporter));
+                }
+                CyfsChannel::Beta => {
+                    let reporter = HttpBugReporter::new(HTTP_BETA_URL);
+                    self.list.push(Box::new(reporter));
+                }
+                CyfsChannel::Stable => {}
+            }
         }
     }
 

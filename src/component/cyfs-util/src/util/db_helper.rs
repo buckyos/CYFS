@@ -47,7 +47,7 @@ impl SqliteConnectionHolder {
         Ok((conn.borrow(), lock))
     }
 
-    fn create_new_conn(&self, read_only: bool) -> BuckyResult<Connection> {
+    pub fn create_new_conn(&self, read_only: bool) -> BuckyResult<Connection> {
         let flags = if read_only {
             OpenFlags::SQLITE_OPEN_READ_ONLY
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX

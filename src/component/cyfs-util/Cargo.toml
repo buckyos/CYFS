@@ -21,7 +21,7 @@ c_linked_list = '1.1.1'
 clippy = { version = '0.0.302', optional = true }
 libc = '0.2'
 log = '0.4'
-named-lock = '0.2.0'
+named-lock = '0.3'
 fs2 = '0.4'
 walkdir = '2.3'
 lazy_static = '1.4'

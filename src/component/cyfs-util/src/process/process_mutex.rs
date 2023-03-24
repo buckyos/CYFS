@@ -5,21 +5,55 @@ use lazy_static::lazy_static;
 use std::sync::Mutex;
 
 pub struct ProcessMutex {
-    named_lock: Option<NamedLock>,
+    // Compatibility with older versions is in /tmp/
+    prev_lock: NamedLock,
+
+    named_lock: NamedLock,
 }
 
 impl ProcessMutex {
     pub fn new(service_name: &str) -> ProcessMutex {
         let name = format!("cyfs_plock_{}", service_name);
-        ProcessMutex {
-            named_lock: Some(NamedLock::create(&name).unwrap()),
+        let named_lock;
+        #[cfg(unix)]
+        {
+            let locks_folder = crate::get_cyfs_root_path().join("run/locks");
+            if !locks_folder.is_dir() {
+                if let Err(e) = std::fs::create_dir_all(&locks_folder) {
+                    error!(
+                        "create run/locks folder error! folder={}, err={}",
+                        locks_folder.display(),
+                        e
+                    );
+                }
+            }
+
+            let lock_file = locks_folder.join(&format!("{}.lock", name));
+            named_lock = NamedLock::with_path(lock_file).unwrap();
+        }
+        #[cfg(not(unix))]
+        {
+            named_lock = NamedLock::create(&name).unwrap();
+        }
+
+        Self {
+            prev_lock: NamedLock::create(&name).unwrap(),
+            named_lock,
         }
     }
 
     pub fn acquire(&self) -> Option<NamedLockGuard> {
-        assert!(self.named_lock.is_some());
+        match self.prev_lock.try_lock() {
+            Ok(_guard) => {
+                // do nothing
+            }
+            Err(_) => {
+                // old proc old must be holded by other process!
+                return None;
+            }
+        }
 
-        match self.named_lock.as_ref().unwrap().try_lock() {
+        match self.named_lock.try_lock() {
             Ok(guard) => {
                 Some(guard)
             }
@@ -29,8 +63,6 @@ impl ProcessMutex {
             }
         }
     }
-
-    pub fn release(&mut self) {}
 }
 
 pub(crate) struct ServiceName(String);

@@ -140,6 +140,7 @@ impl LocalTransService {
                     source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
+                    flags: 0,
                 })
                 .await?
             {
@@ -199,6 +200,7 @@ impl LocalTransService {
                     source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
+                    flags: 0,
                 })
                 .await?
             {
@@ -442,7 +444,17 @@ impl LocalTransService {
                 }
             }
             TaskStatus::Finished => TransTaskState::Finished(0),
-            TaskStatus::Failed => TransTaskState::Err(task_state.err_code.unwrap()),
+            TaskStatus::Failed => {
+                let err_code = match task_state.err_code {
+                    Some(err_code) => err_code,
+                    None => {
+                        error!("get task state with failed status but err_code field missing! task={}", task_id);
+                        BuckyErrorCode::Failed
+                    }
+                };
+
+                TransTaskState::Err(err_code) 
+            }
         };
 
         let resp = TransGetTaskStateInputResponse {
@@ -545,6 +557,7 @@ impl LocalTransService {
             source: source.clone(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
+            flags: 0,
         };
 
         match self.noc.get_object(&noc_req).await {

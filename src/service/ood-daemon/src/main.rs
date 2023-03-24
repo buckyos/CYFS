@@ -12,8 +12,9 @@ mod status;
 use clap::{App, Arg};
 use std::str::FromStr;
 
-use daemon::{Daemon, start_control};
+use daemon::{start_control, Daemon};
 use service::{ServiceMode, SERVICE_MANAGER};
+use status::OODStatusInterfaceHost;
 
 #[macro_use]
 extern crate log;
@@ -100,9 +101,15 @@ async fn main_run() {
                 .help("Start the service when on system startup"),
         ).arg(
             Arg::with_name("stop_all")
-                .long("stop_all")
+                .long("stop-all")
+                .alias("stop_all")
                 .takes_value(false)
                 .help("Stop all the services include ood-daemon"),
+        ).arg(
+            Arg::with_name("status_host")
+                .long("status-host")
+                .takes_value(true)
+                .help("Specify the http address of the status service, which can be local/unspecified/a list of ip addresses separated by commas, and the default is local"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -123,8 +130,11 @@ async fn main_run() {
 
     if matches.is_present("stop_all") {
         start_log();
-        
-        let code = match crate::daemon::ServicesStopController::new().stop_all().await {
+
+        let code = match crate::daemon::ServicesStopController::new()
+            .stop_all()
+            .await
+        {
             Ok(()) => 0,
             Err(e) => {
                 let code: u16 = e.code().into();
@@ -173,8 +183,19 @@ async fn main_run() {
         info!("will run without ood control service");
     }
 
+    let status_host = if let Some(host) = matches.value_of("status_host") {
+        OODStatusInterfaceHost::from_str(host)
+            .map_err(|e| {
+                println!("invalid status-host param! {}, {}", host, e);
+                std::process::exit(e.code().into());
+            })
+            .unwrap()
+    } else {
+        OODStatusInterfaceHost::default()
+    };
+
     let daemon = Daemon::new(mode, no_monitor);
-    if let Err(e) = daemon.run().await {
+    if let Err(e) = daemon.run(status_host).await {
         error!("daemon run error! err={}", e);
         std::process::exit(e.code().into());
     }

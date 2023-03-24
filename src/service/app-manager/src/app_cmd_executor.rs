@@ -440,7 +440,7 @@ impl AppCmdExecutor {
                 .await;
         }
 
-        if let Err(e) = self.app_controller.uninstall_app(app_id).await {
+        if let Err(e) = self.app_controller.uninstall_app(app_id, &ver).await {
             //uninstall务必成功，这里先输出一个警告
             warn!("uninstall app failed, app:{}, err:{}", app_id, e);
             target_status_code = AppLocalStatusCode::UninstallFailed;

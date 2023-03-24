@@ -1154,7 +1154,7 @@ mod test_path {
         .no_create_time()
         .build();
         let root_id = root.flush_id();
-        cache.put_object_map(&root_id, root).unwrap();
+        cache.put_object_map(&root_id, root, None).unwrap();
         info!("new root: {}", root_id);
 
         let path = ObjectMapPath::new(root_id.clone(), cache.clone(), true);

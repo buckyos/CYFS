@@ -570,6 +570,10 @@ where
         self.create_time.unwrap_or(0)
     }
 
+    fn option_create_time(&self) -> Option<u64> {
+        self.create_time
+    }
+
     fn expired_time(&self) -> Option<u64> {
         self.expired_time
     }

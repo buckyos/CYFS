@@ -3,6 +3,8 @@ resolver = "2"
 
 members = [
     "./component/cyfs-base",
+    "./component/cyfs-backup",
+    "./component/cyfs-backup-lib",
     "./component/cyfs-core",
     "./component/cyfs-base-derive",
     "./component/cyfs-chunk",
@@ -51,6 +53,7 @@ members = [
     "./tools/bdt-debuger-deamon",
     "./tools/cyfs-check",
     "./tools/sn-updater",
+    "./tools/cyfs-backup-tool",
 
     "./meta/browser-meta-spv",
     "./meta/cyfs-meta",
@@ -65,6 +68,7 @@ members = [
     "./misc/misc-util",
     "./misc/sn-online-test",
     "./misc/perf-service",
+    "./misc/http-bug-server",
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",

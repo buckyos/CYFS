@@ -1,8 +1,10 @@
+use super::fail_handler::HttpRequestorWithDeviceFailHandler;
+use crate::meta::ObjectFailHandler;
 use crate::resolver::DeviceCache;
 use cyfs_base::*;
+use cyfs_bdt::StackGuard;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
 
 use futures::future::{AbortHandle, Abortable};
 use std::sync::Arc;
@@ -10,13 +12,15 @@ use std::sync::Arc;
 pub(crate) struct ForwardProcessorCreator {
     bdt_stack: StackGuard,
     device_manager: Box<dyn DeviceCache>,
+    fail_handler: ObjectFailHandler,
 }
 
 impl ForwardProcessorCreator {
-    pub fn new(bdt_stack: StackGuard, device_manager: Box<dyn DeviceCache>) -> Self {
+    pub fn new(bdt_stack: StackGuard, device_manager: Box<dyn DeviceCache>, fail_handler: ObjectFailHandler,) -> Self {
         Self {
             bdt_stack,
             device_manager,
+            fail_handler,
         }
     }
 
@@ -26,7 +30,8 @@ impl ForwardProcessorCreator {
             e
         })?;
 
-        let bdt = BdtHttpRequestor::new(
+        let bdt = HttpRequestorWithDeviceFailHandler::new(
+            self.fail_handler.clone(),
             self.bdt_stack.clone(),
             device,
             cyfs_base::NON_STACK_BDT_VPORT,
@@ -272,8 +277,8 @@ pub(crate) struct ForwardProcessorManager {
 }
 
 impl ForwardProcessorManager {
-    pub fn new(bdt_stack: StackGuard, device_manager: Box<dyn DeviceCache>) -> Self {
-        let creator = ForwardProcessorCreator::new(bdt_stack, device_manager);
+    pub fn new(bdt_stack: StackGuard, device_manager: Box<dyn DeviceCache>, fail_handler: ObjectFailHandler) -> Self {
+        let creator = ForwardProcessorCreator::new(bdt_stack, device_manager, fail_handler);
         let container = ForwardRequestorContainer::new(Arc::new(creator));
         Self { container }
     }

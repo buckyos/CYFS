@@ -3,6 +3,46 @@ use cyfs_base::*;
 use cyfs_bdt::*;
 
 use http_types::{Request, Response};
+use std::sync::Mutex;
+
+
+struct DeviceConnectWithSNCache {
+    devices: Mutex<lru_time_cache::LruCache<DeviceId, ()>>,
+}
+
+impl DeviceConnectWithSNCache {
+    pub fn new() -> Self {
+        Self {
+            devices: Mutex::new(lru_time_cache::LruCache::with_expiry_duration_and_capacity(
+                std::time::Duration::from_secs(60 * 10),
+                256,
+            )),
+        }
+    }
+
+    pub fn try_connect_via_sn(device_id: &DeviceId) -> bool {
+        static D: once_cell::sync::OnceCell<DeviceConnectWithSNCache> = once_cell::sync::OnceCell::new();
+        D.get_or_init(|| {
+            DeviceConnectWithSNCache::new()
+        }).try_connect_via_sn_impl(device_id)
+    }
+    
+    fn try_connect_via_sn_impl(&self, device_id: &DeviceId) -> bool {
+        let mut list = self.devices.lock().unwrap();
+
+        // force remove expired items
+        list.iter();
+
+        if let Some(_) = list.peek(device_id) {
+            return false;
+        }
+
+        list.insert(device_id.to_owned(), ());
+
+        true
+    }
+}
+
 
 #[derive(Clone)]
 pub struct BdtHttpRequestor {
@@ -21,6 +61,47 @@ impl BdtHttpRequestor {
             vport,
         }
     }
+
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn device_id(&self) -> &DeviceId {
+        &self.device_id
+    }
+
+    async fn connect(&self, with_remote_desc: bool) -> BuckyResult<StreamGuard> {
+        let begin = std::time::Instant::now();
+
+        let build_params = BuildTunnelParams {
+            remote_const: self.device.desc().clone(),
+            remote_sn: None,
+            remote_desc: if with_remote_desc {
+                Some(self.device.clone())
+            } else {
+                None
+            },
+        };
+
+        let bdt_stream = self
+            .bdt_stack
+            .stream_manager()
+            .connect(self.vport, Vec::new(), build_params)
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "connect to {} failed! with_desc={}, during={}ms, {}",
+                    self.remote_addr(),
+                    with_remote_desc,
+                    begin.elapsed().as_millis(),
+                    e
+                );
+                warn!("{}", msg);
+                BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
+            })?;
+
+        Ok(bdt_stream)
+    }
 }
 
 #[async_trait::async_trait]
@@ -36,27 +117,22 @@ impl HttpRequestor for BdtHttpRequestor {
         );
 
         let begin = std::time::Instant::now();
-        let build_params = BuildTunnelParams {
-            remote_const: self.device.desc().clone(),
-            remote_sn: None,
-            remote_desc: Some(self.device.clone()),
-        };
 
-        let bdt_stream = self
-            .bdt_stack
-            .stream_manager()
-            .connect(self.vport, Vec::new(), build_params)
-            .await
-            .map_err(|e| {
-                let msg = format!(
-                    "connect to {} failed! during={}ms, {}",
-                    self.remote_addr(),
-                    begin.elapsed().as_millis(),
-                    e
-                );
-                warn!("{}", msg);
-                BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
-            })?;
+        let bdt_stream = match self.connect(true).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                if !self.device.has_wan_endpoint() {
+                    return Err(e);
+                }
+                
+                if !DeviceConnectWithSNCache::try_connect_via_sn(&self.device_id) {
+                    return Err(e);
+                }
+
+                info!("now will retry connect via sn: device={}", self.device_id);
+                self.connect(false).await?
+            }
+        };
 
         if let Some(conn_info) = conn_info {
             *conn_info = HttpRequestConnectionInfo::Bdt((
@@ -76,7 +152,7 @@ impl HttpRequestor for BdtHttpRequestor {
 
         let req = req.take().unwrap();
         let req = self.add_default_headers(req);
-        
+
         match async_h1::connect(bdt_stream, req).await {
             Ok(resp) => {
                 info!(

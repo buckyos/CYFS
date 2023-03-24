@@ -4,9 +4,9 @@ use crate::root_state_api::GlobalStateLocalService;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use cyfs_debug::Mutex;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 pub struct GlobalStatePathMetaItem {
     manager: GlobalStateDecPathMetaManagerRef,

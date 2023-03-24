@@ -152,6 +152,13 @@ impl NamedObjectMeta for NamedObjectMetaWithAccessCache {
         self.next.stat().await
     }
 
+    async fn select_object(
+        &self,
+        req: &NamedObjectMetaSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectMetaSelectObjectResponse> {
+        self.next.select_object(req).await
+    }
+    
     fn bind_object_meta_access_provider(
         &self,
         object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,

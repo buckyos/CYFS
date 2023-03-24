@@ -144,6 +144,11 @@ impl ConnectTunnelBuilder {
                         }
                     }
                 }
+            } else if let Some(remote) = known_remote {
+                info!("{} explore_endpoint_pair with known remote {:?} again", self, remote.connect_info().endpoints());
+                let _ = self.explore_endpoint_pair(remote, first_box.clone(), |_| true);
+            } else {
+                warn!("{} no sn and unkown remote", self);
             }
         } 
 

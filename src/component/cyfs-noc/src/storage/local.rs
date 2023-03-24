@@ -31,7 +31,7 @@ impl NamedObjectLocalStorage {
         }
 
         // Init blob module
-        let blob = Self::init_blob(&dir).await?;
+        let blob = create_blob_storage(&dir).await?;
 
         let meta = Self::init_meta(&dir)?;
 
@@ -40,27 +40,6 @@ impl NamedObjectLocalStorage {
 
     pub fn meta(&self) -> &NamedObjectMetaRef {
         &self.meta
-    }
-
-    async fn init_blob(root: &Path) -> BuckyResult<Box<dyn BlobStorage>> {
-        let dir = root.join("objects");
-
-        if !dir.is_dir() {
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                let msg = format!(
-                    "create noc blob data dir error! dir={}, {}",
-                    dir.display(),
-                    e
-                );
-                error!("{}", msg);
-
-                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
-            }
-        }
-
-        let blob = FileBlobStorage::new(dir);
-
-        Ok(Box::new(blob))
     }
 
     fn init_meta(root: &Path) -> BuckyResult<NamedObjectMetaRef> {
@@ -310,6 +289,7 @@ impl NamedObjectLocalStorage {
             source: req.source.clone(),
             object_id: req.object_id.clone(),
             last_access_rpath: req.last_access_rpath.clone(),
+            flags: req.flags,
         };
 
         let meta_ret = self.meta.get_object(&meta_req).await?;
@@ -494,6 +474,13 @@ impl NamedObjectLocalStorage {
 
         Ok(resp)
     }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        self.meta.select_object(req).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -542,6 +529,13 @@ impl NamedObjectCache for NamedObjectLocalStorage {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         Self::stat(&self).await
+    }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        Self::select_object(self, req).await
     }
 
     fn bind_object_meta_access_provider(

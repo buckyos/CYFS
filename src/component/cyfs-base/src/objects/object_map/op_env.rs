@@ -571,6 +571,14 @@ impl ObjectMapRootManager {
         OpEnvSessionIDHelper::set_type(sid, op_env_type)
     }
 
+    pub fn owner(&self) -> &Option<ObjectId> {
+        &self.owner
+    }
+    
+    pub fn dec_id(&self) -> &Option<ObjectId> {
+        &self.dec_id
+    }
+
     pub fn get_current_root(&self) -> ObjectId {
         self.root.get_current_root()
     }
@@ -620,8 +628,6 @@ impl ObjectMapRootManager {
             sid,
             &self.root,
             &self.cache,
-            self.owner.clone(),
-            self.dec_id.clone(),
             access,
         );
         let env = ObjectMapSingleOpEnvRef::new(env);
@@ -650,8 +656,6 @@ impl ObjectMapRootManager {
             sid,
             &self.root,
             &self.cache,
-            self.owner.clone(),
-            self.dec_id.clone(),
             access,
         );
         let env = ObjectMapIsolatePathOpEnvRef::new(env);

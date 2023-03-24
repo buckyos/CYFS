@@ -1,0 +1,16 @@
+[package]
+name = "http-bug-server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tide = "0.16"
+async-std = "1.12"
+cyfs-base = {path="../../component/cyfs-base"}
+cyfs-debug = {path="../../component/cyfs-debug", features = ["http_report"]}
+cyfs-util = {path="../../component/cyfs-util"}
+clap = "4"
+serde_json = "1"
+log = "0.4"

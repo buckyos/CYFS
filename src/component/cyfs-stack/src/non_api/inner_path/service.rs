@@ -13,6 +13,9 @@ pub(crate) struct NONInnerPathServiceProcessor {
 
     dir_loader: NONDirLoader,
     objectmap_loader: NONObjectMapLoader,
+
+    noc: NamedObjectCacheRef,
+    relation: NamedObjectRelationCacheRef,
 }
 
 impl NONInnerPathServiceProcessor {
@@ -20,6 +23,7 @@ impl NONInnerPathServiceProcessor {
         non_processor: NONInputProcessorRef,
         named_data_components: &NamedDataComponents,
         noc: NamedObjectCacheRef,
+        relation: NamedObjectRelationCacheRef,
     ) -> NONInputProcessorRef {
         let dir_loader = NONDirLoader::new(
             non_processor.clone(),
@@ -27,12 +31,14 @@ impl NONInnerPathServiceProcessor {
         );
 
         // TODO objectmap loader should use non instead noc?
-        let objectmap_loader = NONObjectMapLoader::new(noc);
+        let objectmap_loader = NONObjectMapLoader::new(noc.clone());
 
         let ret = Self {
             next: non_processor,
             dir_loader,
             objectmap_loader,
+            noc,
+            relation,
         };
 
         Arc::new(Box::new(ret))
@@ -85,6 +91,40 @@ impl NONInnerPathServiceProcessor {
 
         Ok(resp)
     }
+
+    async fn load_object_from_noc(
+        &self,
+        req: NONGetObjectInputRequest,
+        object_id: &ObjectId,
+    ) -> BuckyResult<NONGetObjectInputResponse> {
+        let noc_req = NamedObjectCacheGetObjectRequest {
+            object_id: object_id.clone(),
+            source: req.common.source,
+            last_access_rpath: None,
+            flags: 0,
+        };
+
+        let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
+            error!("load object from noc error! id={}, {}", object_id, e);
+            e
+        })?;
+
+        match resp {
+            Some(resp) => {
+                let mut resp = NONGetObjectInputResponse::new_with_object(resp.object);
+                resp.init_times()?;
+                Ok(resp)
+            }
+            None => {
+                let msg = format!(
+                    "get object with inner_path but target object not found! object={}, inner_path={:?}, target={}",
+                    req.object_id, req.inner_path, object_id,
+                );
+                warn!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -100,14 +140,66 @@ impl NONInputProcessor for NONInnerPathServiceProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        // 对objectmap+inner_path情况下
-        if req.object_id.obj_type_code() == ObjectTypeCode::ObjectMap && req.inner_path.is_some() {
-            return self.get_objectmap(req).await;
-        }
+        if req.is_with_inner_path_relation() {
+            // First try load relation from cache
+            let cache_key = NamedObjectRelationCacheKey {
+                object_id: req.object_id.clone(),
+                relation_type: NamedObjectRelationType::InnerPath,
+                relation: req.inner_path.as_ref().unwrap().clone(),
+            };
 
-        // 对dir+innerpath情况下
-        if req.object_id.obj_type_code() == ObjectTypeCode::Dir && req.inner_path.is_some() {
-            return self.get_dir(req).await;
+            let relation_req = NamedObjectRelationCacheGetRequest {
+                cache_key,
+                flags: 0,
+            };
+
+            if let Ok(Some(data)) = self.relation.get(&relation_req).await {
+                match data.target_object_id {
+                    Some(id) => {
+                        return self.load_object_from_noc(req, &id).await;
+                    }
+                    None => {
+                        let msg = format!("get object with inner path but not found with missing cache! object={}, inner_path={}",
+                        req.object_id, req.inner_path.as_ref().unwrap());
+                        warn!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                    }
+                }
+            }
+
+            // load indeed
+            let ret = match req.object_id.obj_type_code() {
+                ObjectTypeCode::ObjectMap => self.get_objectmap(req).await,
+                ObjectTypeCode::Dir => self.get_dir(req).await,
+                _ => unreachable!(),
+            };
+
+            match &ret {
+                Ok(resp) => {
+                    // cache relation
+                    let req = NamedObjectRelationCachePutRequest {
+                        cache_key: relation_req.cache_key,
+                        target_object_id: Some(resp.object.object_id.clone()),
+                    };
+
+                    let _ = self.relation.put(&req).await;
+                }
+                Err(e) => {
+                    if e.code() == BuckyErrorCode::NotFound
+                        || e.code() == BuckyErrorCode::InnerPathNotFound
+                    {
+                        // cache relation
+                        let req = NamedObjectRelationCachePutRequest {
+                            cache_key: relation_req.cache_key,
+                            target_object_id: None,
+                        };
+
+                        let _ = self.relation.put(&req).await;
+                    }
+                }
+            }
+
+            return ret;
         }
 
         self.next.get_object(req).await

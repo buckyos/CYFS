@@ -1,6 +1,5 @@
 use super::super::acl::*;
 use super::super::handler::*;
-use super::super::non::NONOutputFailHandleProcessor;
 use super::def::*;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
@@ -16,6 +15,8 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct NONRouter {
+    noc_relation: NamedObjectRelationCacheRef,
+
     zone_manager: ZoneManagerRef,
 
     // meta的处理器，处理get请求，底层会依赖noc
@@ -37,6 +38,8 @@ pub(crate) struct NONRouter {
 
 impl NONRouter {
     fn new(
+        noc_relation: NamedObjectRelationCacheRef,
+
         // router内部的noc处理器，会经过acl和validate两层校验器
         noc_raw_processor: NONInputProcessorRef,
 
@@ -54,6 +57,8 @@ impl NONRouter {
             NOCLevelInputProcessor::new_rmeta_acl(acl.clone(), noc_raw_processor.clone());
 
         let ret = Self {
+            noc_relation,
+
             // noc_acl_processor 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；
             // 如果是中间节点，那么使用raw_noc_processor来作为缓存查询
             noc_raw_processor,
@@ -74,9 +79,10 @@ impl NONRouter {
     }
 
     pub(crate) fn new_acl(
+        noc_relation: NamedObjectRelationCacheRef,
         raw_noc_processor: NONInputProcessorRef,
 
-        // 用以实现转发请求
+        // Used to forwarding requests
         forward: ForwardProcessorManager,
         acl: AclManagerRef,
 
@@ -88,6 +94,7 @@ impl NONRouter {
     ) -> NONInputProcessorRef {
         // router processor with rmeta acl and valdiate
         let rmeta_validate_router = Self::new(
+            noc_relation,
             raw_noc_processor,
             forward,
             acl.clone(),
@@ -97,24 +104,23 @@ impl NONRouter {
             fail_handler,
         );
 
-        // 入栈的请求，依次是 input->acl->pre_router->router->post_router
-        // 本地发起的请求，直接进入router: input->pre_router->router->post_router
+        // Request from local rpc call or other stacks requests via bdt protocol: input->acl->pre_router->router->post_router
 
-        // 增加router前置处理器
+        // Add the router pre processor
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreRouter,
             rmeta_validate_router,
             router_handlers.clone(),
         );
 
-        // 增加router后置处理器
+        // Add the router post processor
         let post_processor = NONHandlerPostProcessor::new(
             RouterHandlerChain::PostRouter,
             pre_processor,
             router_handlers,
         );
 
-        // 带控制input acl权限的处理器
+        // Wrap the processor with input acl control
         let acl_processor = NONAclInputProcessor::new(acl, post_processor.clone());
 
         acl_processor
@@ -133,13 +139,13 @@ impl NONRouter {
             .resolve_target(target)
             .await?;
 
-        // 如果就是当前协议栈，那么直接本地处理
+        // If it is the current protocol stack, then directly process on local
         let target;
         let direction;
         let next_hop;
         let next_direction;
         if target_zone_info.target_device == current_info.device_id {
-            // FIXME 如果是本地device，这里是设置为本地device值，还是都置空？
+            // FIXME If it is current local device, is it set to be set to the local device value, or leave it empty?
             target = None;
             direction = None;
             next_hop = None;
@@ -250,9 +256,6 @@ impl NONRouter {
         // 这里不指定dec_id，使用forward request里面的dec_id
         let processor = NONRequestor::new(None, requestor).into_processor();
 
-        // 增加一层错误监测处理
-        let processor =
-            NONOutputFailHandleProcessor::new(target.clone(), self.fail_handler.clone(), processor);
 
         // 转换为input processor
         let input_processor = NONInputTransformer::new(processor);
@@ -532,7 +535,7 @@ impl NONRouter {
             .get_forward(router_info.next_hop.as_ref().unwrap())
             .await?;
 
-        let resp = forward_processor
+        let ret = forward_processor
             .get_object(req.clone())
             .await
             .map_err(|mut e| {
@@ -543,20 +546,53 @@ impl NONRouter {
                     e.set_code(BuckyErrorCode::ConnectInterZoneFailed);
                 }
                 e
-            })?;
+            });
+
+        // Try to cache relation
+        if req.is_with_inner_path_relation() {
+            let cache_key = NamedObjectRelationCacheKey {
+                object_id: req.object_id.clone(),
+                relation_type: NamedObjectRelationType::InnerPath,
+                relation: req.inner_path.as_ref().unwrap().clone(),
+            };
+
+            let req = match &ret {
+                Ok(resp) => Some(NamedObjectRelationCachePutRequest {
+                    cache_key,
+                    target_object_id: Some(resp.object.object_id.clone()),
+                }),
+                Err(e)
+                    if e.code() == BuckyErrorCode::NotFound
+                        || e.code() == BuckyErrorCode::InnerPathNotFound =>
+                {
+                    Some(NamedObjectRelationCachePutRequest {
+                        cache_key,
+                        target_object_id: None,
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some(req) = req {
+                let relation = self.noc_relation.clone();
+                async_std::task::spawn(async move {
+                    let _ = relation.put(&req).await;
+                });
+            }
+        }
 
         // 通过forward查询成功后，本地需要缓存
-        if save_to_noc {
+        if ret.is_ok() && save_to_noc {
             let put_req = NONPutObjectInputRequest {
                 common: req.common.clone(),
-                object: resp.object.clone(),
+                object: ret.as_ref().unwrap().object.clone(),
                 access: None,
             };
 
             let _r = self.noc_raw_processor.put_object(put_req).await;
         }
 
-        Ok(resp)
+        ret
     }
 
     pub async fn get_object(

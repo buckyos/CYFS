@@ -42,6 +42,7 @@ static CYFS_ROOT: once_cell::sync::OnceCell<PathBuf> = once_cell::sync::OnceCell
 // 初始化时候调用一次
 pub fn bind_cyfs_root_path(root_path: impl Into<PathBuf>) {
     let root_path: PathBuf = root_path.into();
+    println!("bind cyfs_root dir: {}", root_path.display());
 
     match CYFS_ROOT.set(root_path.clone()) {
         Ok(_) => {
@@ -109,6 +110,10 @@ pub fn get_app_dir(app_id: &str) -> PathBuf {
 
 pub fn get_app_web_dir(app_id: &str) -> PathBuf {
     get_cyfs_root_path().join("app").join("web").join(app_id)
+}
+
+pub fn get_app_web_dir2(app_id: &str, version: &str) -> PathBuf {
+    get_cyfs_root_path().join("app").join("web2").join(app_id).join(version)
 }
 
 pub fn get_app_acl_dir(app_id: &str) -> PathBuf {

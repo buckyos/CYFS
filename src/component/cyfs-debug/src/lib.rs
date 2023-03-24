@@ -17,6 +17,7 @@ pub use debug_config::*;
 pub use log_util::*;
 pub use panic::*;
 pub use dump::*;
+pub use bug_report::PanicReportRequest;
 
 #[cfg(feature = "http_report")]
 pub use http_target::*;

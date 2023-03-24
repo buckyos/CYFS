@@ -467,12 +467,12 @@ impl SPVTxStorage {
                 match body {
                     MetaTxBody::CreateDesc(_) => {
                         if let Ok(query) = self.prepare_add_object(tx, block.header().number()) {
-                            conn.execute_sql(query).await?;
+                            let _ = conn.execute_sql(query).await;
                         }
                     }
                     MetaTxBody::UpdateDesc(_) => {
                         if let Ok(query) = self.prepare_add_object(tx, block.header().number()) {
-                            conn.execute_sql(query).await?;
+                            let _ = conn.execute_sql(query).await;
                         }
                     }
                     MetaTxBody::TransBalance(trans) => {

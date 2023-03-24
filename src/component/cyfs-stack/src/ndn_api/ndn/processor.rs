@@ -3,7 +3,6 @@ use super::super::forward::*;
 use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
-use super::NDNOutputFailHandleProcessor;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -159,9 +158,6 @@ impl NDNLevelInputProcessor {
         // 这里不指定dec_id，使用forward request里面的dec_id
         let processor = NDNRequestor::new(None, requestor, None).into_processor();
 
-        // 增加一层错误监测处理
-        let processor =
-            NDNOutputFailHandleProcessor::new(target.clone(), self.fail_handler.clone(), processor);
 
         // 转换为input processor
         let input_processor = NDNInputTransformer::new(processor);

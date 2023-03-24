@@ -58,6 +58,10 @@ impl GlobalStateManager {
         }
     }
 
+    pub async fn get_isolate_list(&self, category: GlobalStateCategory) -> Vec<GlobalStateIsolateInfo> {
+        self.index.get_isolate_list(category).await
+    }
+
     pub async fn get_root_state(&self, isolate_id: &ObjectId) -> Option<GlobalStateRef> {
         self.get_global_state(GlobalStateCategory::RootState, isolate_id)
             .await
@@ -159,6 +163,10 @@ impl GlobalStateManager {
 
 #[async_trait::async_trait]
 impl GlobalStateManagerRawProcessor for GlobalStateManager {
+    async fn get_isolate_list(&self, category: GlobalStateCategory) -> Vec<GlobalStateIsolateInfo> {
+        Self::get_isolate_list(&self, category).await
+    }
+
     async fn get_global_state(
         &self,
         category: GlobalStateCategory,

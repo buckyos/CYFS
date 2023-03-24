@@ -87,6 +87,8 @@ impl NamedObjectCacheUpdateObjectMetaRequest {
     }
 }
 
+pub const NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS: u32 = 0x01;
+
 // get_object
 #[derive(Clone)]
 pub struct NamedObjectCacheGetObjectRequest {
@@ -95,6 +97,18 @@ pub struct NamedObjectCacheGetObjectRequest {
     pub object_id: ObjectId,
 
     pub last_access_rpath: Option<String>,
+
+    pub flags: u32,
+}
+
+impl NamedObjectCacheGetObjectRequest {
+    pub fn set_no_update_last_access(&mut self) {
+        self.flags |= NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS;
+    }
+    
+    pub fn is_no_update_last_access(&self) -> bool {
+        self.flags & NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS == NAMED_OBJECT_CACHE_GET_OBJECT_FLAG_NO_UPDATE_LAST_ACCESS
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -180,12 +194,61 @@ pub struct NamedObjectCacheCheckObjectAccessRequest {
     pub required_access: AccessPermissions,
 }
 
-
 // stat
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedObjectCacheStat {
     pub count: u64,
     pub storage_size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedObjectCacheSelectObjectFilter {
+    pub obj_type: Option<u16>,
+}
+
+impl Default for NamedObjectCacheSelectObjectFilter {
+    fn default() -> Self {
+        Self {
+            obj_type: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedObjectCacheSelectObjectOption {
+    // The number of readings per page
+    pub page_size: usize,
+
+    // The page number currently read, starting from 0
+    pub page_index: usize,
+}
+
+impl Default for NamedObjectCacheSelectObjectOption {
+    fn default() -> Self {
+        Self {
+            page_size: 256,
+            page_index: 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct NamedObjectCacheSelectObjectRequest {
+    // filters
+    pub filter: NamedObjectCacheSelectObjectFilter,
+
+    // configs
+    pub opt: NamedObjectCacheSelectObjectOption,
+}
+
+#[derive(Debug)]
+pub struct NamedObjectCacheSelectObjectData {
+    pub object_id: ObjectId,
+}
+
+#[derive(Debug)]
+pub struct NamedObjectCacheSelectObjectResponse {
+    pub list: Vec<NamedObjectCacheSelectObjectData>,
 }
 
 #[async_trait::async_trait]
@@ -237,17 +300,26 @@ pub trait NamedObjectCache: Sync + Send {
         req: &NamedObjectCacheUpdateObjectMetaRequest,
     ) -> BuckyResult<()>;
 
-    async fn check_object_access(&self, 
-        req: &NamedObjectCacheCheckObjectAccessRequest
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectCacheCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
 
-    fn bind_object_meta_access_provider(&self, object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef);
+    // for internal use only
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse>;
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    );
 }
 
 pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache>>;
-
 
 impl ObjectSelectorDataProvider for NamedObjectMetaData {
     fn object_id(&self) -> &ObjectId {
@@ -297,3 +369,49 @@ pub trait NamedObjectCacheObjectMetaAccessProvider: Sync + Send {
 }
 
 pub type NamedObjectCacheObjectMetaAccessProviderRef = Arc<Box<dyn NamedObjectCacheObjectMetaAccessProvider>>;
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum NamedObjectRelationType {
+    InnerPath = 0,
+}
+
+impl Into<u8> for NamedObjectRelationType {
+    fn into(self) -> u8 {
+        match self {
+            Self::InnerPath => 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NamedObjectRelationCacheKey {
+    pub object_id: ObjectId,
+    pub relation_type: NamedObjectRelationType,
+    pub relation: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct NamedObjectRelationCachePutRequest {
+    pub cache_key: NamedObjectRelationCacheKey,
+    pub target_object_id: Option<ObjectId>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NamedObjectRelationCacheGetRequest {
+    pub cache_key: NamedObjectRelationCacheKey,
+    pub flags: u32,
+}
+
+#[derive(Clone)]
+pub struct NamedObjectRelationCacheData {
+    pub target_object_id: Option<ObjectId>,
+}
+
+#[async_trait::async_trait]
+pub trait NamedObjectRelationCache: Send + Sync {
+    async fn put(&self, req: &NamedObjectRelationCachePutRequest) -> BuckyResult<()>;
+    async fn get(&self, req: &NamedObjectRelationCacheGetRequest) -> BuckyResult<Option<NamedObjectRelationCacheData>>;
+}
+
+pub type NamedObjectRelationCacheRef = Arc<Box<dyn NamedObjectRelationCache>>;

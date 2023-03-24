@@ -2,7 +2,6 @@ mod acl;
 mod admin;
 mod base;
 mod crypto;
-mod default_app;
 mod events;
 mod ndn;
 mod non;
@@ -18,13 +17,13 @@ mod util;
 mod ws;
 mod zone;
 mod requestor;
+mod traversal;
 
 pub use crate::util::*;
 pub use acl::*;
 pub use admin::*;
 pub use base::*;
 pub use crypto::*;
-pub use default_app::*;
 pub use events::*;
 pub use ndn::*;
 pub use non::*;
@@ -39,6 +38,7 @@ pub use trans::*;
 pub use ws::*;
 pub use zone::*;
 pub use requestor::*;
+pub use traversal::*;
 
 // 重新导出cache相关接口，由于bdt层的依赖关系，只能放在util工程
 pub use cyfs_util::cache::*;

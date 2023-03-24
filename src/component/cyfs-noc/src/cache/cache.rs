@@ -155,18 +155,20 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
     ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let cache_item = self.get(req).await?;
         if cache_item.is_some() {
-            // Update the last access info
-            let update_req = NamedObjectMetaUpdateLastAccessRequest {
-                object_id: req.object_id.clone(),
-                last_access_time: bucky_time_now(),
-                last_access_rpath: req.last_access_rpath.clone(),
-            };
+            if !req.is_no_update_last_access() {
+                // Update the last access info
+                let update_req = NamedObjectMetaUpdateLastAccessRequest {
+                    object_id: req.object_id.clone(),
+                    last_access_time: bucky_time_now(),
+                    last_access_rpath: req.last_access_rpath.clone(),
+                };
 
-            if let Err(e) = self.meta.update_last_access(&update_req).await {
-                error!(
-                    "noc got from cache but update last access to meta failed! obj={}, {}",
-                    req.object_id, e
-                );
+                if let Err(e) = self.meta.update_last_access(&update_req).await {
+                    error!(
+                        "noc got from cache but update last access to meta failed! obj={}, {}",
+                        req.object_id, e
+                    );
+                }
             }
 
             return Ok(cache_item);
@@ -235,6 +237,13 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
+    }
+
+    async fn select_object(
+        &self,
+        req: &NamedObjectCacheSelectObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+        self.next.select_object(req).await
     }
 
     fn bind_object_meta_access_provider(

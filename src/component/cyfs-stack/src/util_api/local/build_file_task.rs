@@ -329,6 +329,7 @@ impl BuildFileTask {
                     last_access_rpath: None,
                     source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
                     object_id: query_ret.unwrap().file_id.object_id().clone(),
+                    flags: 0,
                 })
                 .await?;
             if let Some(file) = file {
@@ -487,6 +488,13 @@ mod build_file_task_test {
             todo!();
         }
 
+        async fn select_object(
+            &self,
+            req: &NamedObjectCacheSelectObjectRequest,
+        ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
+            todo!();    
+        }
+
         fn bind_object_meta_access_provider(&self, _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef) {
 
         }
@@ -590,7 +598,16 @@ mod build_file_task_test {
         async fn exists_chunks(&self, _req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
             todo!();
         }
+
+        async fn select_chunk(&self, _req: &SelectChunkRequest) -> BuckyResult<SelectChunkResponse> {
+            todo!();
+        }
+
+        async fn stat(&self) -> BuckyResult<NamedDataCacheStat> {
+            todo!();
+        }
     }
+
     async fn gen_random_file(local_path: &Path) {
         if local_path.exists() {
             assert!(local_path.is_file());

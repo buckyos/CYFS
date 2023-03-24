@@ -1,0 +1,28 @@
+[package]
+name = "cyfs-backup-tool"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "cyfs-backup"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-noc = { path = "../../component/cyfs-noc" }
+cyfs-ndc = { path = "../../component/cyfs-ndc" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+cyfs-backup = { path = "../../component/cyfs-backup" }
+cyfs-backup-lib = { path = "../../component/cyfs-backup-lib" }
+cyfs-chunk-cache = { path = "../../component/cyfs-chunk-cache" }
+cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.7' }
+cyfs-bdt-ext = { path = "../../component/cyfs-bdt-ext" }
+cyfs-tracker-cache = { path = "../../component/cyfs-tracker-cache" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+async-trait = "0.1.53"
+log = "0.4"
+clap = "2.34.0"

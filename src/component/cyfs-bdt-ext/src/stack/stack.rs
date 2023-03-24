@@ -103,6 +103,7 @@ impl BdtStackHelper {
 
         bdt_params.ndn_event = ndn_event;
 
+        let has_wan_endpoint = params.device.has_wan_endpoint();
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 
         if let Err(e) = ret {
@@ -120,7 +121,15 @@ impl BdtStackHelper {
         };
 
         if wait_online {
-            BdtStackSNHelper::wait_sn_online(&bdt_stack, ping_clients).await;
+            if has_wan_endpoint {
+                warn!("current device has wan endpoint, now will use async wait-online");
+                let bdt_stack = bdt_stack.clone();
+                async_std::task::spawn(async move {
+                    let _ = BdtStackSNHelper::wait_sn_online(&bdt_stack, ping_clients).await;
+                });
+            } else {
+                BdtStackSNHelper::wait_sn_online(&bdt_stack, ping_clients).await?;
+            }
         }
 
         Ok(bdt_stack)

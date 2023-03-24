@@ -387,6 +387,21 @@ impl Device {
             }
         }
     }
+
+    pub fn has_wan_endpoint(&self) -> bool {
+        match self.body() {
+            Some(body) => {
+                for ep in body.content().endpoints() {
+                    if ep.is_mapped_wan() {
+                        return true;
+                    }
+                }
+
+                false
+            }
+            None => false,
+        }
+    }
 }
 
 impl RawMergable for Device {
