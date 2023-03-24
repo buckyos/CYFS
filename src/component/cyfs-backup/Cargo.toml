@@ -43,6 +43,8 @@ pbkdf2 = { version = '0.11', default-features = false }
 sha2 = '0.10'
 hmac = '0.12'
 base58 = '0.2.0'
+tide = "0.16"
+http-types = "2.12"
 
 [dev-dependencies]
 rand = "0.8"

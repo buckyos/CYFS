@@ -2,8 +2,9 @@ use crate::crypto::*;
 use crate::object_pack::*;
 
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize,)]
 pub struct LocalFileBackupParam {
     // Backup target_file storage directory
     pub dir: Option<PathBuf>,
@@ -23,7 +24,7 @@ impl Default for LocalFileBackupParam {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize,)]
 pub struct UniBackupParams {
     pub id: String,
     pub isolate: String,
