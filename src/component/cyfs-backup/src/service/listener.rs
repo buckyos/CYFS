@@ -60,37 +60,54 @@ impl BackupRequestHandlerEndpoint {
     }
 
     pub fn register_server(
+        mode: BackupHttpServerMode,
         protocol: &RequestProtocol,
         handler: &BackupRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
-        let path = format!("/backup/backup");
+        if mode == BackupHttpServerMode::Full {
+            server.at("/backup/backup").post(Self::new(
+                protocol.clone(),
+                BackupRequestType::StartBackupTask,
+                handler.clone(),
+            ));
+        }
 
-        server.at(&path).post(Self::new(
-            protocol.clone(),
-            BackupRequestType::StartBackupTask,
-            handler.clone(),
-        ));
-
-        server.at(&path).get(Self::new(
+        server.at("/backup/backup/status").post(Self::new(
             protocol.clone(),
             BackupRequestType::GetBackupTaskStatus,
             handler.clone(),
         ));
 
-        let path = format!("/backup/restore");
+        if *protocol == RequestProtocol::HttpLocal {
+            server.at("/backup/backup/status").get(Self::new(
+                protocol.clone(),
+                BackupRequestType::GetBackupTaskStatus,
+                handler.clone(),
+            ));
+        }
 
-        server.at(&path).post(Self::new(
-            protocol.clone(),
-            BackupRequestType::StartRestoreTask,
-            handler.clone(),
-        ));
+        if mode == BackupHttpServerMode::Full {
+            server.at("/backup/restore").post(Self::new(
+                protocol.clone(),
+                BackupRequestType::StartRestoreTask,
+                handler.clone(),
+            ));
+        }
 
-        server.at(&path).get(Self::new(
+        server.at("/backup/restore/status").post(Self::new(
             protocol.clone(),
             BackupRequestType::GetRestoreTaskStatus,
             handler.clone(),
         ));
+
+        if *protocol == RequestProtocol::HttpLocal {
+            server.at("/backup/restore/status").get(Self::new(
+                protocol.clone(),
+                BackupRequestType::GetRestoreTaskStatus,
+                handler.clone(),
+            ));
+        }
     }
 }
 
@@ -102,5 +119,18 @@ where
     async fn call(&self, req: tide::Request<State>) -> tide::Result {
         let resp = self.process_request(req).await;
         Ok(resp)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+
+pub enum BackupHttpServerMode {
+    Full,
+    GetStatusOnly,
+}
+
+impl Default for BackupHttpServerMode {
+    fn default() -> Self {
+        Self::Full
     }
 }

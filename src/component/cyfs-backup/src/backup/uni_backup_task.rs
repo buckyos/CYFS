@@ -7,7 +7,7 @@ use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct UniBackupTask {
@@ -142,13 +142,30 @@ impl UniBackupTask {
         Ok(())
     }
 
+
+    pub fn backup_dir(params: &UniBackupParams) -> std::borrow::Cow<PathBuf> {
+        match &params.target_file.dir {
+            Some(dir) => std::borrow::Cow::Borrowed(dir),
+            None => {
+                let dir = if params.isolate.is_empty() {
+                    cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", params.id))
+                } else {
+                    cyfs_util::get_cyfs_root_path_ref()
+                        .join(format!("data/backup/{}/{}", params.isolate, params.id))
+                };
+
+                std::borrow::Cow::Owned(dir)
+            }
+        }
+    }
+
     async fn run_backup(
         &self,
         device_id: DeviceId,
         owner: Option<ObjectId>,
         params: UniBackupParams,
     ) -> BuckyResult<(ObjectArchiveIndex, ObjectArchiveMetaForUniBackup)> {
-        let backup_dir = params.dir();
+        let backup_dir = Self::backup_dir(&params);
 
         Self::check_target_dir(&backup_dir)?;
 

@@ -4,6 +4,7 @@ mod restore;
 mod server;
 mod stack;
 
+use cyfs_backup::BackupHttpServerMode;
 use cyfs_backup_lib::*;
 use cyfs_base::BuckyErrorCode;
 use cyfs_util::HttpInterfaceHost;
@@ -150,8 +151,7 @@ async fn main_run() {
     } else {
         true
     };
-    
-    
+
     let ret = match mode {
         ServiceMode::Backup | ServiceMode::Restore => {
             let id = matches.value_of("id").unwrap();
@@ -196,6 +196,7 @@ async fn main_run() {
 
                     if enable_iqf {
                         let interface = server::BackupInterface::new(
+                            BackupHttpServerMode::GetStatusOnly,
                             Some(backup_manager.backup_manager().clone()),
                             None,
                             iqf_host,
@@ -231,6 +232,7 @@ async fn main_run() {
 
                     if enable_iqf {
                         let interface = server::BackupInterface::new(
+                            BackupHttpServerMode::GetStatusOnly,
                             None,
                             Some(restore_manager.restore_manager().clone()),
                             iqf_host,

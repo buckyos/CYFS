@@ -32,21 +32,3 @@ pub struct UniBackupParams {
 
     pub target_file: LocalFileBackupParam,
 }
-
-impl UniBackupParams {
-    pub fn dir(&self) -> std::borrow::Cow<PathBuf> {
-        match &self.target_file.dir {
-            Some(dir) => std::borrow::Cow::Borrowed(dir),
-            None => {
-                let dir = if self.isolate.is_empty() {
-                    cyfs_util::get_cyfs_root_path_ref().join(format!("data/backup/{}", self.id))
-                } else {
-                    cyfs_util::get_cyfs_root_path_ref()
-                        .join(format!("data/backup/{}/{}", self.isolate, self.id))
-                };
-
-                std::borrow::Cow::Owned(dir)
-            }
-        }
-    }
-}

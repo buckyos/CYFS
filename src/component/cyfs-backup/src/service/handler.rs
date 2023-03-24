@@ -1,5 +1,6 @@
 use super::processor::BackupInputProcessorRef;
 use super::request::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -56,7 +57,7 @@ impl BackupRequestHandler {
         &self,
         req: BackupInputHttpRequest<State>,
     ) -> Response {
-        let ret = self.on_start_backup_task(req).await;
+        let ret = self.on_get_backup_task_status(req).await;
         match ret {
             Ok(resp) => {
                 let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
@@ -74,14 +75,44 @@ impl BackupRequestHandler {
         &self,
         mut req: BackupInputHttpRequest<State>,
     ) -> BuckyResult<GetBackupTaskStatusInputResponse> {
-        let request = req.request.body_json().await.map_err(|e| {
-            let msg = format!(
-                "read get_backup_task_status request from body failed! {}",
-                e
-            );
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidData, msg)
-        })?;
+        let request = match req.request.method() {
+            http_types::Method::Get => {
+                let id: Option<String> =
+                    RequestorHelper::value_from_querys_with_utf8_decoding("id", req.request.url())?;
+                if id.is_none() {
+                    let msg = format!(
+                        "query task status but id param missing! url={}",
+                        req.request.url()
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                let request = GetBackupTaskStatusRequest {
+                    common: BackupOutputRequestCommon {
+                        dec_id: None,
+                        target: None,
+                        flags: 0,
+                    },
+                    id: id.unwrap(),
+                };
+                request
+            }
+            http_types::Method::Post => {
+                let request = req.request.body_json().await.map_err(|e| {
+                    let msg = format!(
+                        "read get_backup_task_status request from body failed! {}",
+                        e
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                })?;
+                request
+            }
+            _ => {
+                unreachable!();
+            }
+        };
 
         let request = GetBackupTaskStatusInputRequest {
             source: req.source,
@@ -132,7 +163,7 @@ impl BackupRequestHandler {
         &self,
         req: BackupInputHttpRequest<State>,
     ) -> Response {
-        let ret = self.on_start_restore_task(req).await;
+        let ret = self.on_get_restore_task_status(req).await;
         match ret {
             Ok(resp) => {
                 let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
@@ -150,14 +181,44 @@ impl BackupRequestHandler {
         &self,
         mut req: BackupInputHttpRequest<State>,
     ) -> BuckyResult<GetRestoreTaskStatusInputResponse> {
-        let request = req.request.body_json().await.map_err(|e| {
-            let msg = format!(
-                "read get_restore_task_status request from body failed! {}",
-                e
-            );
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidData, msg)
-        })?;
+        let request = match req.request.method() {
+            http_types::Method::Get => {
+                let id: Option<String> =
+                    RequestorHelper::value_from_querys_with_utf8_decoding("id", req.request.url())?;
+                if id.is_none() {
+                    let msg = format!(
+                        "query task status but id param missing! url={}",
+                        req.request.url()
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                let request = GetRestoreTaskStatusRequest {
+                    common: BackupOutputRequestCommon {
+                        dec_id: None,
+                        target: None,
+                        flags: 0,
+                    },
+                    id: id.unwrap(),
+                };
+                request
+            }
+            http_types::Method::Post => {
+                let request = req.request.body_json().await.map_err(|e| {
+                    let msg = format!(
+                        "read get_restore_task_status request from body failed! {}",
+                        e
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                })?;
+                request
+            }
+            _ => {
+                unreachable!();
+            }
+        };
 
         let request = GetRestoreTaskStatusInputRequest {
             source: req.source,

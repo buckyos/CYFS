@@ -9,12 +9,13 @@ pub struct BackupInterface {
 
 impl BackupInterface {
     pub fn new(
+        mode: BackupHttpServerMode,
         backup_manager: Option<BackupManagerRef>,
         restore_manager: Option<RestoreManagerRef>,
         host: HttpInterfaceHost,
     ) -> Self {
         let mut server = HttpServer::new_server();
-        Self::register(backup_manager, restore_manager, &mut server);
+        Self::register(mode, backup_manager, restore_manager, &mut server);
 
         let interface = HttpInterface::new(host, OOD_BACKUP_TOOL_SERVICE_PORT, server);
 
@@ -24,6 +25,7 @@ impl BackupInterface {
     }
 
     fn register(
+        mode: BackupHttpServerMode,
         backup_manager: Option<BackupManagerRef>,
         restore_manager: Option<RestoreManagerRef>,
         server: &mut tide::Server<()>,
@@ -34,6 +36,7 @@ impl BackupInterface {
         let handler = cyfs_backup::BackupRequestHandler::new(service);
 
         cyfs_backup::BackupRequestHandlerEndpoint::register_server(
+            mode,
             &RequestProtocol::HttpLocal,
             &handler,
             server,
