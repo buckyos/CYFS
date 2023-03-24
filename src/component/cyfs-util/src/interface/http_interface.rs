@@ -1,10 +1,10 @@
+use super::http_tcp_listener::*;
 use cyfs_base::*;
-use ood_control::*;
 
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub enum OODStatusInterfaceHost {
+pub enum HttpInterfaceHost {
     // local loopback addr
     Local,
 
@@ -14,13 +14,13 @@ pub enum OODStatusInterfaceHost {
     Specified(Vec<IpAddr>),
 }
 
-impl Default for OODStatusInterfaceHost {
+impl Default for HttpInterfaceHost {
     fn default() -> Self {
         Self::Local
     }
 }
 
-impl std::str::FromStr for OODStatusInterfaceHost {
+impl std::str::FromStr for HttpInterfaceHost {
     type Err = BuckyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let ret = match s {
@@ -46,36 +46,36 @@ impl std::str::FromStr for OODStatusInterfaceHost {
     }
 }
 
-pub struct OODStatusInterface {
+pub struct HttpInterface {
     list: Vec<HttpTcpListener>,
 }
 
-impl OODStatusInterface {
-    pub fn new(host: OODStatusInterfaceHost, server: tide::Server<()>) -> Self {
+impl HttpInterface {
+    pub fn new(host: HttpInterfaceHost, port: u16, server: tide::Server<()>) -> Self {
         let server = Arc::new(server);
         let mut list = vec![];
         match host {
-            OODStatusInterfaceHost::Local => {
+            HttpInterfaceHost::Local => {
                 let addr = std::net::SocketAddr::new(
                     std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-                    OOD_DAEMON_LOCAL_STATUS_PORT,
+                    port,
                 );
 
                 let interface = HttpTcpListener::new_with_raw_server(addr, server);
                 list.push(interface);
             }
-            OODStatusInterfaceHost::Unspecified => {
+            HttpInterfaceHost::Unspecified => {
                 let addr = std::net::SocketAddr::new(
                     std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-                    OOD_DAEMON_LOCAL_STATUS_PORT,
+                    port,
                 );
 
                 let interface = HttpTcpListener::new_with_raw_server(addr, server);
                 list.push(interface);
             }
-            OODStatusInterfaceHost::Specified(addrs) => {
+            HttpInterfaceHost::Specified(addrs) => {
                 for addr in addrs {
-                    let addr = std::net::SocketAddr::new(addr, OOD_DAEMON_LOCAL_STATUS_PORT);
+                    let addr = std::net::SocketAddr::new(addr, port);
 
                     let interface = HttpTcpListener::new_with_raw_server(addr, server.clone());
                     list.push(interface);

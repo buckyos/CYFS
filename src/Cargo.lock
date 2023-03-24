@@ -2469,6 +2469,7 @@ dependencies = [
  "simple_logger 2.3.0",
  "sysinfo 0.27.8",
  "thread_local",
+ "tide",
  "toml 0.5.11",
  "url 2.3.0",
  "walkdir",

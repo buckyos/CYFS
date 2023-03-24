@@ -5,9 +5,8 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::stream::StreamExt;
 use async_std::task;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use futures::future::{AbortHandle, Abortable};
-use cyfs_debug::Mutex;
 
 pub(super) struct HttpTcpListenerInner {
     listen: SocketAddr,

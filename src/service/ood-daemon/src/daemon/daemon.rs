@@ -1,15 +1,15 @@
 use super::gateway_monitor::GATEWAY_MONITOR;
-use crate::config::{init_system_config, DEVICE_CONFIG_MANAGER, SystemConfigMonitor};
+use crate::config::{init_system_config, SystemConfigMonitor, DEVICE_CONFIG_MANAGER};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
-use crate::status::{OOD_STATUS_MANAGER, OODStatusInterfaceHost};
+use crate::status::OOD_STATUS_MANAGER;
 use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
-use std::sync::atomic::{AtomicU64, Ordering, AtomicBool};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -64,7 +64,7 @@ impl Daemon {
         }
     }
 
-    pub async fn run(&self, status_host: OODStatusInterfaceHost) -> BuckyResult<()> {
+    pub async fn run(&self, status_host: HttpInterfaceHost) -> BuckyResult<()> {
         init_system_config().await?;
 
         DEVICE_CONFIG_MANAGER.init()?;
