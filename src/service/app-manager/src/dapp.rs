@@ -46,9 +46,14 @@ fn get_str(value: &Value, key: &str) -> BuckyResult<String> {
 impl Drop for DApp {
     fn drop(&mut self) {
         if let Some(child) = self.process.lock().unwrap().as_mut() {
-            warn!("dapp {} dropped when child process start! pid {}", &self.dec_id, child.id());
-            child.kill();
-            child.wait();
+            let id = child.id();
+            warn!("dapp {} dropped when child process start! pid {}", &self.dec_id, id);
+            if let Err(e) = child.kill() {
+                error!("kill child process {} err {}", id, e);
+            };
+            if let Err(e) = child.wait() {
+                error!("wait child process {} err {}", id, e);
+            };
         }
     }
 }
