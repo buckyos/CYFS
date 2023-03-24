@@ -1586,6 +1586,7 @@ dependencies = [
  "cyfs-tracker-cache",
  "cyfs-util",
  "log 0.4.17",
+ "tide",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use http_types::StatusCode;
 use tide::Response;
 
 #[derive(Clone)]
-pub(crate) struct BackupRequestHandler {
+pub struct BackupRequestHandler {
     processor: BackupInputProcessorRef,
 }
 
@@ -16,7 +16,7 @@ impl BackupRequestHandler {
         Self { processor }
     }
 
-    pub async fn process_start_backup_task_request<State: Send>(
+    pub(crate) async fn process_start_backup_task_request<State: Send>(
         &self,
         req: BackupInputHttpRequest<State>,
     ) -> Response {
@@ -52,7 +52,7 @@ impl BackupRequestHandler {
         self.processor.start_backup_task(request).await
     }
 
-    pub async fn process_get_backup_task_status_request<State: Send>(
+    pub(crate) async fn process_get_backup_task_status_request<State: Send>(
         &self,
         req: BackupInputHttpRequest<State>,
     ) -> Response {

@@ -1,9 +1,11 @@
 use super::stack::StackComponentsHelper;
-use cyfs_backup::BackupManager;
+use cyfs_backup::{BackupManager, BackupManagerRef};
 use cyfs_base::*;
 
+use std::sync::Arc;
+
 pub struct BackupService {
-    backup_manager: BackupManager,
+    backup_manager: BackupManagerRef,
 }
 
 impl BackupService {
@@ -17,12 +19,12 @@ impl BackupService {
 
         let backup_manager = BackupManager::new(noc, ndc, chunk_reader);
 
-        let ret = Self { backup_manager };
+        let ret = Self { backup_manager: Arc::new(backup_manager), };
 
         Ok(ret)
     }
 
-    pub fn backup_manager(&self) -> &BackupManager {
+    pub fn backup_manager(&self) -> &BackupManagerRef {
         &self.backup_manager
     }
 }

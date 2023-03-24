@@ -1,9 +1,10 @@
 use cyfs_base::*;
-use cyfs_backup::RestoreManager;
+use cyfs_backup::{RestoreManagerRef, RestoreManager};
 
+use std::sync::Arc;
 
 pub struct RestoreService {
-    restore_manager: RestoreManager,
+    restore_manager: RestoreManagerRef,
 }
 
 impl RestoreService {
@@ -11,13 +12,13 @@ impl RestoreService {
         let restore_manager = RestoreManager::new();
 
         let ret = Self {
-            restore_manager,
+            restore_manager: Arc::new(restore_manager),
         };
 
         Ok(ret)
     }
 
-    pub fn restore_manager(&self) -> &RestoreManager {
+    pub fn restore_manager(&self) -> &RestoreManagerRef {
         &self.restore_manager
     }
 }

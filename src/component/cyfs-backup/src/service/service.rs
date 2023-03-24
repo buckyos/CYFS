@@ -8,8 +8,8 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 pub struct BackupService {
-    backup_manager: BackupManager,
-    restore_manager: RestoreManager,
+    backup_manager: Option<BackupManagerRef>,
+    restore_manager: Option<RestoreManagerRef>,
 }
 
 impl BackupService {
@@ -22,9 +22,39 @@ impl BackupService {
         let restore_manager = RestoreManager::new();
 
         Self {
+            backup_manager: Some(Arc::new(backup_manager)),
+            restore_manager: Some(Arc::new(restore_manager)),
+        }
+    }
+
+    pub fn new_direct(
+        backup_manager: Option<BackupManagerRef>,
+        restore_manager: Option<RestoreManagerRef>,
+    ) -> Self {
+        Self {
             backup_manager,
             restore_manager,
         }
+    }
+
+    pub fn into_processor(self) -> BackupInputProcessorRef {
+        Arc::new(Box::new(self))
+    }
+
+    fn backup_manager(&self) -> BuckyResult<&BackupManagerRef> {
+        self.backup_manager.as_ref().ok_or_else(|| {
+            let msg = format!("backup manager not support!");
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::UnSupport, msg)
+        })
+    }
+
+    fn restore_manager(&self) -> BuckyResult<&RestoreManagerRef> {
+        self.restore_manager.as_ref().ok_or_else(|| {
+            let msg = format!("restore manager not support!");
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::UnSupport, msg)
+        })
     }
 }
 
@@ -37,7 +67,7 @@ impl BackupInputProcessor for BackupService {
         req: StartBackupTaskInputRequest,
     ) -> BuckyResult<StartBackupTaskInputResponse> {
         let result = self
-            .backup_manager
+            .backup_manager()?
             .start_uni_backup(req.request.params)
             .await;
 
@@ -48,7 +78,7 @@ impl BackupInputProcessor for BackupService {
         &self,
         req: GetBackupTaskStatusInputRequest,
     ) -> BuckyResult<GetBackupTaskStatusInputResponse> {
-        let status = self.backup_manager.get_task_status(&req.request.id)?;
+        let status = self.backup_manager()?.get_task_status(&req.request.id)?;
 
         Ok(GetBackupTaskStatusInputResponse {
             id: req.request.id,

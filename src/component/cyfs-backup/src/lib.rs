@@ -13,6 +13,7 @@ mod service;
 
 pub use backup::*;
 pub use crypto::*;
+pub use service::*;
 
 #[macro_use]
 extern crate log;

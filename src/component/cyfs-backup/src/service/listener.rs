@@ -6,7 +6,7 @@ enum BackupRequestType {
     GetBackupTaskStatus,
 }
 
-pub(crate) struct BackupRequestHandlerEndpoint {
+pub struct BackupRequestHandlerEndpoint {
     protocol: RequestProtocol,
     req_type: BackupRequestType,
     handler: BackupRequestHandler,
