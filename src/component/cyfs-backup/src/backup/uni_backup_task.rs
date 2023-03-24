@@ -44,6 +44,20 @@ impl UniBackupTask {
     }
 
     pub async fn run(&self, params: UniBackupParams) -> BuckyResult<()> {
+        let ret = self.run_inner(params).await;
+
+        let r = match ret.as_ref() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.clone()),
+        };
+
+        self.status_manager.on_complete(ret);
+        self.status_manager.update_phase(BackupTaskPhase::Complete);
+
+        r
+    }
+
+    pub async fn run_inner(&self, params: UniBackupParams) -> BuckyResult<BackupResult> {
         let device_file_name = if params.isolate.len() > 0 {
             format!("{}/device", params.isolate)
         } else {
@@ -70,24 +84,13 @@ impl UniBackupTask {
         self.status_manager.update_phase(BackupTaskPhase::Backup);
         let ret = self.run_backup(device_id, owner, params).await;
 
-        let ret = match ret {
+        match ret {
             Ok((index, uni_meta)) => Ok(BackupResult {
                 index,
                 uni_meta: Some(uni_meta),
             }),
             Err(e) => Err(e),
-        };
-
-        let r = match ret.as_ref() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.clone()),
-        };
-
-        self.status_manager.on_complete(ret);
-
-        self.status_manager.update_phase(BackupTaskPhase::Complete);
-
-        r
+        }
     }
 
     async fn run_stat(&self, params: UniBackupParams) -> BuckyResult<()> {

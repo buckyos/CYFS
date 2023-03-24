@@ -85,4 +85,28 @@ impl BackupInputProcessor for BackupService {
             status,
         })
     }
+
+    async fn start_restore_task(
+        &self,
+        req: StartRestoreTaskInputRequest,
+    ) -> BuckyResult<StartRestoreTaskInputResponse> {
+        let result = self
+            .restore_manager()?
+            .start_uni_restore(req.request.params)
+            .await;
+
+        Ok(StartRestoreTaskInputResponse { result })
+    }
+
+    async fn get_restore_task_status(
+        &self,
+        req: GetRestoreTaskStatusInputRequest,
+    ) -> BuckyResult<GetRestoreTaskStatusInputResponse> {
+        let status = self.restore_manager()?.get_task_status(&req.request.id)?;
+
+        Ok(GetRestoreTaskStatusInputResponse {
+            id: req.request.id,
+            status,
+        })
+    }
 }

@@ -90,4 +90,80 @@ impl BackupRequestHandler {
 
         self.processor.get_backup_task_status(request).await
     }
+
+    // restore relate
+    pub(crate) async fn process_start_restore_task_request<State: Send>(
+        &self,
+        req: BackupInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_start_restore_task(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+
+                http_resp.set_content_type(::tide::http::mime::JSON);
+                http_resp.set_body(serde_json::to_string(&resp).unwrap());
+
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_start_restore_task<State>(
+        &self,
+        mut req: BackupInputHttpRequest<State>,
+    ) -> BuckyResult<StartRestoreTaskInputResponse> {
+        let request = req.request.body_json().await.map_err(|e| {
+            let msg = format!("read start_restore_task request from body failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })?;
+
+        let request = StartRestoreTaskInputRequest {
+            source: req.source,
+            request,
+        };
+
+        self.processor.start_restore_task(request).await
+    }
+
+    pub(crate) async fn process_get_restore_task_status_request<State: Send>(
+        &self,
+        req: BackupInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_start_restore_task(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+
+                http_resp.set_content_type(::tide::http::mime::JSON);
+                http_resp.set_body(serde_json::to_string(&resp).unwrap());
+
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_get_restore_task_status<State>(
+        &self,
+        mut req: BackupInputHttpRequest<State>,
+    ) -> BuckyResult<GetRestoreTaskStatusInputResponse> {
+        let request = req.request.body_json().await.map_err(|e| {
+            let msg = format!(
+                "read get_restore_task_status request from body failed! {}",
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })?;
+
+        let request = GetRestoreTaskStatusInputRequest {
+            source: req.source,
+            request,
+        };
+
+        self.processor.get_restore_task_status(request).await
+    }
 }

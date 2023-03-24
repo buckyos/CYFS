@@ -14,6 +14,16 @@ pub trait BackupInputProcessor: Sync + Send + 'static {
         &self,
         req: GetBackupTaskStatusInputRequest,
     ) -> BuckyResult<GetBackupTaskStatusInputResponse>;
+
+    async fn start_restore_task(
+        &self,
+        req: StartRestoreTaskInputRequest,
+    ) -> BuckyResult<StartRestoreTaskInputResponse>;
+
+    async fn get_restore_task_status(
+        &self,
+        req: GetRestoreTaskStatusInputRequest,
+    ) -> BuckyResult<GetRestoreTaskStatusInputResponse>;
 }
 
 pub type BackupInputProcessorRef = Arc<Box<dyn BackupInputProcessor>>;

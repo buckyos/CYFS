@@ -4,6 +4,9 @@ use cyfs_lib::*;
 enum BackupRequestType {
     StartBackupTask,
     GetBackupTaskStatus,
+
+    StartRestoreTask,
+    GetRestoreTaskStatus,
 }
 
 pub struct BackupRequestHandlerEndpoint {
@@ -42,6 +45,17 @@ impl BackupRequestHandlerEndpoint {
                     .process_get_backup_task_status_request(request)
                     .await
             }
+
+            BackupRequestType::StartRestoreTask => {
+                self.handler
+                    .process_start_restore_task_request(request)
+                    .await
+            }
+            BackupRequestType::GetRestoreTaskStatus => {
+                self.handler
+                    .process_get_restore_task_status_request(request)
+                    .await
+            }
         }
     }
 
@@ -61,6 +75,20 @@ impl BackupRequestHandlerEndpoint {
         server.at(&path).get(Self::new(
             protocol.clone(),
             BackupRequestType::GetBackupTaskStatus,
+            handler.clone(),
+        ));
+
+        let path = format!("/backup/restore");
+
+        server.at(&path).post(Self::new(
+            protocol.clone(),
+            BackupRequestType::StartRestoreTask,
+            handler.clone(),
+        ));
+
+        server.at(&path).get(Self::new(
+            protocol.clone(),
+            BackupRequestType::GetRestoreTaskStatus,
             handler.clone(),
         ));
     }

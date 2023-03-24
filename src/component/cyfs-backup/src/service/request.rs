@@ -7,7 +7,7 @@ pub(crate) struct BackupInputHttpRequest<State> {
     pub source: RequestSourceInfo,
 }
 
-
+// backup service relate requests
 pub struct StartBackupTaskInputRequest {
     pub source: RequestSourceInfo,
 
@@ -24,3 +24,22 @@ pub struct GetBackupTaskStatusInputRequest {
 }
 
 pub type GetBackupTaskStatusInputResponse = GetBackupTaskStatusOutputResponse;
+
+
+// restore service relate requests
+pub struct StartRestoreTaskInputRequest {
+    pub source: RequestSourceInfo,
+
+    pub request: StartRestoreTaskOutputRequest,
+}
+
+pub type StartRestoreTaskInputResponse = StartRestoreTaskOutputResponse;
+
+
+pub struct GetRestoreTaskStatusInputRequest {
+    pub source: RequestSourceInfo,
+
+    pub request: GetRestoreTaskStatusOutputRequest,
+}
+
+pub type GetRestoreTaskStatusInputResponse = GetRestoreTaskStatusOutputResponse;
