@@ -853,6 +853,9 @@ impl MetaTxTrait for NamedObjectBase<MetaTxType> {
         if self.desc().content().caller.is_miner() {
             return Ok(true);
         }
+        if self.desc().content().caller.is_fake() {
+            return Ok(true);
+        }
         let desc_signs = self.signs().desc_signs();
         if desc_signs.is_none() {
             return Ok(false);
