@@ -24,6 +24,9 @@ pub struct ObjectArchiveIndex {
     pub crypto: CryptoMode,
     pub en_device_id: Option<String>,
 
+    // The data folder name in archive folder, default is "data"
+    pub data_folder: Option<String>,
+
     pub object_files: Vec<ObjectPackFileInfo>,
     pub chunk_files: Vec<ObjectPackFileInfo>,
 

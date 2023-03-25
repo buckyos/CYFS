@@ -203,6 +203,7 @@ impl UniBackupTask {
         let uni_data_writer = UniBackupDataLocalFileWriter::new(
             params.id.clone(),
             backup_dir.to_path_buf(),
+            params.target_file.data_folder.clone(),
             params.target_file.format,
             params.target_file.file_max_size,
             loader.clone(),

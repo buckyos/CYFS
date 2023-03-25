@@ -66,6 +66,11 @@ async fn main_run() {
             .required_if("mode", ServiceMode::Restore.as_str())
             .help("The local directory where the backup file been stored"),
     ).arg(
+        Arg::with_name("data-folder")
+            .long("data-folder")
+            .takes_value(true)
+            .help("The inner data folder in archive dir, default is 'data'"),
+    ).arg(
         Arg::with_name("password")
             .long("password")
             .takes_value(true)
@@ -166,6 +171,15 @@ async fn main_run() {
                     let mut target_file = LocalFileBackupParam::default();
                     if let Some(target_dir) = matches.value_of("target_dir") {
                         target_file.dir = Some(PathBuf::from(target_dir));
+                    }
+
+                    if let Some(value) = matches.value_of("data-folder") {
+                        let value = value.trim();
+                        target_file.data_folder = if value.len() > 0 && value != "/" {
+                            Some(value.to_owned())
+                        } else {
+                            None
+                        };
                     }
 
                     if let Some(file_max_size) = matches.value_of("file_max_size") {

@@ -20,6 +20,7 @@ impl UniBackupDataLocalFileWriter {
     pub fn new(
         id: String,
         root: PathBuf,
+        data_folder: Option<String>,
         format: ObjectPackFormat,
         archive_file_max_size: u64,
         loader: ObjectTraverserLoaderRef,
@@ -40,6 +41,7 @@ impl UniBackupDataLocalFileWriter {
         let archive = ArchiveLocalFileWriter::new(
             id,
             root,
+            data_folder,
             format,
             ObjectBackupStrategy::Uni,
             archive_file_max_size,

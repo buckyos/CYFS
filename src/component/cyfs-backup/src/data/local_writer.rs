@@ -17,12 +17,20 @@ impl ArchiveLocalFileWriter {
     pub fn new(
         id: String,
         root: PathBuf,
+        data_folder: Option<String>,
         format: ObjectPackFormat,
         strategy: ObjectBackupStrategy,
         archive_file_max_size: u64,
         crypto: Option<AesKey>,
     ) -> BuckyResult<Self> {
-        let data_dir = root.join("data");
+        let data_dir = match &data_folder {
+            Some(data) => {
+                root.join(data)
+            }
+            None => root.clone()
+        };
+
+
         if !data_dir.is_dir() {
             std::fs::create_dir_all(&data_dir).map_err(|e| {
                 let msg = format!(
@@ -40,6 +48,7 @@ impl ArchiveLocalFileWriter {
             format,
             strategy,
             data_dir,
+            data_folder,
             archive_file_max_size,
             crypto,
         );

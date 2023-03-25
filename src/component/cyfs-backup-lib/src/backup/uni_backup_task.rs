@@ -9,6 +9,9 @@ pub struct LocalFileBackupParam {
     // Backup target_file storage directory
     pub dir: Option<PathBuf>,
 
+    // Inner data folder name in archive, default is "data"
+    pub data_folder: Option<String>,
+
     pub format: ObjectPackFormat,
 
     pub file_max_size: u64,
@@ -18,6 +21,7 @@ impl Default for LocalFileBackupParam {
     fn default() -> Self {
         Self {
             dir: None,
+            data_folder: Some("data".to_owned()),
             format: ObjectPackFormat::Zip,
             file_max_size: 1024 * 1024 * 512,
         }

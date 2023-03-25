@@ -7,7 +7,7 @@ use std::path::Path;
 pub struct ObjectArchiveIndexHelper;
 
 impl ObjectArchiveIndexHelper {
-    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy) -> ObjectArchiveIndex {
+    pub fn new(id: String, format: ObjectPackFormat, strategy: ObjectBackupStrategy, data_folder: Option<String>) -> ObjectArchiveIndex {
         let datetime = chrono::offset::Local::now();
         let time = format!("{:?}", datetime);
 
@@ -23,6 +23,8 @@ impl ObjectArchiveIndexHelper {
             crypto: CryptoMode::None,
             en_device_id: None,
 
+            data_folder,
+            
             object_files: vec![],
             chunk_files: vec![],
             meta: None,

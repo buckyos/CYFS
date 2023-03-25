@@ -11,6 +11,8 @@ pub struct ObjectArchiveGenerator {
     index: ObjectArchiveIndex,
     size_limit: u64,
 
+    data_folder: Option<String>,
+
     object_writer: ObjectPackRollWriter,
     chunk_writer: ObjectPackRollWriter,
 
@@ -23,6 +25,7 @@ impl ObjectArchiveGenerator {
         format: ObjectPackFormat,
         strategy: ObjectBackupStrategy,
         root: PathBuf,
+        data_folder: Option<String>,
         size_limit: u64,
         crypto: Option<AesKey>,
     ) -> Self {
@@ -44,8 +47,9 @@ impl ObjectArchiveGenerator {
 
         Self {
             root,
-            index: ObjectArchiveIndexHelper::new(id, format, strategy),
+            index: ObjectArchiveIndexHelper::new(id, format, strategy, data_folder.clone()),
             size_limit,
+            data_folder,
 
             object_writer,
             chunk_writer,
@@ -60,6 +64,7 @@ impl ObjectArchiveGenerator {
             self.index.format,
             self.index.strategy,
             self.root.clone(),
+            self.data_folder.clone(),
             self.size_limit,
             self.crypto.clone(),
         )
