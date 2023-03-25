@@ -56,6 +56,7 @@ impl DeviceFailHandlerImpl {
         let ret = self.meta_cache.flush_object(device_id.object_id()).await?;
         if ret {
             info!("flush device and changed! device={}", device_id);
+            self.device_manager.flush(device_id).await;
         } else {
             info!("flush device and unchanged! device={}", device_id);
         }
