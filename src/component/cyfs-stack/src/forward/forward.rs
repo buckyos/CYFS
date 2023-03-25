@@ -34,7 +34,8 @@ impl ForwardProcessorCreator {
         
         let bdt_with_fail_handler = HttpRequestorWithDeviceFailHandler::new(
             self.fail_handler.clone(),
-            Box::new(bdt),
+            bdt,
+            self.device_manager.clone_cache(),
             target.clone(),
         );
 
