@@ -26,3 +26,4 @@ async-std = { version = "1.11", features = ["unstable", "attributes"] }
 async-trait = "0.1.53"
 log = "0.4"
 clap = "2.34.0"
+tide = "0.16"

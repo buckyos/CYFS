@@ -1530,6 +1530,7 @@ dependencies = [
  "cyfs-util",
  "file-rotate",
  "hmac 0.12.1",
+ "http-types",
  "log 0.4.17",
  "pbkdf2 0.11.0",
  "prost 0.9.0",
@@ -1541,6 +1542,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.6",
+ "tide",
  "walkdir",
  "zip",
 ]
@@ -1584,6 +1586,7 @@ dependencies = [
  "cyfs-tracker-cache",
  "cyfs-util",
  "log 0.4.17",
+ "tide",
 ]
 
 [[package]]
@@ -2383,6 +2386,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cyfs-backup",
+ "cyfs-backup-lib",
  "cyfs-backup-tool",
  "cyfs-base",
  "cyfs-bdt",
@@ -2467,6 +2471,7 @@ dependencies = [
  "simple_logger 2.3.0",
  "sysinfo 0.27.8",
  "thread_local",
+ "tide",
  "toml 0.5.11",
  "url 2.3.0",
  "walkdir",

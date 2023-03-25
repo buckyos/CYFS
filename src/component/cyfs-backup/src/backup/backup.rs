@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 pub struct BackupManager {
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
-    loader: ObjectTraverserLoaderRef,
+    chunk_reader: ChunkReaderRef,
 
     // all backup tasks
     tasks: Mutex<Vec<UniBackupTask>>,
@@ -21,11 +21,11 @@ impl BackupManager {
         ndc: NamedDataCacheRef,
         chunk_reader: ChunkReaderRef,
     ) -> Self {
-        let loader = ObjectTraverserLocalLoader::new(noc.clone(), chunk_reader).into_reader();
+        
         Self {
             noc,
             ndc,
-            loader,
+            chunk_reader,
 
             tasks: Mutex::new(vec![]),
         }
@@ -36,7 +36,7 @@ impl BackupManager {
             params.id.clone(),
             self.noc.clone(),
             self.ndc.clone(),
-            self.loader.clone(),
+            self.chunk_reader.clone(),
         );
 
         {

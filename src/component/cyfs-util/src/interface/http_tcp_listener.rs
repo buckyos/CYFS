@@ -5,9 +5,8 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::stream::StreamExt;
 use async_std::task;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use futures::future::{AbortHandle, Abortable};
-use cyfs_debug::Mutex;
 
 pub(super) struct HttpTcpListenerInner {
     listen: SocketAddr,
@@ -68,7 +67,7 @@ impl HttpTcpListener {
         #[cfg(unix)]
         {
             use async_std::os::unix::io::AsRawFd;
-            if let Err(e) = cyfs_util::set_socket_reuseaddr(tcp_listener.as_raw_fd()) {
+            if let Err(e) = crate::set_socket_reuseaddr(tcp_listener.as_raw_fd()) {
                 error!("set_socket_reuseaddr for {:?} error! err={}", listen, e);
             }
         }

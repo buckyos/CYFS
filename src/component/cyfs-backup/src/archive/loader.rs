@@ -35,7 +35,13 @@ impl ObjectArchiveSerializeLoader {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let data_dir = root.join("data");
+        let data_dir = match &index.data_folder {
+            Some(data) => {
+                root.join(data)
+            }
+            None => root.clone()
+        };
+
         let object_reader = ObjectPackSerializeReader::new(
             index.format,
             data_dir.clone(),
@@ -64,7 +70,13 @@ impl ObjectArchiveSerializeLoader {
     }
 
     pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
-        let data_dir = self.root.join("data");
+        let data_dir = match &self.index.data_folder {
+            Some(data) => {
+                self.root.join(data)
+            }
+            None => self.root.clone()
+        };
+
         ObjectArchiveVerifier::new(data_dir)
             .verify(&self.index)
             .await
@@ -152,7 +164,13 @@ impl ObjectArchiveRandomLoader {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let data_dir = root.join("data");
+        let data_dir = match &index.data_folder {
+            Some(data) => {
+                root.join(data)
+            }
+            None => root.clone()
+        };
+
         let mut object_reader = ObjectPackRandomReader::new(
             index.format,
             data_dir.clone(),
@@ -180,7 +198,13 @@ impl ObjectArchiveRandomLoader {
     }
 
     pub async fn verify(&self) -> BuckyResult<ObjectArchiveVerifyResult> {
-        let data_dir = self.root.join("data");
+        let data_dir = match &self.index.data_folder {
+            Some(data) => {
+                self.root.join(data)
+            }
+            None => self.root.clone()
+        };
+
         ObjectArchiveVerifier::new(data_dir)
             .verify(&self.index)
             .await

@@ -68,6 +68,7 @@ impl StateBackupManager {
             self.id.clone(),
             self.state_default_isolate.clone(),
             backup_dir,
+            Some("data".to_owned()),
             self.format,
             1024 * 1024 * 128,
             self.loader.clone(),

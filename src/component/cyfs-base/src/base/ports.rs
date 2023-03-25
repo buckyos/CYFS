@@ -33,6 +33,9 @@ pub const CYFS_RUNTIME_NON_STACK_WS_PORT: u16 = 1323;
 // ood-daemon's local status service port
 pub const OOD_DAEMON_LOCAL_STATUS_PORT: u16 = 1330;
 
+// cyfs-backup tool http service port
+pub const OOD_BACKUP_TOOL_SERVICE_PORT: u16 = 1331;
+
 // bdt协议栈的默认绑定端口
 pub const OOD_BDT_STACK_PORT: u16 = 8050;
 pub const CYFS_RUNTIME_BDT_STACK_PORT: u16 = 8051;

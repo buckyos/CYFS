@@ -21,6 +21,7 @@ impl StateBackupDataLocalFileWriter {
         id: String,
         state_default_isolate: ObjectId,
         root: PathBuf,
+        data_dir: Option<String>,
         format: ObjectPackFormat,
         archive_file_max_size: u64,
         loader: ObjectTraverserLoaderRef,
@@ -38,7 +39,7 @@ impl StateBackupDataLocalFileWriter {
         let log = BackupLogManager::new(Some(state_default_isolate), log_dir);
         let meta = ObjectArchiveStateMetaHolder::new();
 
-        let archive = ArchiveLocalFileWriter::new(id, root, format, ObjectBackupStrategy::State, archive_file_max_size, crypto)?;
+        let archive = ArchiveLocalFileWriter::new(id, root, data_dir, format, ObjectBackupStrategy::State, archive_file_max_size, crypto)?;
 
         Ok(Self {
             archive,

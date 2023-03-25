@@ -11,6 +11,9 @@ pub trait OuterDeviceCache: Sync + Send + 'static {
     // 直接在本地数据查询
     async fn get(&self, device_id: &DeviceId) -> Option<Device>;
 
+    // flush device from memory cache
+    async fn flush(&self, device_id: &DeviceId);
+
     // 本地查询，查询不到则发起查找操作
     async fn search(&self, device_id: &DeviceId) -> BuckyResult<Device>;
 

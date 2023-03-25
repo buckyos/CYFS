@@ -52,15 +52,16 @@ impl DeviceFailHandlerImpl {
         }
     }
 
-    async fn flush_device(&self, device_id: &DeviceId) -> BuckyResult<()> {
+    async fn flush_device(&self, device_id: &DeviceId) -> BuckyResult<bool> {
         let ret = self.meta_cache.flush_object(device_id.object_id()).await?;
         if ret {
             info!("flush device and changed! device={}", device_id);
+            self.device_manager.flush(device_id).await;
         } else {
-            debug!("flush device and unchanged! device={}", device_id);
+            info!("flush device and unchanged! device={}", device_id);
         }
 
-        Ok(())
+        Ok(ret)
     }
 
     async fn flush_device_owner(&self, device_id: &DeviceId) -> BuckyResult<()> {
@@ -128,19 +129,14 @@ impl ObjectFailHandler {
         self.0.bind_zone_manager(zone_manager)
     }
 
-    pub fn on_device_fail(&self, device_id: &DeviceId) {
+    pub async fn on_device_fail(&self, device_id: &DeviceId) -> BuckyResult<bool> {
         if !self.0.on_fail(device_id.object_id()) {
-            return;
+            return Ok(false);
         }
 
-        {
-            let handler = self.0.clone();
-            let device_id = device_id.clone();
-            async_std::task::spawn(async move {
-                let _ = handler.flush_device(&device_id).await;
-            });
-        }
-
+          
+        let ret = self.0.flush_device(&device_id).await;
+        
         {
             let handler = self.0.clone();
             let device_id = device_id.clone();
@@ -148,6 +144,8 @@ impl ObjectFailHandler {
                 let _ = handler.flush_device_owner(&device_id).await;
             });
         }
+
+        ret
     }
 
     // If the state is wrong, then try to flush object from Meta

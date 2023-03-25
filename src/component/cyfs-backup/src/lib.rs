@@ -9,9 +9,11 @@ mod object_pack;
 mod restore;
 mod state_backup;
 mod uni_backup;
+mod service;
 
 pub use backup::*;
 pub use crypto::*;
+pub use service::*;
 
 #[macro_use]
 extern crate log;

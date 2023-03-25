@@ -60,6 +60,10 @@ impl DeviceCache for BdtDeviceCache {
         self.search(device_id).await.ok()
     }
 
+    async fn flush(&self, device_id: &DeviceId) {
+        self.0.cache.write().unwrap().remove(device_id);
+    }
+
     // 本地查询，查询不到则发起查找操作
     async fn search(&self, device_id: &DeviceId) -> BuckyResult<Device> {
         info!("bdt cache search id {}", device_id);

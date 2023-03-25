@@ -680,6 +680,10 @@ impl ObjectId {
     pub fn as_named_object_id<T: ObjectType>(&self) -> &NamedObjectId<T> {
         unsafe { std::mem::transmute::<&ObjectId, &NamedObjectId<T>>(&self) }
     }
+
+    pub fn is_default(&self) -> bool {
+        self == &ObjectId::default()
+    }
 }
 
 impl RawFixedBytes for ObjectId {

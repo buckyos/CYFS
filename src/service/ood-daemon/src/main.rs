@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use daemon::{start_control, Daemon};
 use service::{ServiceMode, SERVICE_MANAGER};
-use status::OODStatusInterfaceHost;
+use cyfs_util::HttpInterfaceHost;
 
 #[macro_use]
 extern crate log;
@@ -184,14 +184,14 @@ async fn main_run() {
     }
 
     let status_host = if let Some(host) = matches.value_of("status_host") {
-        OODStatusInterfaceHost::from_str(host)
+        HttpInterfaceHost::from_str(host)
             .map_err(|e| {
                 println!("invalid status-host param! {}, {}", host, e);
                 std::process::exit(e.code().into());
             })
             .unwrap()
     } else {
-        OODStatusInterfaceHost::default()
+        HttpInterfaceHost::default()
     };
 
     let daemon = Daemon::new(mode, no_monitor);

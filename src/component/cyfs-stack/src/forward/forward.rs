@@ -30,16 +30,18 @@ impl ForwardProcessorCreator {
             e
         })?;
 
-        let bdt = HttpRequestorWithDeviceFailHandler::new(
+        let bdt = BdtHttpRequestor::new(self.bdt_stack.clone(), device, cyfs_base::NON_STACK_BDT_VPORT);
+        
+        let bdt_with_fail_handler = HttpRequestorWithDeviceFailHandler::new(
             self.fail_handler.clone(),
-            self.bdt_stack.clone(),
-            device,
-            cyfs_base::NON_STACK_BDT_VPORT,
+            bdt,
+            self.device_manager.clone_cache(),
+            target.clone(),
         );
 
-        // FIXME 这里暂时增加一个超时
+        // FIXME An additional timeout here
         let requestor = RequestorWithRetry::new(
-            Box::new(bdt),
+            Box::new(bdt_with_fail_handler),
             2,
             RequestorRetryStrategy::ExpInterval,
             Some(std::time::Duration::from_secs(60 * 10)),

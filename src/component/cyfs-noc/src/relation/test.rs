@@ -26,7 +26,7 @@ async fn test_relation() {
         let target_object = new_object(i);
         let req = NamedObjectRelationCachePutRequest {
             cache_key: cache_key.clone(),
-            target_object_id: target_object.object_id.clone(),
+            target_object_id: Some(target_object.object_id.clone()),
         };
 
         noc.put(&req).await.unwrap();

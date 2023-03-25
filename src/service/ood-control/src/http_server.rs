@@ -6,7 +6,6 @@ use cyfs_util::SYSTEM_INFO_MANAGER;
 
 use async_trait::async_trait;
 use http_types::Url;
-use std::sync::Arc;
 use tide::{Response, StatusCode};
 
 enum RequestType {
@@ -176,49 +175,5 @@ where
     async fn call(&self, req: ::tide::Request<State>) -> ::tide::Result {
         let resp = self.process_request(req).await;
         Ok(resp)
-    }
-}
-
-#[derive(Clone)]
-pub struct HttpServer {
-    server: Arc<::tide::Server<()>>,
-}
-
-impl HttpServer {
-    pub fn new_server() -> ::tide::Server<()> {
-        use http_types::headers::HeaderValue;
-        use tide::security::{CorsMiddleware, Origin};
-
-        let mut server = ::tide::new();
-
-        let cors = CorsMiddleware::new()
-            .allow_methods("GET, POST, OPTIONS".parse::<HeaderValue>().unwrap())
-            .allow_origin(Origin::from("*"))
-            .allow_credentials(true)
-            .allow_headers("*".parse::<HeaderValue>().unwrap())
-            .expose_headers("*".parse::<HeaderValue>().unwrap());
-        server.with(cors);
-
-        server
-    }
-
-    pub fn new(handler: &Controller, access_token: Option<String>) -> Self {
-        let mut server = Self::new_server();
-        HandlerEndpoint::register_server(handler, access_token, &mut server);
-
-        Self {
-            server: Arc::new(server),
-        }
-    }
-
-    pub fn server(&self) -> &Arc<::tide::Server<()>> {
-        &self.server
-    }
-    
-    pub async fn respond(
-        &self,
-        req: http_types::Request,
-    ) -> http_types::Result<http_types::Response> {
-        self.server.respond(req).await
     }
 }

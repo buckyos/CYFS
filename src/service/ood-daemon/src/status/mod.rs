@@ -1,7 +1,5 @@
-mod status;
 mod service_status;
-mod interface;
+mod status;
 
-pub use status::OOD_STATUS_MANAGER;
 pub use service_status::*;
-pub use interface::OODStatusInterfaceHost;
+pub use status::OOD_STATUS_MANAGER;

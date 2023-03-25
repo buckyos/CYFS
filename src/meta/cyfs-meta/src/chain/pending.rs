@@ -28,6 +28,9 @@ impl PendingTransactions {
     }
 
     fn is_exist(&self, tx: &MetaTx) -> BuckyResult<bool> {
+        if tx.desc().content().caller.is_fake() {
+            return Ok(false);
+        }
         for exists in &self.transactions {
             if tx.desc().calculate_id() == exists.desc().calculate_id() {
                 return Ok(true);
@@ -48,6 +51,9 @@ impl PendingTransactions {
     }
 
     pub async fn get_nonce(&self, id: &ObjectId) -> BuckyResult<i64> {
+        if id.is_default() {
+            return Ok(-1);
+        }
         if self.nonce_map.contains_key(id) {
             let nonce = self.nonce_map.get(id).unwrap();
             Ok(*nonce)
@@ -71,14 +77,14 @@ impl PendingTransactions {
         let caller_id = tx.desc().content().caller.id()?;
         let mut nonce = self.get_nonce(&caller_id).await?;
         nonce += 1;
-        if tx.desc().content().nonce == nonce {
+        let tx_nonce = tx.desc().content().nonce;
+        if tx_nonce == nonce {
             self.nonce_map.insert(caller_id, nonce);
             self.transactions.push(tx);
-        } else if tx.desc().content().nonce > nonce {
+        } else if tx_nonce > nonce {
             self.add_to_orphan(tx)?;
             return Ok(());
         } else {
-            let tx_nonce = tx.desc().content().nonce;
             if !self.try_update_same_nonce_tx(tx)? {
                 log::error!("add to pending transactions failed for invalid nonce, expeced {:?} but {:?}", nonce, tx_nonce);
                 return Err(crate::meta_err!(ERROR_INVALID));

@@ -232,10 +232,20 @@ mod test {
         }
     }
 
+    async fn test_file() {
+        let root = get_cyfs_root_path().join("data").join("named-object-cache");
+        let storage = FileBlobStorage::new(root);
+
+        let path = "C:\\cyfs\\data\\named-object-cache\\objects\\000\\p0v\\3afs9n7ybn4p7xcor02mnwvy8rr2hqamoi0h6iiyq44ip0v000";
+        let obj = storage.load_object(&PathBuf::from(path)).await.unwrap();
+        println!("{}", obj);
+    }
+
     #[test]
     fn main() {
         async_std::task::block_on(async move {
-            test_dir().await;
+            test_file().await;
+            // test_dir().await;
         });
     }
 }

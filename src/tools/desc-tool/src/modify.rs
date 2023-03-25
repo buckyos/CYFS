@@ -1,7 +1,7 @@
 use clap::{App, SubCommand, Arg, ArgMatches};
 use crate::util::{get_objids_from_matches, get_eps_from_matches, get_deviceids_from_matches};
 use log::*;
-use cyfs_base::{StandardObject, FileDecoder, FileEncoder, NamedObject, AnyNamedObject, ObjectDesc, ObjectId, OwnerObjectDesc};
+use cyfs_base::{StandardObject, FileDecoder, FileEncoder, NamedObject, AnyNamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, bucky_time_now};
 use cyfs_core::{CoreObjectType, DecApp, DecAppObj, AppList, AppStatus, AppListObj, AppStatusObj, DecAppId};
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -30,13 +30,15 @@ pub fn modify_desc(matches: &ArgMatches) {
                 AnyNamedObject::Standard(mut obj) => {
                     match obj {
                         StandardObject::Device(ref mut p) => {
+                            let body = p.body_mut().as_mut().unwrap();
                             if let Some(sn_list) = get_deviceids_from_matches(matches, "sn") {
-                                p.body_mut().as_mut().unwrap().content_mut().mut_sn_list().clone_from(&sn_list);
+                                body.content_mut().mut_sn_list().clone_from(&sn_list);
                             }
 
                             if let Some(ep_list) = get_eps_from_matches(matches, "eps") {
-                                p.body_mut().as_mut().unwrap().content_mut().mut_endpoints().clone_from(&ep_list);
+                                body.content_mut().mut_endpoints().clone_from(&ep_list);
                             }
+                            body.increase_update_time(bucky_time_now());
 
                             p.encode_to_file(path.as_ref(), false).expect("write desc file err");
                             info!("modify success");
@@ -56,6 +58,8 @@ pub fn modify_desc(matches: &ArgMatches) {
                                     }
                                 }
                             }
+
+                            g.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());
 
                             g.encode_to_file(path.as_ref(), false).expect("write desc file err");
                         }
@@ -79,6 +83,8 @@ pub fn modify_desc(matches: &ArgMatches) {
                                 content.set_name(name.to_owned());
                             }
 
+                            p.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());
+
                             p.encode_to_file(path.as_ref(), false).expect("write desc file err");
                         }
                         _ => {
@@ -97,6 +103,8 @@ pub fn modify_desc(matches: &ArgMatches) {
                                 }
                             }
 
+                            app.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());
+
                             app.encode_to_file(path.as_ref(), false).expect("write desc file err");
                         },
                         CoreObjectType::AppList => {
@@ -112,6 +120,8 @@ pub fn modify_desc(matches: &ArgMatches) {
                             } else {
                                 list.clear();
                             }
+
+                            list.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());
 
                             list.encode_to_file(path.as_ref(), false).expect("write desc file err");
                         }

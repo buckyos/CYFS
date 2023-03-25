@@ -1,6 +1,8 @@
+use crate::archive::ObjectArchiveIndexHelper;
+
 use super::file_meta::*;
 use super::generator::*;
-use super::index::*;
+use cyfs_backup_lib::*;
 use super::loader::*;
 use cyfs_base::*;
 use cyfs_core::*;
@@ -41,9 +43,10 @@ async fn test_archive() {
     let mut objects = HashMap::new();
     let mut generator = ObjectArchiveGenerator::new(
         bucky_time_now().to_string(),
-        crate::object_pack::ObjectPackFormat::Zip,
+        cyfs_backup_lib::ObjectPackFormat::Zip,
         ObjectBackupStrategy::Uni,
         data_dir.clone(),
+        Some("data".to_owned()),
         1024 * 1024 * 10,
         Some(aes_key.clone()),
     );
@@ -85,9 +88,9 @@ async fn test_archive() {
     let index = generator.finish().await.unwrap();
     info!("index: {:?}", index);
 
-    index.save(&path).await.unwrap();
+    ObjectArchiveIndexHelper::save(&index, &path).await.unwrap();
 
-    let index  = ObjectArchiveIndex::load(&path).await.unwrap();
+    let index  = ObjectArchiveIndexHelper::load(&path).await.unwrap();
     let mut loader = ObjectArchiveSerializeLoader::load(path, index, Some(aes_key.clone())).await.unwrap();
 
     let ret = loader.verify().await.unwrap();

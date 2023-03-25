@@ -88,9 +88,13 @@ impl MetaHttpServer {
                 let tx_body = req.body_bytes().await?;
                 // log::debug!("commit tx {:?}", tx_str);
                 let tx = MetaTx::clone_from_slice(tx_body.as_slice())?;
-                info!("commit tx {} caller {} nonce {} max_fee {} gas_price {}", tx.desc().calculate_id().to_string(),
+                let is_fake = tx.desc().content().caller.is_fake();
+                if !is_fake {
+                    info!("commit tx {} caller {} nonce {} max_fee {} gas_price {}", tx.desc().calculate_id().to_string(),
                        tx.desc().content().caller.id()?.to_string(),
                        tx.desc().content().nonce, tx.desc().content().max_fee, tx.desc().content().gas_price);
+                }
+
                 let result;
                 if tx.desc().content().max_fee < 10 || tx.desc().content().gas_price < 10 {
                     result = Err(ERROR_NOT_ENOUGH_FEE);
@@ -117,10 +121,10 @@ impl MetaHttpServer {
                         } else {
                             let tx_hash = tx.desc().calculate_id();
                             match miner.push_tx(tx).await {
-                                Result::Err(e) => {
+                                Err(e) => {
                                     result = Err(ERROR_BUCKY_ERR_START + e.code().into_u16());
                                 },
-                                Result::Ok(_) => {
+                                Ok(_) => {
                                     result = Ok(TxId::try_from(tx_hash)?);
                                 }
                             }
@@ -130,8 +134,10 @@ impl MetaHttpServer {
                     }
                 }
                 // API 调用记录日志
-                if let Some(stat) = miner.as_chain().get_stat() {
-                    stat.api_call("commit", *result.as_ref().err().unwrap_or(&0))
+                if !is_fake {
+                    if let Some(stat) = miner.as_chain().get_stat() {
+                        stat.api_call("commit", *result.as_ref().err().unwrap_or(&0))
+                    }
                 }
 
                 let body_str = result.to_hex()?;

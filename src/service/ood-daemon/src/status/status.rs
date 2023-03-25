@@ -1,13 +1,12 @@
+use super::service_status::*;
 use cyfs_base::*;
 use cyfs_lib::RequestorHelper;
+use cyfs_util::*;
 use ood_control::*;
-use super::service_status::*;
-use super::interface::*;
 
+use once_cell::sync::OnceCell;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
-use once_cell::sync::OnceCell;
-
 
 #[derive(Serialize)]
 struct ServiceStatusCache {
@@ -19,7 +18,7 @@ struct ServiceStatusCache {
 #[derive(Clone)]
 pub struct OODStatusManager {
     service_list: Arc<Mutex<Vec<ServiceStatusCache>>>,
-    interface: Arc<OnceCell<OODStatusInterface>>,
+    interface: Arc<OnceCell<HttpInterface>>,
 
     generator: Arc<OODDaemonStatusGenerator>,
 }
@@ -35,20 +34,20 @@ impl OODStatusManager {
         ret
     }
 
-    fn init_interface(&self, host: OODStatusInterfaceHost) {
+    fn init_interface(&self, host: HttpInterfaceHost) {
         info!("init status service interface: {:?}", host);
-        
+
         let mut server = HttpServer::new_server();
         self.register(&mut server);
 
-        let interface = OODStatusInterface::new(host, server);
+        let interface = HttpInterface::new(host, OOD_DAEMON_LOCAL_STATUS_PORT, server);
 
         if let Err(_) = self.interface.set(interface) {
             unreachable!();
         }
     }
 
-    pub async fn start(&self, host: OODStatusInterfaceHost) -> BuckyResult<()> {
+    pub async fn start(&self, host: HttpInterfaceHost) -> BuckyResult<()> {
         self.init_interface(host);
         self.interface.get().unwrap().start().await
     }
@@ -212,15 +211,12 @@ impl ExternalServerEndPoint for OODStatusManager {
             handler: self.clone(),
         });
 
-        server
-            .at("/service_status/:name")
-            .post(HttpServerEndpoint {
-                req_type: RequestType::ReportStatus,
-                handler: self.clone(),
-            });
+        server.at("/service_status/:name").post(HttpServerEndpoint {
+            req_type: RequestType::ReportStatus,
+            handler: self.clone(),
+        });
     }
 }
-
 
 lazy_static::lazy_static! {
     pub static ref OOD_STATUS_MANAGER: OODStatusManager = OODStatusManager::new();

@@ -69,6 +69,11 @@ impl DeviceInfoManagerImpl {
         None
     }
 
+    async fn flush_device(&self, device_id: &DeviceId) {
+        let mut list = self.list.write().unwrap();
+        list.remove(device_id);
+    }
+
     // 本地和网络查找
     pub async fn search_device(&self, device_id: &DeviceId) -> BuckyResult<Device> {
         if let Some(device) = self.get_device(device_id).await {
@@ -412,6 +417,10 @@ impl DeviceCache for DeviceInfoManager {
     // 直接在本地数据查询
     async fn get(&self, device_id: &DeviceId) -> Option<Device> {
         self.get_device(device_id).await
+    }
+
+    async fn flush(&self, device_id: &DeviceId) {
+        self.0.flush_device(device_id).await
     }
 
     // 本地查询，查询不到则发起网络查找操作

@@ -1,10 +1,10 @@
 use super::access_token::AccessTokenGen;
 use super::controller::*;
 use super::http_server::*;
-use super::http_tcp_listener::*;
 use super::request::*;
 use crate::OODControlMode;
 use cyfs_base::*;
+use cyfs_util::*;
 
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -55,9 +55,10 @@ impl ControlInterface {
         println!("will start ood control service at {:?}", bind_addrs);
         println!("will display control address as {:?}", display_addrs);
 
-        let none_auth_server = HttpServer::new(controller, None);
+
+        let none_auth_server = Self::new_server(controller, None);
         let auth_server = if access_token.is_some() {
-            HttpServer::new(controller, access_token.clone())
+            Self::new_server(controller, access_token.clone())
         } else {
             none_auth_server.clone()
         };
@@ -93,6 +94,13 @@ impl ControlInterface {
             tcp_listeners,
             access_info,
         }
+    }
+
+    fn new_server(handler: &Controller, access_token: Option<String>) -> HttpServer {
+        let mut server = HttpServer::new_server();
+        HandlerEndpoint::register_server(handler, access_token, &mut server);
+
+        HttpServer::new(server)
     }
 
     fn get_tcp_hosts(param: &ControlInterfaceParam) -> (Vec<SocketAddr>, Vec<SocketAddr>) {

@@ -5,7 +5,6 @@ mod access_token;
 mod app_bind_manager;
 mod bind;
 mod http_server;
-mod http_tcp_listener;
 pub mod interface;
 mod request;
 mod ood_controller;
@@ -17,8 +16,6 @@ pub use interface::{
 };
 pub use request::*;
 pub use ood_controller::*;
-pub use http_tcp_listener::HttpTcpListener;
-pub use http_server::HttpServer;
 
 #[macro_use]
 extern crate log;

@@ -1,10 +1,13 @@
 mod backup;
 mod def;
 mod restore;
+mod server;
 mod stack;
 
+use cyfs_backup::BackupHttpServerMode;
 use cyfs_backup_lib::*;
 use cyfs_base::BuckyErrorCode;
+use cyfs_util::HttpInterfaceHost;
 use def::*;
 
 use clap::{App, Arg};
@@ -17,9 +20,9 @@ extern crate log;
 pub const CYFS_BACKUP: &str = "cyfs-backup";
 
 async fn main_run() {
-    let matches = App::new("ood backup & restore tools")
+    let matches = App::new("OOD backup & restore tools")
     .version(cyfs_base::get_version())
-    .about("ood backup & restore tools for cyfs system")
+    .about("OOD backup & restore tools for cyfs system")
     .author("CYFS <cyfs@buckyos.com>")
     .arg(
         Arg::with_name("root")
@@ -63,10 +66,31 @@ async fn main_run() {
             .required_if("mode", ServiceMode::Restore.as_str())
             .help("The local directory where the backup file been stored"),
     ).arg(
+        Arg::with_name("data-folder")
+            .long("data-folder")
+            .takes_value(true)
+            .help("The inner data folder in archive dir, default is 'data'"),
+    ).arg(
         Arg::with_name("password")
             .long("password")
             .takes_value(true)
             .help("The password used to encrypt or decrypt the target archive"),
+    ).arg(
+        Arg::with_name("iqf")
+            .long("iqf")
+            .takes_value(false)
+            .help("Enable interactive query, you can query task progress and status"),
+    )
+    .arg(
+        Arg::with_name("iqf-host")
+            .long("iqf-host")
+            .takes_value(true)
+            .help("Specify the http address of the iqf service, which can be local/unspecified/a list of ip addresses separated by commas, and the default is local"),
+    ).arg(
+        Arg::with_name("exit-on-done")
+            .long("exit-on-done")
+            .takes_value(false)
+            .help("After the Backup & restore task is completed, the process will exits. default is true, and if with --iqf option, default is false"),
     )
     .get_matches();
 
@@ -95,7 +119,11 @@ async fn main_run() {
         .level("info")
         .console("info")
         .enable_bdt(Some("info"), Some("info"))
-        .debug_info_flags(cyfs_debug::LogDebugInfoFlags::default().without_args().into())
+        .debug_info_flags(
+            cyfs_debug::LogDebugInfoFlags::default()
+                .without_args()
+                .into(),
+        )
         .build()
         .unwrap()
         .start();
@@ -111,6 +139,24 @@ async fn main_run() {
         })
         .unwrap();
 
+    let enable_iqf = matches.is_present("iqf");
+    let iqf_host = if let Some(host) = matches.value_of("iqf-host") {
+        HttpInterfaceHost::from_str(host)
+            .map_err(|e| {
+                println!("invalid iqf-host param! {}, {}", host, e);
+                std::process::exit(e.code().into());
+            })
+            .unwrap()
+    } else {
+        HttpInterfaceHost::default()
+    };
+
+    let exit_on_done = if enable_iqf {
+        matches.is_present("exit-on-done")
+    } else {
+        true
+    };
+
     let ret = match mode {
         ServiceMode::Backup | ServiceMode::Restore => {
             let id = matches.value_of("id").unwrap();
@@ -125,6 +171,15 @@ async fn main_run() {
                     let mut target_file = LocalFileBackupParam::default();
                     if let Some(target_dir) = matches.value_of("target_dir") {
                         target_file.dir = Some(PathBuf::from(target_dir));
+                    }
+
+                    if let Some(value) = matches.value_of("data-folder") {
+                        let value = value.trim();
+                        target_file.data_folder = if value.len() > 0 && value != "/" {
+                            Some(value.to_owned())
+                        } else {
+                            None
+                        };
                     }
 
                     if let Some(file_max_size) = matches.value_of("file_max_size") {
@@ -153,6 +208,19 @@ async fn main_run() {
                         })
                         .unwrap();
 
+                    if enable_iqf {
+                        let interface = server::BackupInterface::new(
+                            BackupHttpServerMode::GetStatusOnly,
+                            Some(backup_manager.backup_manager().clone()),
+                            None,
+                            iqf_host,
+                        );
+
+                        if let Err(e) = interface.start().await {
+                            std::process::exit(e.code().into());
+                        }
+                    }
+
                     backup_manager.backup_manager().run_uni_backup(params).await
                 }
                 ServiceMode::Restore => {
@@ -176,6 +244,19 @@ async fn main_run() {
                         })
                         .unwrap();
 
+                    if enable_iqf {
+                        let interface = server::BackupInterface::new(
+                            BackupHttpServerMode::GetStatusOnly,
+                            None,
+                            Some(restore_manager.restore_manager().clone()),
+                            iqf_host,
+                        );
+
+                        if let Err(e) = interface.start().await {
+                            std::process::exit(e.code().into());
+                        }
+                    }
+
                     restore_manager
                         .restore_manager()
                         .run_uni_restore(params)
@@ -190,11 +271,19 @@ async fn main_run() {
     match ret {
         Ok(()) => {
             info!("backup service finished!!!");
-            std::process::exit(0);
+            if exit_on_done {
+                std::process::exit(0);
+            } else {
+                async_std::future::pending::<()>().await;
+            }
         }
         Err(e) => {
             info!("backup service complete with error: {}", e);
-            std::process::exit(e.code().into());
+            if exit_on_done {
+                std::process::exit(e.code().into());
+            } else {
+                async_std::future::pending::<()>().await;
+            }
         }
     }
 }

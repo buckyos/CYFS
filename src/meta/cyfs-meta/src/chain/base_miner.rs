@@ -57,7 +57,9 @@ impl BaseMiner {
             let ref_state = storage.create_state(false).await;
             let config = Config::new(&ref_state)?;
             for tx in transactions {
-                block_body.add_transaction(tx.clone()).unwrap();
+                if !tx.desc().content().caller.is_fake() {
+                    block_body.add_transaction(tx.clone()).unwrap();
+                }
             }
 
             // ref_state.being_transaction().await?;

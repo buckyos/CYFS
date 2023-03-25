@@ -77,7 +77,13 @@ impl TxCaller {
             Self::Group(_desc) => Err(BuckyError::new(BuckyErrorCode::Failed, "Failed")),
             Self::Union(_desc) => Err(BuckyError::new(BuckyErrorCode::Failed, "Failed")),
             Self::Miner(_) => Err(BuckyError::new(BuckyErrorCode::Failed, "Failed")),
-            Self::Id(_) => Err(BuckyError::new(BuckyErrorCode::Failed, "Failed")),
+            Self::Id(id) => {
+                if id.is_default() {
+                    Ok(&PublicKey::Invalid)
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::Failed, "Failed"))
+                }
+            },
         }
     }
 
@@ -85,6 +91,15 @@ impl TxCaller {
         match self {
             Self::Miner(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn is_fake(&self) -> bool {
+        match self {
+            Self::Id(id) => {
+                id.is_default()
+            },
+            _ => false
         }
     }
 }

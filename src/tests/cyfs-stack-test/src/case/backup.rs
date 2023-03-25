@@ -1,5 +1,6 @@
 use cyfs_backup::*;
 use cyfs_backup_tool::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_util::get_cyfs_root_path_ref;
 use zone_simulator::*;
@@ -16,7 +17,7 @@ pub async fn test() {
         }
     };
 
-    let service = BackupService::new(&isolate).await.unwrap();
+    let service = cyfs_backup_tool::BackupService::new(&isolate).await.unwrap();
 
     let params = UniBackupParams {
         id: bucky_time_now().to_string(),
@@ -25,7 +26,7 @@ pub async fn test() {
         password: Some(ProtectedPassword::new("123456")),
     };
 
-    let target_dir = params.dir().to_path_buf();
+    let target_dir = UniBackupTask::backup_dir(&params).to_path_buf();
     service.backup_manager().run_uni_backup(params).await.unwrap();
 
     let service = RestoreService::new(&isolate).await.unwrap();

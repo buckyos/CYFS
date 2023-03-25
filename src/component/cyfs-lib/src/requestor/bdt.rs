@@ -4,7 +4,7 @@ use cyfs_bdt::*;
 
 use http_types::{Request, Response};
 use std::sync::Mutex;
-
+use std::sync::{RwLock, Arc};
 
 struct DeviceConnectWithSNCache {
     devices: Mutex<lru_time_cache::LruCache<DeviceId, ()>>,
@@ -48,7 +48,7 @@ impl DeviceConnectWithSNCache {
 pub struct BdtHttpRequestor {
     bdt_stack: StackGuard,
     device_id: DeviceId,
-    device: Device,
+    device: Arc<RwLock<Device>>,
     vport: u16,
 }
 
@@ -57,13 +57,22 @@ impl BdtHttpRequestor {
         Self {
             bdt_stack,
             device_id: device.desc().device_id(),
-            device,
+            device: Arc::new(RwLock::new(device)),
             vport,
         }
     }
 
-    pub fn device(&self) -> &Device {
-        &self.device
+    pub fn device(&self) -> Device {
+        self.device.read().unwrap().clone()
+    }
+
+    pub fn update_device(&self, device: Device) {
+        assert_eq!(device.desc().device_id(), self.device_id);
+        *self.device.write().unwrap() = device;
+    }
+    
+    pub fn has_wan_endpoint(&self) -> bool {
+        self.device.read().unwrap().has_wan_endpoint()
     }
 
     pub fn device_id(&self) -> &DeviceId {
@@ -73,11 +82,13 @@ impl BdtHttpRequestor {
     async fn connect(&self, with_remote_desc: bool) -> BuckyResult<StreamGuard> {
         let begin = std::time::Instant::now();
 
+        let device = self.device();
+
         let build_params = BuildTunnelParams {
-            remote_const: self.device.desc().clone(),
+            remote_const: device.desc().clone(),
             remote_sn: None,
             remote_desc: if with_remote_desc {
-                Some(self.device.clone())
+                Some(device)
             } else {
                 None
             },
@@ -121,7 +132,7 @@ impl HttpRequestor for BdtHttpRequestor {
         let bdt_stream = match self.connect(true).await {
             Ok(stream) => stream,
             Err(e) => {
-                if !self.device.has_wan_endpoint() {
+                if !self.has_wan_endpoint() {
                     return Err(e);
                 }
                 
