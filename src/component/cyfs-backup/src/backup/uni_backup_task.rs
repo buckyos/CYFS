@@ -5,6 +5,7 @@ use crate::key_data::*;
 use crate::uni_backup::*;
 use cyfs_backup_lib::*;
 use cyfs_base::*;
+use cyfs_bdt::ChunkReaderRef;
 use cyfs_lib::*;
 
 use std::path::{Path, PathBuf};
@@ -14,7 +15,7 @@ pub struct UniBackupTask {
     id: String,
     noc: NamedObjectCacheRef,
     ndc: NamedDataCacheRef,
-    loader: ObjectTraverserLoaderRef,
+    chunk_reader: ChunkReaderRef,
 
     status_manager: BackupStatusManager,
 }
@@ -24,13 +25,13 @@ impl UniBackupTask {
         id: String,
         noc: NamedObjectCacheRef,
         ndc: NamedDataCacheRef,
-        loader: ObjectTraverserLoaderRef,
+        chunk_reader: ChunkReaderRef,
     ) -> Self {
         Self {
             id,
             noc,
             ndc,
-            loader,
+            chunk_reader,
             status_manager: BackupStatusManager::new(),
         }
     }
@@ -58,6 +59,13 @@ impl UniBackupTask {
     }
 
     pub async fn run_inner(&self, params: UniBackupParams) -> BuckyResult<BackupResult> {
+        let loader = UniBackupObjectLoader::create(
+            cyfs_util::get_cyfs_root_path_ref(),
+            &params.isolate,
+            self.chunk_reader.clone(),
+        )
+        .await?.into_reader();
+
         let device_file_name = if params.isolate.len() > 0 {
             format!("{}/device", params.isolate)
         } else {
@@ -82,7 +90,7 @@ impl UniBackupTask {
         self.run_stat(params.clone()).await?;
 
         self.status_manager.update_phase(BackupTaskPhase::Backup);
-        let ret = self.run_backup(device_id, owner, params).await;
+        let ret = self.run_backup(loader, device_id, owner, params).await;
 
         match ret {
             Ok((index, uni_meta)) => Ok(BackupResult {
@@ -142,7 +150,6 @@ impl UniBackupTask {
         Ok(())
     }
 
-
     pub fn backup_dir(params: &UniBackupParams) -> std::borrow::Cow<PathBuf> {
         match &params.target_file.dir {
             Some(dir) => std::borrow::Cow::Borrowed(dir),
@@ -161,6 +168,7 @@ impl UniBackupTask {
 
     async fn run_backup(
         &self,
+        loader: ObjectTraverserLoaderRef,
         device_id: DeviceId,
         owner: Option<ObjectId>,
         params: UniBackupParams,
@@ -191,7 +199,7 @@ impl UniBackupTask {
             backup_dir.to_path_buf(),
             params.target_file.format,
             params.target_file.file_max_size,
-            self.loader.clone(),
+            loader.clone(),
             crypto.clone(),
         )?;
 
@@ -202,7 +210,7 @@ impl UniBackupTask {
                 params.id.clone(),
                 self.noc.clone(),
                 self.ndc.clone(),
-                self.loader.clone(),
+                loader,
                 self.status_manager.clone(),
             );
 
