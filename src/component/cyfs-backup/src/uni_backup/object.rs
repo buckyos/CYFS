@@ -26,7 +26,11 @@ impl UniObjectBackup {
     }
 
     pub async fn run(&self) -> BuckyResult<()> {
-        let mut opt = NamedObjectCacheSelectObjectOption::default();
+        let mut opt = NamedObjectCacheSelectObjectOption {
+            page_index: 0,
+            page_size: 1024,
+        };
+        
         let filter = NamedObjectCacheSelectObjectFilter::default();
 
         loop {
@@ -55,12 +59,25 @@ impl UniObjectBackup {
     async fn on_object(&self, object_id: &ObjectId) -> BuckyResult<()> {
         self.status_manager.on_object();
 
-        let ret = self.loader.get_object(&object_id).await.map_err(|e| {
-            let msg = format!("backup load object failed! id={}, {}", object_id, e);
-            error!("{}", msg);
-            BuckyError::new(e.code(), msg)
-        })?;
+        let ret = self.loader.get_object(&object_id).await;
+        if ret.is_err() {
+            let e = ret.err().unwrap();
+            match e.code() {
+                BuckyErrorCode::InvalidData | BuckyErrorCode::InvalidFormat | BuckyErrorCode::OutOfLimit => {
+                    warn!("backup load object but got error! id={}, {}", object_id, e);
+                    self.data_writer.on_error(None, None, object_id, e).await?;
 
+                    return Ok(());
+                }
+                _ => {
+                    let msg = format!("backup load object failed! id={}, {}", object_id, e);
+                    error!("{}", msg);
+                    return Err(BuckyError::new(e.code(), msg));
+                }
+            }
+        }
+
+        let ret = ret.unwrap();
         if ret.is_none() {
             warn!("backup object missing! root={}", object_id);
             self.data_writer.on_missing(None, None, &object_id).await?;

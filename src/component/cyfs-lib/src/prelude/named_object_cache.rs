@@ -226,7 +226,7 @@ pub struct NamedObjectCacheSelectObjectOption {
 impl Default for NamedObjectCacheSelectObjectOption {
     fn default() -> Self {
         Self {
-            page_size: 256,
+            page_size: 1024,
             page_index: 0,
         }
     }

@@ -45,6 +45,9 @@ impl UniBackupTask {
     }
 
     pub async fn run(&self, params: UniBackupParams) -> BuckyResult<()> {
+        let begin = std::time::Instant::now();
+        let id = params.id.clone();
+
         let ret = self.run_inner(params).await;
 
         let r = match ret.as_ref() {
@@ -54,6 +57,9 @@ impl UniBackupTask {
 
         self.status_manager.on_complete(ret);
         self.status_manager.update_phase(BackupTaskPhase::Complete);
+
+        let during = begin.elapsed();
+        info!("run uni backup during: task={}, {:?}", id, during);
 
         r
     }

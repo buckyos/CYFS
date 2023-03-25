@@ -36,6 +36,9 @@ impl UniRestoreTask {
 
     pub async fn run(&self, params: UniRestoreParams) -> BuckyResult<()> {
         info!("will uni restore: {:?}", params);
+        let begin = std::time::Instant::now();
+        let id = params.id.clone();
+
         let ret = self.run_restore(params).await;
 
         let r = match ret.as_ref() {
@@ -44,8 +47,10 @@ impl UniRestoreTask {
         };
 
         self.status_manager.on_complete(ret);
-
         self.status_manager.update_phase(RestoreTaskPhase::Complete);
+
+        let during = begin.elapsed();
+        info!("run uni restore during: task={}, {:?}", id, during);
 
         r
     }
