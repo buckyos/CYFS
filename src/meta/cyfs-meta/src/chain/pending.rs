@@ -29,7 +29,7 @@ impl PendingTransactions {
 
     fn is_exist(&self, tx: &MetaTx) -> BuckyResult<bool> {
         if tx.desc().content().caller.is_fake() {
-            return Ok(true);
+            return Ok(false);
         }
         for exists in &self.transactions {
             if tx.desc().calculate_id() == exists.desc().calculate_id() {
