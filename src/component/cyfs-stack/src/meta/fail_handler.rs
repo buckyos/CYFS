@@ -57,7 +57,7 @@ impl DeviceFailHandlerImpl {
         if ret {
             info!("flush device and changed! device={}", device_id);
         } else {
-            debug!("flush device and unchanged! device={}", device_id);
+            info!("flush device and unchanged! device={}", device_id);
         }
 
         Ok(())

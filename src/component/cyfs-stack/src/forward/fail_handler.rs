@@ -1,30 +1,29 @@
 use crate::meta::ObjectFailHandler;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
 
 use http_types::{Request, Response};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(super) struct HttpRequestorWithDeviceFailHandler {
-    next: BdtHttpRequestor,
+    next: Arc<Box<dyn HttpRequestor>>,
     fail_handler: ObjectFailHandler,
+    device_id: DeviceId,
 }
 
 impl HttpRequestorWithDeviceFailHandler {
     pub fn new(
         fail_handler: ObjectFailHandler,
-        bdt_stack: StackGuard,
-        device: Device,
-        vport: u16,
+        next: Box<dyn HttpRequestor>,
+        device_id: DeviceId,
     ) -> Self {
-        let next = BdtHttpRequestor::new(bdt_stack,device, vport);
-        Self { next, fail_handler }
+        Self { next: Arc::new(next), fail_handler, device_id }
     }
 
     fn on_connect_failed(&self, e: &BuckyError) {
         if e.code() == BuckyErrorCode::ConnectFailed {
-            self.fail_handler.on_device_fail(self.next.device_id());
+            self.fail_handler.on_device_fail(&self.device_id);
         }
     }
 }
