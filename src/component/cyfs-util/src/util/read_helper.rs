@@ -203,12 +203,29 @@ mod tests {
         let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader), None);
 
         let mut buf2 = vec![];
-        reader.read_to_end(&mut buf2).await.unwrap();
+        reader.read_to_end(&mut buf2).await.unwrap_err();
     }
 
     async fn test1() {
         let buf: Vec<u8> = (0..3000).map(|_| rand::random::<u8>()).collect();
         let chunk_id = ChunkId::calculate(&buf).await.unwrap();
+
+        {
+            let chunk_id = ChunkId::calculate(&buf[0..1000]).await.unwrap();
+            let buf_reader = Box::new(async_std::io::Cursor::new(buf.clone()));
+
+            let sub_reader = ReaderWithLimit::new(1000, buf_reader).await.unwrap();
+            let mut reader = ChunkReaderWithHash::new(
+                "test2".to_owned(),
+                chunk_id.clone(),
+                Box::new(sub_reader),
+                None,
+            );
+
+            let mut buf2 = vec![];
+            reader.read_to_end(&mut buf2).await.unwrap();
+            assert_eq!(buf2.len(), 1000);
+        }
 
         {
             let buf_reader = Box::new(async_std::io::Cursor::new(buf.clone()));
@@ -306,8 +323,8 @@ mod tests {
     #[test]
     fn test() {
         async_std::task::block_on(async move {
-            // test1().await;
-            test_file().await;
+            test1().await;
+            // test_file().await;
         });
     }
 }

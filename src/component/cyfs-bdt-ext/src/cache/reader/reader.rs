@@ -318,3 +318,41 @@ impl ChunkHashErrorHandler for ChunkTrackerPosFixer {
         });
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_std::io::prelude::*;
+    use cyfs_base::*;
+    use std::io::SeekFrom;
+    use std::str::FromStr;
+    use std::path::PathBuf;
+
+    async fn test_file() {
+        // let file = "C:\\cyfs\\data\\app\\cyfs-stack-test\\root\\test-chunk-in-bundle";
+        // let chunk_id = ChunkId::from_str("7C8WUcPdJGHvGxWou3HoABNe41Xhm9m3aEsSHfj1zeWG").unwrap();
+
+        let file = PathBuf::from("C:\\cyfs\\data\\test\\2KGw87zzn4.txt");
+        let chunk_id = ChunkId::from_str("7C8WW21osqTTTMyRLhUN8jDbYiRdBDNEMHMiHPdDEdBB").unwrap();
+        
+        let _reader = ChunkStoreReader::read_chunk(&chunk_id, &file, 8388608, None).await;
+        //let buf = std::fs::read(file).unwrap();
+        //let real_id = ChunkId::calculate_sync(&buf).unwrap();
+        //assert_eq!(real_id, chunk_id);
+
+        let reader = async_std::fs::File::open(file).await.unwrap();
+        let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader), None);
+
+        let mut buf2 = vec![];
+        reader.read_to_end(&mut buf2).await.unwrap_err();
+    }
+
+    #[test]
+    fn test() {
+        async_std::task::block_on(async move {
+            test1().await;
+            // test_file().await;
+        });
+    }
+}

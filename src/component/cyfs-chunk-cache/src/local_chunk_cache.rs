@@ -809,7 +809,15 @@ impl ChunkCache for SingleDiskChunkCache {
     }
 
     async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
-        assert_eq!(chunk_id.len(), chunk.get_len());
+        let chunk_len = chunk_id.len();
+        let data_len = chunk.get_len();
+        if chunk_len != data_len {
+            let msg = format!("mismatched chunk length: chunk={}, expected={}, data={}", 
+                chunk_id, chunk_len, data_len);
+            log::error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
         let file_path = self.get_file_path(chunk_id, true);
         // log::info!("will put chunk, chunk={}, len={}, local file={}", chunk_id, chunk_id.len(), file_path.display());
 
