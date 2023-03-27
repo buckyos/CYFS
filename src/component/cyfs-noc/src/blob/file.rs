@@ -119,7 +119,7 @@ impl BlobStorage for FileBlobStorage {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        info!(
+        debug!(
             "save object blob to file success! object={}, size={}bytes",
             data.object_id,
             data.object_raw.len(),
