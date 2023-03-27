@@ -459,3 +459,42 @@ async fn sn_with_ipv6() {
 
     assert_eq!(sample_hash, recv_hash);
 }
+
+
+
+#[async_std::test]
+async fn sn_with_no_endpoint() {
+    let (sn, sn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10030", ]).unwrap();
+
+    let service = SnService::new(
+        sn.clone(),
+        sn_secret,
+        Box::new(TestServer {}),
+    );
+
+    task::spawn(async move {
+        let _ = service.start().await;
+    });
+   
+
+    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10031"]).unwrap();
+    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10031"]).unwrap();
+    
+    let mut ln_params = StackOpenParams::new("");
+    ln_params.config.interface.udp.sn_only = true;
+    ln_params.known_device = Some(vec![sn.clone()]);
+    let _ln_stack = Stack::open(
+        ln_dev.clone(), 
+        ln_secret, 
+        ln_params).await.unwrap();
+
+    let mut rn_params = StackOpenParams::new("");
+    rn_params.known_sn = Some(vec![sn.clone()]);
+    let rn_stack = Stack::open(
+        rn_dev, 
+        rn_secret, 
+        rn_params).await.unwrap();
+
+
+    assert!(rn_stack.reset_sn_list(vec![sn.clone()]).wait_online().await.is_err());
+}

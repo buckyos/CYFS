@@ -162,6 +162,7 @@ impl PingClients {
     fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
         info!("{} client {} finished {:?}", self, client, result);
         if result.is_err() {
+            self.stop();
             return ;
         }
         struct NextStep {
