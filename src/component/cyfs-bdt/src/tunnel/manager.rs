@@ -117,7 +117,7 @@ impl TunnelManager {
         })
     }
 
-    pub(crate) fn reset(&self) {
+    pub fn reset(&self) {
         let entries = self.0.entries.read().unwrap();
         for (_, tunnel) in entries.iter() {
             tunnel.get().reset();
