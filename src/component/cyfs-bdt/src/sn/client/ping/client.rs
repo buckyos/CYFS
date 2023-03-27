@@ -665,40 +665,52 @@ impl PingClient {
                     }
                 };
 
-                let start = {
+                let next = {
                     let mut state = self.0.state.write().unwrap();
                     match &mut state.ipv4 {
                         Ipv4ClientState::Init(waiter) => {
                             let waiter = waiter.transfer();
-                            state.ipv4 = Ipv4ClientState::Connecting {
-                                waiter, 
-                                sessions: ipv4_sessions.iter().map(|s| s.clone_as_ping_session()).collect(), 
-                            };
-                            if let Some(session) = ipv6_session.as_ref() {
-                                state.ipv6 = Ipv6ClientState::Try(session.clone_as_ping_session());
+                            if ipv4_sessions.len() > 0 {
+                                state.ipv4 = Ipv4ClientState::Connecting {
+                                    waiter, 
+                                    sessions: ipv4_sessions.iter().map(|s| s.clone_as_ping_session()).collect(), 
+                                };
+                                if let Some(session) = ipv6_session.as_ref() {
+                                    state.ipv6 = Ipv6ClientState::Try(session.clone_as_ping_session());
+                                }
+                                Ok(true)
+                            } else {
+                                state.ipv4 = Ipv4ClientState::Stopped;
+                                Err((BuckyError::new(BuckyErrorCode::Interrupted, "no bound endpoint"), waiter))
                             }
-                            true
                         },
-                        _ => false
+                        _ => Ok(false)
                     }
                 };
 
-                if start {
-                    for session in ipv4_sessions.into_iter() {
-                        let client = self.clone();
-                        task::spawn(async move {
-                            client.sync_session_resp(session.as_ref(), session.wait().await);
-                        });
+                match next {
+                    Ok(start) => {
+                        if start {
+                            for session in ipv4_sessions.into_iter() {
+                                let client = self.clone();
+                                task::spawn(async move {
+                                    client.sync_session_resp(session.as_ref(), session.wait().await);
+                                });
+                            }
+                            if let Some(session) = ipv6_session {
+                                let client = self.clone();
+                                task::spawn(async move {
+                                    client.sync_session_resp(session.as_ref(), session.wait().await);
+                                });
+                            }
+                        }
+                        StateWaiter::wait(waiter, state).await
+                    },  
+                    Err((err, waiter)) => {
+                        waiter.wake();
+                        Err(err)
                     }
-                    if let Some(session) = ipv6_session {
-                        let client = self.clone();
-                        task::spawn(async move {
-                            client.sync_session_resp(session.as_ref(), session.wait().await);
-                        });
-                    }
-                } 
-
-                StateWaiter::wait(waiter, state).await
+                }
             }
         }
        
