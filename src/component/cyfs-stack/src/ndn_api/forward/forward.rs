@@ -31,7 +31,7 @@ impl NDNForwardDataOutputProcessor {
         named_data_components: NamedDataComponentsRef,
         context: TransContextHolder,
     ) -> NDNInputProcessorRef {
-        let data_manager = TargetDataManager::new(named_data_components, context);
+        let data_manager = TargetDataManager::new(named_data_components, context, true);
         let ret = Self { data_manager };
 
         Arc::new(Box::new(ret))

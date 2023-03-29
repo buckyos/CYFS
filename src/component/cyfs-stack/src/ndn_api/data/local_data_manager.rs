@@ -42,6 +42,7 @@ impl LocalDataManager {
             TargetDataManager::new(
                 self.named_data_components.clone(),
                 context,
+                false,
             )
         })
     }

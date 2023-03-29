@@ -10,16 +10,19 @@ use std::ops::Range;
 pub struct TargetDataManager {
     named_data_components: NamedDataComponentsRef,
     context: TransContextHolder,
+    need_cache: bool,
 }
 
 impl TargetDataManager {
     pub fn new(
         named_data_components: NamedDataComponentsRef,
         context: TransContextHolder,
+        need_cache: bool,
     ) -> Self {
         Self {
             named_data_components,
             context,
+            need_cache,
         }
     }
 
@@ -77,23 +80,36 @@ impl TargetDataManager {
             reader.task().abs_group_path(),
         );
 
-        let reader = ChunkListCacheReader::new(
-            self.named_data_components.clone(),
-            file_id.to_string(),
-            total_size,
-            Box::new(reader),
-        );
+        let resp = if self.need_cache {
+            let reader = ChunkListCacheReader::new(
+                self.named_data_components.clone(),
+                file_id.to_string(),
+                total_size,
+                Box::new(reader),
+            ); 
 
-        let resp = if let Some(ranges) = ranges {
-            assert!(ranges.len() > 0);
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
 
-            let reader =
-                ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         };
-
+        
         let resp = Self::wait_read_and_return(resp).await?;
 
         Ok((resp, total_size, Some(id)))
@@ -147,23 +163,35 @@ impl TargetDataManager {
             reader.task().abs_group_path(),
         );
 
-        let reader = ChunkListCacheReader::new(
-            self.named_data_components.clone(),
-            chunk_id.to_string(),
-            total_size as u64,
-            Box::new(reader),
-        );
-
-        let resp = if let Some(ranges) = ranges {
-            assert!(ranges.len() > 0);
-
-            let reader =
-                ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        let resp = if self.need_cache {
+            let reader = ChunkListCacheReader::new(
+                self.named_data_components.clone(),
+                chunk_id.to_string(),
+                total_size as u64,
+                Box::new(reader),
+            );
+    
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         } else {
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         };
-
+        
         let resp = Self::wait_read_and_return(resp).await?;
 
         Ok((resp, total_size as u64, Some(id)))
