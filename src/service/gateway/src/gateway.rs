@@ -232,7 +232,7 @@ impl Gateway {
         self.http_control_interface.init();
     }
 
-    pub async fn run(&self) {
-        let _ = self.http_control_interface.run().await;
+    pub async fn run(&self) -> BuckyResult<()> {
+        self.http_control_interface.run().await
     }
 }

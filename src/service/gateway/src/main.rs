@@ -29,7 +29,9 @@ async fn main_run() {
                 .help("The browser sanbox mode, default is strict"),
         );
 
+    
     let app = cyfs_util::process::prepare_args(app);
+
     let matches = app.get_matches();
 
     cyfs_util::process::check_cmd_and_exec_with_args(SERVICE_NAME, &matches);
@@ -55,7 +57,7 @@ async fn main_run() {
         Some(v) => {
             Some(BrowserSanboxMode::from_str(v).map_err(|e| {
                 println!("invalid browser mode param! {}, {}", v, e);
-                std::process::exit(-1);
+                std::process::exit(e.code().into());
             }).unwrap())
         }
         None => {
@@ -70,8 +72,8 @@ async fn main_run() {
 
     // 初始化全局变量管理器
     {
-        if let Err(_e) = CyfsServiceLoader::prepare_env().await {
-            std::process::exit(-1);
+        if let Err(e) = CyfsServiceLoader::prepare_env().await {
+            std::process::exit(e.code().into());
         }
     }
 
@@ -79,13 +81,15 @@ async fn main_run() {
 
     // gateway核心服务
     if let Err(e) = gateway.load_config().await {
-        error!("load config failed! err={}", e);
-        std::process::exit(-1);
+        error!("load cyfs stack failed! err={}", e);
+        std::process::exit(e.code().into());
     }
 
     gateway.start();
 
-    gateway.run().await;
+    if let Err(e) = gateway.run().await {
+        std::process::exit(e.code().into());
+    }
 }
 
 fn main() {
