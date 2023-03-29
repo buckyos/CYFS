@@ -71,7 +71,7 @@ impl TargetDataManager {
         })?;
 
         info!(
-            "get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}, task={:?}",
+            "get file data from target: {}, file={}, file_len={}, len={}, ranges={:?}, task={:?}",
             self.context.debug_string(),
             file_id,
             file_obj.len(),
