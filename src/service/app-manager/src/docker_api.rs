@@ -2,6 +2,7 @@ use cyfs_base::*;
 use cyfs_util::*;
 use log::*;
 use std::ffi::OsStr;
+use std::fmt::format;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::Duration;
@@ -255,7 +256,7 @@ impl DockerApi {
             create_args.append(&mut mounts);
 
             create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG));
-            create_args.push(cmd.clone());
+            create_args.push(self.fix_cmd(id, cmd.clone()));
 
             let mut child = run_docker(create_args).map_err(|e| {
                 error!("app {} run install cmd {} err {}", id, &cmd, e);
@@ -295,6 +296,31 @@ impl DockerApi {
             std::fs::remove_dir_all(dockerfile_dir.clone())?;
         }
         Ok(())
+    }
+
+    fn fix_cmd(&self, id: &str, cmd: String) -> String {
+        let mut args: Vec<&str> = ProcessUtil::parse_cmd(&cmd);
+        if args.len() == 0 {
+            return cmd;
+        }
+
+        let may_path = get_app_dir(id).join(args[0]);
+        if may_path.exists() {
+            let new_program = format!("/opt/app/{}", args[0]);
+            args[0] = &new_program;
+
+            let new_cmd = args.iter().map(|s| {
+                if s.contains(" ") {
+                    format!("\"{}\"", s)
+                } else {
+                    s.to_string()
+                }
+            }).join(" ");
+            info!("fix cmd \"{}\" to \"{}\"", &cmd, &new_cmd);
+            return new_cmd;
+        }
+
+        cmd
     }
 
     // 运行容器
@@ -371,7 +397,7 @@ impl DockerApi {
         }
 
         create_args.push(format!("{}:{}", APP_BASE_IMAGE, APP_BASE_TAG));
-        create_args.push(command);
+        create_args.push(self.fix_cmd(id, command));
 
         info!("dapp start: run container, {}", id);
         let output = run_docker_only_status(create_args).map_err(|e| {
