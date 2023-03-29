@@ -17,15 +17,15 @@ use tide::listener::Listener;
 use tide::security::{CorsMiddleware, Origin};
 use tide::Response;
 
-struct NonHttpServerInner {
+struct CyfsHttpServerInner {
     http_server: HttpServerHandlerRef,
     device_id: String,
 }
 
 #[derive(Clone)]
-struct NonHttpServer(Arc<NonHttpServerInner>);
+struct CyfsHttpServer(Arc<CyfsHttpServerInner>);
 
-impl NonHttpServer {
+impl CyfsHttpServer {
     pub fn new(cyfs_stack: CyfsStack) -> Self {
         let http_server = cyfs_stack
             .interface()
@@ -34,25 +34,25 @@ impl NonHttpServer {
             .get_http_tcp_server();
         let device_id = cyfs_stack.local_device_id().to_string();
 
-        Self(Arc::new(NonHttpServerInner {
+        Self(Arc::new(CyfsHttpServerInner {
             http_server,
             device_id,
         }))
     }
 }
 
-struct NonForward {
+struct CyfsForward {
     owner: CyfsProxy,
 }
 
-impl NonForward {
+impl CyfsForward {
     pub fn new(owner: CyfsProxy) -> Self {
         Self { owner }
     }
 }
 
 #[async_trait]
-impl<State> tide::Endpoint<State> for NonForward
+impl<State> tide::Endpoint<State> for CyfsForward
 where
     State: Clone + Send + Sync + 'static,
 {
@@ -63,7 +63,7 @@ where
         };
 
         let url = req.url().clone();
-        info!("recv non req: {}, {}", addr, url);
+        info!("recv cyfs req: {}, {}", addr, url);
 
         let resp = match self.owner.non_handler() {
             Some(handler) => {
@@ -159,7 +159,7 @@ where
 
 pub(crate) struct CyfsProxyInner {
     static_root: PathBuf,
-    non_http_server: OnceCell<NonHttpServer>,
+    non_http_server: OnceCell<CyfsHttpServer>,
 }
 
 impl CyfsProxyInner {
@@ -204,7 +204,7 @@ impl CyfsProxy {
     }
 
     pub fn bind_non_stack(&self, cyfs_stack: CyfsStack) {
-        let server = NonHttpServer::new(cyfs_stack);
+        let server = CyfsHttpServer::new(cyfs_stack);
         if let Err(_) = self.inner.non_http_server.set(server) {
             unreachable!();
         }
@@ -320,12 +320,12 @@ impl CyfsProxy {
             }
         });
 
-        server.at("/*").get(NonForward::new(self.clone()));
+        server.at("/*").get(CyfsForward::new(self.clone()));
 
         Ok(())
     }
 
-    fn non_handler(&self) -> Option<&NonHttpServer> {
+    fn non_handler(&self) -> Option<&CyfsHttpServer> {
         self.inner.non_http_server.get()
     }
 }

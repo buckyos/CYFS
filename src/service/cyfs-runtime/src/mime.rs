@@ -19,7 +19,7 @@ impl MimeHelper {
             "svg" => Some(mime::SVG),
             "xml" => Some(mime::XML),
             "png" => Some(mime::PNG),
-            "jpg" => Some(mime::JPEG),
+            "jpg" | "jpeg" => Some(mime::JPEG),
             "ico" => Some(mime::ICO),
             _ => None,
         }
