@@ -23,13 +23,17 @@ pub(crate) struct BdtParams {
 
     pub endpoint: Vec<Endpoint>,
 
-    // tcp端口映射，如果存在的话
+    // TCP port mapping, if there is
     pub tcp_port_mapping: Option<u16>,
 
     // disable udp transport but sn online via udp
     pub udp_sn_only: Option<bool>,
 
+    // sn work mode, none will disable sn, default is normal
     pub sn_mode: SNMode,
+
+    // sn ping interval in seconds, default is 25s
+    pub ping_interval: Option<u32>,
 }
 
 impl Default for BdtParams {
@@ -41,6 +45,7 @@ impl Default for BdtParams {
             tcp_port_mapping: None,
             udp_sn_only: None,
             sn_mode: SNMode::default(),
+            ping_interval: None,
         }
     }
 }
@@ -132,6 +137,9 @@ impl BdtConfigLoader {
                 }
                 "sn_mode" => {
                     self.params.sn_mode = TomlHelper::decode_from_string(v)?;
+                }
+                "ping_interval" => {
+                    self.params.ping_interval = Some(TomlHelper::decode_to_int(v)?);
                 }
                 _ => {
                     warn!("unknown stack.bdt.config field: {}", k.as_str());

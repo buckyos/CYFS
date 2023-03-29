@@ -32,5 +32,15 @@ protocol = "udp"
  
 [stack.bdt.config]
 device = "device"
-#tcp_port_mapping = 8050
-#udp_sn_only = false
+
+# TCP port mapping to the WAN address, if there is one
+# tcp_port_mapping = 8050
+
+# disable udp transport but sn online via udp only, default is false
+# udp_sn_only = false
+
+# sn work mode, "none" will disable sn, default is "normal"
+# sn_mode = "normal"
+
+# sn ping interval in seconds, default is 25
+# ping_interval = 25

@@ -154,6 +154,7 @@ impl StackInfo {
             known_device: init_known_peers,
             udp_sn_only: self.bdt_params.udp_sn_only,
             sn_mode: self.bdt_params.sn_mode,
+            ping_interval: self.bdt_params.ping_interval,
         };
 
         bdt_param

@@ -40,6 +40,7 @@ const BDT_CONFIG: &str = r#"
 device = "${device_file_name}"
 #udp_sn_only = false
 #sn_mode = "normal"
+#ping_interval = 25
 
 ${endpoints}
 "#;

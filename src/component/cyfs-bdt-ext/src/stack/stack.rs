@@ -76,6 +76,10 @@ impl BdtStackHelper {
             bdt_params.config.interface.udp.sn_only = sn_only;
         }
 
+        if let Some(ping_interval) = params.ping_interval {
+            bdt_params.config.sn_client.ping.interval = std::time::Duration::from_secs(ping_interval as u64);
+        }
+
         // select sn_list via the sn_mode config
         let wait_online;
         let sn_list = match params.sn_mode {

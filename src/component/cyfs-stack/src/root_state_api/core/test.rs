@@ -198,6 +198,7 @@ async fn create_global_state_manager() -> GlobalStateManager {
         known_passive_pn: vec![],
         udp_sn_only: None,
         sn_mode: SNMode::Default,
+        ping_interval: None,
     };
     let config = StackGlobalConfig::new(params, bdt_params);
 
