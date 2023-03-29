@@ -2,15 +2,14 @@ use super::super::meta::MetaInputProcessor;
 use super::super::noc::*;
 use super::super::non::*;
 use super::super::router::*;
-use crate::NamedDataComponents;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
+use crate::NamedDataComponents;
 use crate::{acl::*, non::*};
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -28,7 +27,6 @@ impl NONService {
     pub(crate) fn new(
         noc: NamedObjectCacheRef,
         noc_relation: NamedObjectRelationCacheRef,
-        bdt_stack: StackGuard,
         named_data_components: &NamedDataComponents,
         forward_manager: ForwardProcessorManager,
         acl: AclManagerRef,
@@ -37,7 +35,6 @@ impl NONService {
         meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
     ) -> (NONService, NDNService) {
-
         // raw service with inner_path service support
         let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
@@ -96,7 +93,6 @@ impl NONService {
         // 同时初始化ndn
         let ndn_service = NDNService::new(
             acl,
-            bdt_stack,
             named_data_components,
             zone_manager,
             router_handlers.clone(),

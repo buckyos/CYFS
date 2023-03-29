@@ -1,7 +1,5 @@
 use crate::*;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use async_std::io::Read;
@@ -10,20 +8,17 @@ use std::ops::Range;
 
 // 用以向远程device发起chunk/file操作
 pub struct TargetDataManager {
-    bdt_stack: StackGuard,
-    chunk_manager: ChunkManagerRef,
+    named_data_components: NamedDataComponentsRef,
     context: TransContextHolder,
 }
 
 impl TargetDataManager {
     pub fn new(
-        bdt_stack: StackGuard,
-        chunk_manager: ChunkManagerRef,
+        named_data_components: NamedDataComponentsRef,
         context: TransContextHolder,
     ) -> Self {
         Self {
-            bdt_stack,
-            chunk_manager,
+            named_data_components,
             context,
         }
     }
@@ -61,7 +56,7 @@ impl TargetDataManager {
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_file(
-            &self.bdt_stack,
+            &self.named_data_components.bdt_stack(),
             file_obj.to_owned(),
             group,
             self.context.clone(),
@@ -83,7 +78,7 @@ impl TargetDataManager {
         );
 
         let reader = ChunkListCacheReader::new(
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             file_id.to_string(),
             total_size,
             Box::new(reader),
@@ -132,7 +127,7 @@ impl TargetDataManager {
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_chunk(
-            &self.bdt_stack,
+            &self.named_data_components.bdt_stack(),
             chunk_id.clone(),
             group,
             self.context.clone(),
@@ -153,7 +148,7 @@ impl TargetDataManager {
         );
 
         let reader = ChunkListCacheReader::new(
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             chunk_id.to_string(),
             total_size as u64,
             Box::new(reader),

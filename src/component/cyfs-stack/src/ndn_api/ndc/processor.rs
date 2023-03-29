@@ -2,12 +2,12 @@ use super::super::acl::NDNAclLocalInputProcessor;
 use super::super::data::LocalDataManager;
 use super::object_loader::NDNObjectLoader;
 use crate::acl::AclManagerRef;
+use crate::ndn::*;
 use crate::ndn_api::acl::NDNAclInputProcessor;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::*;
-use crate::{ndn::*, NamedDataComponents};
 use cyfs_base::*;
-use cyfs_bdt_ext::zero_bytes_reader;
+use cyfs_bdt_ext::{zero_bytes_reader, NamedDataComponentsRef};
 use cyfs_chunk_cache::MemChunk;
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_lib::*;
@@ -25,13 +25,13 @@ pub(crate) struct NDCLevelInputProcessor {
 impl NDCLevelInputProcessor {
     pub fn new(
         acl: AclManagerRef,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
 
         // router non processor, but only get_object from current stack
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let ret = Self {
-            data_manager: LocalDataManager::new(named_data_components),
+            data_manager: LocalDataManager::new(named_data_components.clone()),
             object_loader: NDNObjectLoader::new(non_processor.clone()),
         };
 
@@ -51,10 +51,10 @@ impl NDCLevelInputProcessor {
     // 创建一个带本地权限的processor
     pub fn new_local(
         acl: AclManagerRef,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
-        let processor = Self::new(acl, &named_data_components, non_processor);
+        let processor = Self::new(acl, named_data_components, non_processor);
 
         // with current device's acl
         let local_processor = NDNAclLocalInputProcessor::new(processor.clone());

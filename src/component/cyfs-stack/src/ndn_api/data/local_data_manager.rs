@@ -10,15 +10,15 @@ use std::convert::TryFrom;
 use std::ops::Range;
 
 pub(crate) struct LocalDataManager {
-    named_data_components: NamedDataComponents,
+    named_data_components: NamedDataComponentsRef,
 
     target_data_manager: OnceCell<TargetDataManager>,
 }
 
 impl LocalDataManager {
-    pub(crate) fn new(named_data_components: &NamedDataComponents) -> Self {
+    pub(crate) fn new(named_data_components: NamedDataComponentsRef) -> Self {
         Self {
-            named_data_components: named_data_components.to_owned(),
+            named_data_components,
             target_data_manager: OnceCell::new(),
         }
     }
@@ -40,8 +40,7 @@ impl LocalDataManager {
                 ContextManager::create_download_context_from_target_sync("", target, target_desc);
 
             TargetDataManager::new(
-                self.named_data_components.bdt_stack().clone(),
-                self.named_data_components.chunk_manager.clone(),
+                self.named_data_components.clone(),
                 context,
             )
         })

@@ -1,8 +1,6 @@
 use crate::ndn::*;
-use cyfs_bdt_ext::{TransContextHolder, zero_bytes_reader, TargetDataManager};
+use cyfs_bdt_ext::*;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use std::convert::TryFrom;
@@ -30,11 +28,10 @@ pub(crate) struct NDNForwardDataOutputProcessor {
 
 impl NDNForwardDataOutputProcessor {
     pub fn new(
-        bdt_stack: StackGuard,
-        chunk_manager: ChunkManagerRef,
+        named_data_components: NamedDataComponentsRef,
         context: TransContextHolder,
     ) -> NDNInputProcessorRef {
-        let data_manager = TargetDataManager::new(bdt_stack, chunk_manager, context);
+        let data_manager = TargetDataManager::new(named_data_components, context);
         let ret = Self { data_manager };
 
         Arc::new(Box::new(ret))
@@ -200,11 +197,11 @@ impl NDNForwardDataOutputProcessor {
 #[async_trait::async_trait]
 impl NDNInputProcessor for NDNForwardDataOutputProcessor {
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
-        NDNForwardDataOutputProcessor::put_data(&self, req).await
+        Self::put_data(&self, req).await
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        NDNForwardDataOutputProcessor::get_data(&self, req).await
+        Self::get_data(&self, req).await
     }
 
     async fn delete_data(

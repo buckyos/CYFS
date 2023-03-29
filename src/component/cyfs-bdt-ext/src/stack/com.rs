@@ -77,3 +77,5 @@ impl NamedDataComponents {
         Box::new(self.new_chunk_manager_writer())
     }
 }
+
+pub type NamedDataComponentsRef = Arc<NamedDataComponents>;

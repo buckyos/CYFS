@@ -8,21 +8,16 @@ use crate::ndn::*;
 use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
-use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
-use cyfs_bdt_ext::{ContextManager, NDNTaskCancelStrategy, TransContextHolder};
+use cyfs_bdt_ext::*;
 use cyfs_lib::*;
 
-use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
 
 pub(crate) struct NDNRouter {
     acl: AclManagerRef,
 
-    bdt_stack: StackGuard,
-
-    chunk_manager: ChunkManagerRef,
+    named_data_components: NamedDataComponentsRef,
 
     // local ndn
     ndc_processor: NDNInputProcessorRef,
@@ -37,15 +32,12 @@ pub(crate) struct NDNRouter {
     // 用以实现转发请求
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
-
-    context_manager: ContextManager,
 }
 
 impl NDNRouter {
     fn new(
         acl: AclManagerRef,
-        bdt_stack: StackGuard,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
         non_router: NONInputProcessorRef,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
@@ -61,15 +53,13 @@ impl NDNRouter {
 
         let ret = Self {
             acl,
-            bdt_stack,
-            chunk_manager: named_data_components.chunk_manager.clone(),
+            named_data_components: named_data_components.clone(),
             object_loader,
             ndc_processor,
             zone_manager,
             router_handlers,
             forward,
             fail_handler,
-            context_manager: named_data_components.context_manager.clone(),
         };
 
         Arc::new(Box::new(ret))
@@ -77,8 +67,7 @@ impl NDNRouter {
 
     pub(crate) fn new_acl(
         acl: AclManagerRef,
-        bdt_stack: StackGuard,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
         non_router: NONInputProcessorRef,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
@@ -88,7 +77,6 @@ impl NDNRouter {
         // 不带input acl的处理器
         let processor = Self::new(
             acl.clone(),
-            bdt_stack,
             named_data_components,
             non_router,
             zone_manager,
@@ -117,11 +105,8 @@ impl NDNRouter {
         })?;
 
         // 获取到目标的processor
-        let processor = NDNForwardDataOutputProcessor::new(
-            self.bdt_stack.clone(),
-            self.chunk_manager.clone(),
-            context,
-        );
+        let processor =
+            NDNForwardDataOutputProcessor::new(self.named_data_components.clone(), context);
 
         // 使用non router加载file
         let processor =
@@ -171,6 +156,7 @@ impl NDNRouter {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).encode_string();
                 let context = self
+                    .named_data_components
                     .context_manager
                     .create_download_context_from_trans_context(
                         &req.common.source.dec,
@@ -186,6 +172,7 @@ impl NDNRouter {
                 if let Some(device_id) = self.resolve_target(req.common.target.as_ref()).await? {
                     let referer = BdtDataRefererInfo::from(req).encode_string();
                     let context = self
+                        .named_data_components
                         .context_manager
                         .create_download_context_from_target(referer, device_id)
                         .await?;
