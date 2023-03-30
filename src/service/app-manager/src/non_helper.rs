@@ -104,20 +104,17 @@ impl NonHelper {
         }
 
         let mut info = AppStatusInfo::from(status);
-        let stack = self.shared_stack.clone();
-        async_std::task::spawn(async move {
-            let app_id = info.id.object_id();
-            if let Ok(resp) = stack
-                .non_service()
-                .get_object(NONGetObjectRequest::new_noc(app_id.clone(), None))
-                .await {
-                if let Ok(app) = DecApp::clone_from_slice(&resp.object.object_raw) {
-                    info.name = app.name().to_owned();
-                }
+        let app_id = info.id.object_id();
+        if let Ok(resp) = self.shared_stack
+            .non_service()
+            .get_object(NONGetObjectRequest::new_noc(app_id.clone(), None))
+            .await {
+            if let Ok(app) = DecApp::clone_from_slice(&resp.object.object_raw) {
+                info.name = app.name().to_owned();
             }
+        }
 
-            let _ = surf::post(format!("http://127.0.0.1:{}/service_status/{}", OOD_DAEMON_LOCAL_STATUS_PORT, &app_id)).body(serde_json::to_value(info).unwrap()).send().await;
-        });
+        let _ = surf::post(format!("http://127.0.0.1:{}/service_status/{}", OOD_DAEMON_LOCAL_STATUS_PORT, &app_id)).body(serde_json::to_value(info).unwrap()).send().await;
 
         Ok(())
     }
