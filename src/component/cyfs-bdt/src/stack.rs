@@ -33,9 +33,8 @@ use crate::{
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
     ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler, RawCacheConfig }, 
-    debug::{self, DebugStub}
+    debug::{self, DebugStub, PingStub}
 };
-
 
 struct StackLazyComponents {
     sn_client: sn::client::ClientManager,
@@ -43,7 +42,8 @@ struct StackLazyComponents {
     stream_manager: StreamManager,
     datagram_manager: DatagramManager,
     proxy_manager: ProxyManager, 
-    debug_stub: Option<DebugStub>
+    debug_stub: Option<DebugStub>,
+    ping_stub: PingStub,
 }
 
 #[derive(Clone)]
@@ -335,6 +335,8 @@ impl Stack {
             None
         };
 
+        let ping_stub = PingStub::new(stack.to_weak());
+
         {
             let components = StackLazyComponents {
                 sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
@@ -342,7 +344,8 @@ impl Stack {
                 stream_manager: StreamManager::new(stack.to_weak()),
                 datagram_manager, 
                 proxy_manager, 
-                debug_stub: debug_stub.clone()
+                debug_stub: debug_stub.clone(),
+                ping_stub: ping_stub.clone(),
             };
             
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
@@ -384,6 +387,8 @@ impl Stack {
         if let Some(debug_stub) = debug_stub {
             debug_stub.listen();
         }
+
+        ping_stub.listen();
         
         let arc_stack = stack.clone();
         task::spawn(async move {

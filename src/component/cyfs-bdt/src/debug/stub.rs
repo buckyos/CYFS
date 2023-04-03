@@ -81,29 +81,6 @@ impl DebugStub {
                 }
             }
         });
-
-        let stack = Stack::from(&self.0.stack);
-        let debug_tunnel = stack.datagram_manager().bind_reserved(datagram::ReservedVPort::Debug).unwrap();
-        task::spawn(async move {
-            loop {
-                match debug_tunnel.recv_v().await {
-                    Ok(datagrams) => {
-                        for datagram in datagrams {
-                            //let resp = b"debug";
-                            let mut options = datagram.options.clone();
-                            let _ = debug_tunnel.send_to(
-                                datagram.data.as_ref(),//resp.as_ref(), 
-                                &mut options, 
-                                &datagram.source.remote, 
-                                datagram.source.vport);
-                        }
-                    }, 
-                    Err(_err) => {
-                        
-                    }
-                }
-            }
-        });
     }
 
     async fn handle_command(&self, command: String, tunnel: TcpStream) {
