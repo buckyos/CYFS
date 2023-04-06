@@ -266,8 +266,8 @@ impl DockerApi {
             match child.wait_timeout(Duration::from_secs(INSTALL_CMD_TIME_OUT_IN_SECS))? {
                 None => {
                     error!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
-                    child.kill();
-                    child.wait();
+                    let _ = child.kill();
+                    let _ = child.wait();
                 }
                 Some(status) => {
                     if status.success() {
