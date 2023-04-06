@@ -35,7 +35,7 @@ impl fmt::Display for RootStateOutputRequestCommon {
             write!(f, "dec_id: {}", dec_id)?;
         }
         if let Some(dec_id) = &self.target_dec_id {
-            write!(f, "target_dec_id: {}", dec_id)?;
+            write!(f, ", target_dec_id: {}", dec_id)?;
         }
 
         if let Some(target) = &self.target {
