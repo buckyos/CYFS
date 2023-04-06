@@ -199,27 +199,30 @@ impl AppController {
         let _ = self.stop_app(app_id).await;
         info!("try to uninstall after stop. appid:{}", app_id);
         // 删除主机上的app目录
-        let app_dir = get_app_dir(&app_id.to_string());
+        let app_id_str = app_id.to_string();
+        let app_dir = get_app_dir(&app_id_str);
         if app_dir.exists() {
-            std::fs::remove_dir_all(&app_dir).map_err(|e| {
-                warn!("remove app dir failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::RemoveFailed
-            })?;
+            if let Err(e) = std::fs::remove_dir_all(&app_dir) {
+                warn!("remove app dir failed, app:{}, err:{}", app_id_str, e);
+            }
         }
-        let app_web_dir = get_app_web_dir(&app_id.to_string());
+        let app_web_dir = get_app_web_dir(&app_id_str);
         if app_web_dir.exists() {
-            std::fs::remove_dir_all(app_web_dir).map_err(|e| {
-                warn!("remove app web dir failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::RemoveFailed
-            })?;
+            if let Err(e) = std::fs::remove_dir_all(app_web_dir) {
+                warn!("remove app web dir failed, app:{}, err:{}", app_id_str, e);
+            }
         }
 
-        let app_web_dir = get_app_web_dir2(&app_id.to_string(), ver);
+        let app_web_dir = get_app_web_dir2(&app_id_str, ver);
         if app_web_dir.exists() {
-            std::fs::remove_dir_all(app_web_dir).map_err(|e| {
-                warn!("remove app web dir2 failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::RemoveFailed
-            })?;
+            if let Err(e) = std::fs::remove_dir_all(app_web_dir) {
+                warn!("remove app web dir2 failed, app:{}, err:{}", app_id_str, e);
+            }
+        }
+
+        let app_log_dir = get_app_log_dir(&app_id_str);
+        if app_log_dir.exists() {
+            let _ = std::fs::remove_dir_all(&app_log_dir);
         }
 
         // docker remove
@@ -488,8 +491,8 @@ mod tests {
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
 
-        let mut app_controller = AppController::new(AppManagerConfig::default(), stack, owner);
-        app_controller.prepare_start().await;
+        let mut app_controller = AppController::new(AppManagerConfig::default(), owner);
+        app_controller.prepare_start(stack).await;
 
         app_controller
         //let app_controller = AppController::new(stack, owner, named_cache_client, false);
@@ -501,7 +504,7 @@ mod tests {
     async fn test_app_install() {
         let owner = ObjectId::from_str("5r4MYfFPKMeHa1fec7dHKmBfowySBfVFvRQvKB956dnF").unwrap();
         let appid = DecAppId::from_str("9tGpLNnYywrCAWoCcyhAcLZtrQpDZtRAg3ai2w47aap2").unwrap();
-        let appcmd = AppCmd::install(owner, appid, &"1.0.7".to_string(), false);
+        let appcmd = AppCmd::install(owner, appid, "1.0.7", false);
 
         let stack = get_stack().await;
         let result = stack
@@ -564,7 +567,7 @@ mod tests {
     async fn test_app_controller_uninstall() {
         let app_controller = get_app_controller().await;
         let appid = DecAppId::from_str("9tGpLNnYywrCAWoCcyhAcLZtrQpDZtRAg3ai2w47aap2").unwrap();
-        let resp = app_controller.uninstall_app(&appid).await;
+        let resp = app_controller.uninstall_app(&appid, "1.0.7").await;
         println!("resp {:?}", resp);
     }
 }

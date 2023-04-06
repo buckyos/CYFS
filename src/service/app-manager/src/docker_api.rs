@@ -2,7 +2,6 @@ use cyfs_base::*;
 use cyfs_util::*;
 use log::*;
 use std::ffi::OsStr;
-use std::fmt::format;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::Duration;
