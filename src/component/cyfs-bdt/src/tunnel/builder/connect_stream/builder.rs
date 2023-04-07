@@ -152,7 +152,7 @@ impl ConnectStreamBuilder {
                                 info!("{} call nearest sn finished, sn={}", self, sn);
                                 if TunnelBuilderState::Establish != self.state() {
                                     let escaped = self.escaped();
-                                    if stack.config().stream.stream.retry_sn_timeout > escaped {
+                                    if stack.config().stream.stream.retry_sn_timeout < escaped {
                                         Some(Duration::from_secs(0))
                                     } else {
                                         Some(stack.config().stream.stream.retry_sn_timeout - escaped)
