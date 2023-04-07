@@ -52,13 +52,22 @@ impl WebSocketServer {
 #[async_trait::async_trait]
 impl BaseTcpListenerHandler for WebSocketServer {
     async fn on_accept(&self, tcp_stream: TcpStream) -> BuckyResult<()> {
-        let conn_info = (
-            tcp_stream.local_addr().unwrap(),
-            tcp_stream.peer_addr().unwrap(),
-        );
+        let local_addr = tcp_stream.local_addr().map_err(|e| {
+            let msg = format!("get local_addr from tcp stream but failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotConnected, msg)
+        })?;
+
+        let peer_addr = tcp_stream.peer_addr().map_err(|e| {
+            let msg = format!("get peer_addr from tcp stream but failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotConnected, msg)
+        })?;
+
+        let conn_info = (local_addr, peer_addr);
 
         self.session_manager
-            .run_server_session(tcp_stream.peer_addr().unwrap().to_string(), conn_info, tcp_stream);
+            .run_server_session(conn_info.1.to_string(), conn_info, tcp_stream);
         Ok(())
     }
 }
