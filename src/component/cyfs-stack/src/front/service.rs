@@ -462,7 +462,7 @@ impl FrontService {
 
         let resp = match req.goal {
             FrontARequestGoal::Web(web_req) => {
-                let ret = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
+                let ret = self.app.get_app_web_dir(&req.dec, &web_req.version, req.flush_cache).await?;
                 match ret {
                     AppInstallStatus::Installed((_dec_id, dir_id)) => {
                         let o_req = FrontORequest {

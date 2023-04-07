@@ -11,10 +11,10 @@ struct AppVersionCacheKey {
 }
 
 pub struct AppCacheInner {
-    name: LruCache<String, ObjectId>,
-    name_not_exists: LruCache<String, ()>,
+    name: LruCache<String, (ObjectId, u64)>,
+    name_not_exists: LruCache<String, u64>,
 
-    version: LruCache<AppVersionCacheKey, Option<ObjectId>>,
+    version: LruCache<AppVersionCacheKey, (Option<ObjectId>, u64)>,
 }
 
 impl AppCacheInner {
@@ -41,7 +41,7 @@ impl AppCacheInner {
 
         let ret = self.name.peek(name).cloned();
         if ret.is_some() {
-            return Some(ret);
+            return Some(ret.map(|v| v.0));
         }
 
         let _ = self.name_not_exists.iter();
@@ -57,10 +57,12 @@ impl AppCacheInner {
     fn cache_app_with_name(&mut self, name: &str, result: Option<ObjectId>) {
         match result {
             Some(dec_id) => {
-                self.name.insert(name.to_owned(), dec_id);
+                self.name
+                    .insert(name.to_owned(), (dec_id, bucky_time_now()));
             }
             None => {
-                self.name_not_exists.insert(name.to_owned(), ());
+                self.name_not_exists
+                    .insert(name.to_owned(), bucky_time_now());
             }
         }
     }
@@ -77,7 +79,7 @@ impl AppCacheInner {
             version: version.to_owned(),
         };
 
-        self.version.peek(&key).cloned()
+        self.version.peek(&key).cloned().map(|v| v.0)
     }
 
     fn cache_dir_with_version(
@@ -91,7 +93,27 @@ impl AppCacheInner {
             version: version.to_owned(),
         };
 
-        self.version.insert(key, result);
+        self.version.insert(key, (result, bucky_time_now()));
+    }
+
+    fn clear_dir(&mut self, dec_id: &ObjectId, ver: &FrontARequestVersion) {
+        let key = AppVersionCacheKey {
+            dec_id: dec_id.to_owned(),
+            version: ver.to_owned(),
+        };
+
+        if let Some(ret) = self.version.peek(&key) {
+            // In order to avoid quick refresh, a minimum refresh interval of 1 minute is reserved here
+            if bucky_time_now() - ret.1 >= 1000 * 1000 * 60 {
+                drop(ret);
+
+                let ret = self.version.remove(&key).unwrap();
+                info!(
+                    "clear app dir cache: dec={}, ver={:?}, cache={:?}",
+                    dec_id, ver, ret.1
+                );
+            }
+        }
     }
 }
 
@@ -129,5 +151,9 @@ impl AppCache {
             .lock()
             .unwrap()
             .cache_dir_with_version(dec_id, version, result)
+    }
+
+    pub fn clear_dir(&self, dec_id: &ObjectId, ver: &FrontARequestVersion) {
+        self.0.lock().unwrap().clear_dir(dec_id, ver)
     }
 }

@@ -965,6 +965,17 @@ impl FrontProtocolHandler {
             .zone_device_ood_id
             .clone();
 
+        let mut flush_cache = false;
+        if let Some(cc) = req.request.header(http_types::headers::CACHE_CONTROL) {
+            if let Some(cache_control) = cache_control::CacheControl::from_value(cc.last().as_str()) {
+                if cache_control.no_store || cache_control.must_revalidate {
+                    flush_cache = true;
+                } else if cache_control.cachability == Some(cache_control::Cachability::NoCache) {
+                    flush_cache = true;
+                }
+            }
+        }
+
         let a_req = FrontARequest {
             source: req.source,
             target: Some(target.into()),
@@ -982,6 +993,8 @@ impl FrontProtocolHandler {
             group,
 
             flags,
+
+            flush_cache,
         };
 
         self.service.process_a_request(a_req).await

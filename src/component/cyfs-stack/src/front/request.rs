@@ -215,6 +215,8 @@ pub struct FrontARequest {
     pub group: Option<String>,
 
     pub flags: u32,
+
+    pub flush_cache: bool,
 }
 
 pub enum FrontAResponse {

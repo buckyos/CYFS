@@ -43,6 +43,7 @@ impl AppService {
         &self,
         dec: &FrontARequestDec,
         ver: &FrontARequestVersion,
+        flush_cache: bool,
     ) -> BuckyResult<AppInstallStatus> {
         let dec_id = match self.get_app(dec).await? {
             Some(dec_id) => dec_id,
@@ -51,7 +52,7 @@ impl AppService {
             }
         };
 
-        let ret = self.search_app_web_dir(&dec_id, ver).await?;
+        let ret = self.search_app_web_dir(&dec_id, ver, flush_cache).await?;
         let status = match ret {
             Some(dir_id) => AppInstallStatus::Installed((dec_id, dir_id)),
             None => AppInstallStatus::NotInstalled(FrontARequestDec::DecID(dec_id)),
@@ -115,6 +116,7 @@ impl AppService {
         &self,
         dec_id: &ObjectId,
         ver: &FrontARequestVersion,
+        flush_cache: bool,
     ) -> BuckyResult<Option<ObjectId>> {
         let ver_seg = match ver {
             FrontARequestVersion::Current => "current",
@@ -125,6 +127,10 @@ impl AppService {
             FrontARequestVersion::Version(ver) => ver.as_str(),
         };
 
+        if flush_cache {
+            self.cache.clear_dir(dec_id, ver);
+        }
+        
         // First try to get result from cache
         let ret = self.cache.get_dir_by_version(dec_id, ver);
         if let Some(cache) = ret {
