@@ -1,13 +1,10 @@
+use super::cache::AppCache;
 use crate::front::*;
 use crate::root_state::GlobalStateInputProcessorRef;
 use crate::root_state::GlobalStateOutputTransformer;
 use crate::ZoneManagerRef;
 use cyfs_base::*;
-use cyfs_debug::Mutex;
 use cyfs_lib::GlobalStateStub;
-
-use std::collections::HashMap;
-use std::sync::Arc;
 
 pub enum AppInstallStatus {
     Installed((ObjectId, ObjectId)),
@@ -16,7 +13,7 @@ pub enum AppInstallStatus {
 
 #[derive(Clone)]
 pub struct AppService {
-    cache: Arc<Mutex<HashMap<String, ObjectId>>>,
+    cache: AppCache,
     root_state_stub: GlobalStateStub,
 }
 
@@ -26,7 +23,9 @@ impl AppService {
         root_state: GlobalStateInputProcessorRef,
     ) -> BuckyResult<Self> {
         let info = zone_manager.get_current_info().await?;
-        let source = zone_manager.get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned())).await?;
+        let source = zone_manager
+            .get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await?;
         let processor = GlobalStateOutputTransformer::new(root_state, source);
         let root_state_stub = GlobalStateStub::new(
             processor,
@@ -36,7 +35,7 @@ impl AppService {
 
         Ok(Self {
             root_state_stub,
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache: AppCache::new(),
         })
     }
 
@@ -90,16 +89,6 @@ impl AppService {
         Ok(dec_id)
     }
 
-    fn get_app_from_cache(&self, name: &str) -> Option<ObjectId> {
-        let cache = self.cache.lock().unwrap();
-        cache.get(name).map(|v| v.to_owned())
-    }
-
-    fn cache_app(&self, name: &str, dec_id: ObjectId) {
-        let mut cache = self.cache.lock().unwrap();
-        cache.insert(name.to_owned(), dec_id);
-    }
-
     // 获取dec_app的状态
     async fn search_local_status(&self, dec_id: &ObjectId) -> BuckyResult<Option<ObjectId>> {
         let op_env = self.root_state_stub.create_path_op_env().await?;
@@ -127,18 +116,32 @@ impl AppService {
         dec_id: &ObjectId,
         ver: &FrontARequestVersion,
     ) -> BuckyResult<Option<ObjectId>> {
-        debug!("will search app web dir: dec={}, ver={:?}", dec_id, ver);
-
         let ver_seg = match ver {
-            FrontARequestVersion::Current | FrontARequestVersion::DirID(_) => "current",
+            FrontARequestVersion::Current => "current",
+            FrontARequestVersion::DirID(id) => {
+                // FIXME Need to check whether the id is really a dir_id of a certain version of dec?
+                return Ok(Some(id.to_owned()));
+            }
             FrontARequestVersion::Version(ver) => ver.as_str(),
         };
+
+        // First try to get result from cache
+        let ret = self.cache.get_dir_by_version(dec_id, ver);
+        if let Some(cache) = ret {
+            return Ok(cache);
+        }
+
+        debug!("will search app web dir: dec={}, ver={:?}", dec_id, ver);
 
         let op_env = self.root_state_stub.create_path_op_env().await?;
 
         let path = format!("/app/{}/versions/{}", dec_id, ver_seg);
         let ret = op_env.get_by_path(&path).await?;
         let _ = op_env.abort().await;
+
+        // First cache result
+        self.cache.cache_dir_with_version(dec_id, ver, ret.clone());
+
         if ret.is_none() {
             let msg = format!(
                 "get app dir_id by version but not found! dec={}, path={}",
@@ -149,6 +152,8 @@ impl AppService {
         }
 
         let dir_id = ret.unwrap();
+
+        /*
         match ver {
             FrontARequestVersion::DirID(id) => {
                 if *id != dir_id {
@@ -162,6 +167,7 @@ impl AppService {
             }
             _ => {}
         };
+        */
 
         info!(
             "get app dir-id by version: dec={}, ver={}, dir={}",
@@ -172,13 +178,15 @@ impl AppService {
     }
 
     async fn get_app_by_name(&self, name: &str) -> BuckyResult<Option<ObjectId>> {
-        if let Some(dec_id) = self.get_app_from_cache(name) {
-            return Ok(Some(dec_id));
+        let ret = self.cache.get_app_by_name(name);
+        if let Some(cache) = ret {
+            return Ok(cache);
         }
 
-        // TODO add failure cache
+        let ret = self.search_app_by_name(name).await?;
+        self.cache.cache_app_with_name(name, ret.clone());
 
-        self.search_app_by_name(name).await
+        Ok(ret)
     }
 
     // get dec-id by name from /system/app/names/${name}
@@ -199,9 +207,6 @@ impl AppService {
 
         info!("get app by name: {} -> {}", name, ret.as_ref().unwrap());
 
-        let dec_id = ret.unwrap();
-        self.cache_app(name, dec_id.clone());
-
-        Ok(Some(dec_id))
+        Ok(ret)
     }
 }

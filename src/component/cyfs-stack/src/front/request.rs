@@ -176,7 +176,7 @@ impl FrontARequestDec {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum FrontARequestVersion {
     Version(String),
     DirID(ObjectId),
