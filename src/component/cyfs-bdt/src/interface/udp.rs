@@ -281,6 +281,10 @@ impl Interface {
     }
 
     fn on_recv(&self, stack: Stack, recv: &mut [u8], from: Endpoint) {
+        if recv.len() == 0 {
+            return
+        }
+
         if recv[0] & 0x80 != 0 {
             match KeyMixHash::raw_decode(recv) {
                 Ok((mut mix_hash, raw_data)) => {
