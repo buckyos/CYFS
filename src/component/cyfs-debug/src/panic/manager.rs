@@ -128,16 +128,7 @@ impl PanicManager {
         let datetime: DateTime<Local> = now.into();
         let now = datetime.format("%Y_%m_%d %H:%M:%S.%f");
 
-        let content;
-        #[cfg(debug_assertions)]
-        {
-            content = format!("{}\n{}", now, info.msg_with_symbol);
-        }
-
-        #[cfg(not(debug_assertions))]
-        {
-            content = format!("{}\n{}", now, info.msg);
-        }
+        let content = format!("{}\n{}\n{}", now, info.msg_with_symbol, info.msg);
 
         let file_path = self.0.log_dir.join(file_name);
         if let Err(e) = std::fs::write(&file_path, content) {
