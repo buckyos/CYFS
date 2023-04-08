@@ -145,14 +145,26 @@ impl HttpRequestor for BdtHttpRequestor {
             }
         };
 
+        let seq = bdt_stream.sequence();
         if let Some(conn_info) = conn_info {
+            let local_addr = bdt_stream.local_ep().ok_or_else(|| {
+                let msg = format!("get local_ep from bdt stream but empty! seq={:?}", seq);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::NotConnected, msg)
+            })?;
+    
+            let remote_addr = bdt_stream.remote_ep().ok_or_else(|| {
+                let msg = format!("get remote_ep from bdt stream but empty! seq={:?}", seq);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::NotConnected, msg)
+            })?;
+
             *conn_info = HttpRequestConnectionInfo::Bdt((
-                bdt_stream.local_ep().unwrap(),
-                bdt_stream.remote_ep().unwrap(),
+                local_addr,
+                remote_addr,
             ));
         }
 
-        let seq = bdt_stream.sequence();
         debug!(
             "bdt connect to {} success, seq={:?}, during={}ms",
             self.remote_addr(),
