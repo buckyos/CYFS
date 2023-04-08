@@ -22,6 +22,7 @@ use desc_upload::DescUploader;
 use ood_daemon_init::{DaemonEnv, OodDaemonInit};
 use std::path::PathBuf;
 use std::str::FromStr;
+use cyfs_core::DecAppId;
 use system_config_gen::SystemConfigGen;
 
 async fn run_bind(matches: &ArgMatches<'_>) -> ! {
@@ -141,6 +142,10 @@ async fn main_run() {
                 .takes_value(false)
                 .help(&format!("Sync app packages from repo to local repo store")),
         )
+        .arg(Arg::with_name("download_app")
+            .long("download-app")
+            .takes_value(true)
+            .help("download app to app_repo by app id and version"))
         .arg(
             Arg::with_name("init_ood_daemon")
                 .long("init-ood-daemon")
@@ -337,6 +342,28 @@ async fn main_run() {
             std::process::exit(-1);
         }
 
+        std::process::exit(0);
+    }
+
+    if let Some(app) = matches.value_of("download_app") {
+        let apps: Vec<&str> = app.split(":").collect();
+        if apps.len() < 2 {
+            error!("invalid app: {}, MUST in format {{appid}}:{{ver}}", app);
+            std::process::exit(-1);
+        }
+        if let Ok(appid) = DecAppId::from_str(apps[0]) {
+            let mut downloader = app_repo_downloader::AppRepoDownloader::new();
+            if let Err(_e) = downloader.init().await {
+                std::process::exit(-1);
+            }
+            if let Err(e) = downloader.download_app(&appid, apps[1]).await {
+                error!("download app {} ver {} failed: {}", apps[0], apps[1], e);
+                std::process::exit(-1);
+            }
+        } else {
+            error!("invalid appid: {}", apps[0]);
+            std::process::exit(-1);
+        }
         std::process::exit(0);
     }
 
