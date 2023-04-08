@@ -88,7 +88,7 @@ impl StatePusher {
 struct HeaderBlockNotifyProgress {
     header_block: GroupConsensusBlock,
     qc_block: GroupConsensusBlock,
-    group_chunk_id: ObjectId,
+    group_blob_id: ObjectId,
     members: Vec<ObjectId>,
     total_notify_times: usize,
     cur_block_notify_times: usize,
@@ -218,14 +218,10 @@ impl StateChanggeRunner {
                     return;
                 }
 
-                if block.group_chunk_id() != progress.header_block.group_chunk_id() {
+                if block.group_blob_id() != progress.header_block.group_blob_id() {
                     let group = self
                         .non_driver
-                        .get_group(
-                            block.rpath().group_id(),
-                            Some(block.group_chunk_id()),
-                            None,
-                        )
+                        .get_group(block.rpath().group_id(), Some(block.group_blob_id()), None)
                         .await;
                     if group.is_err() {
                         return;
@@ -238,7 +234,7 @@ impl StateChanggeRunner {
                         .collect();
                 }
 
-                progress.group_chunk_id = block.group_chunk_id().clone();
+                progress.group_blob_id = block.group_blob_id().clone();
                 progress.total_notify_times += progress.cur_block_notify_times;
                 progress.cur_block_notify_times = 0;
                 progress.header_block = block;
@@ -247,11 +243,7 @@ impl StateChanggeRunner {
             None => {
                 let group = self
                     .non_driver
-                    .get_group(
-                        block.rpath().group_id(),
-                        Some(block.group_chunk_id()),
-                        None,
-                    )
+                    .get_group(block.rpath().group_id(), Some(block.group_blob_id()), None)
                     .await;
                 if group.is_err() {
                     return;
@@ -268,12 +260,12 @@ impl StateChanggeRunner {
                     None => return,
                 };
 
-                let group_chunk_id = block.group_chunk_id().clone();
+                let group_blob_id = block.group_blob_id().clone();
 
                 self.notify_progress = Some(HeaderBlockNotifyProgress {
                     header_block: block,
                     qc_block,
-                    group_chunk_id,
+                    group_blob_id,
                     members,
                     total_notify_times,
                     cur_block_notify_times: 0,

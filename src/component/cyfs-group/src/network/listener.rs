@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 use cyfs_base::{ObjectId, RawDecode};
 use cyfs_bdt::DatagramTunnelGuard;

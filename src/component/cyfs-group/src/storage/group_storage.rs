@@ -4,10 +4,10 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId, ObjectMap,
     ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawConvertTo, RawDecode,
 };
-use cyfs_chunk_lib::ChunkMeta;
+
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, HotstuffBlockQC,
-    HotstuffTimeout,
+    GroupBlob, GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate,
+    HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
@@ -42,7 +42,7 @@ pub struct GroupStorage {
     rpath: String,
     local_device_id: ObjectId,
     non_driver: NONDriverHelper,
-    group_chunk_id: ObjectId,
+    group_blob_id: ObjectId,
 
     cache: StorageCacheInfo,
 
@@ -60,8 +60,8 @@ impl GroupStorage {
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
-        let group_chunk = ChunkMeta::from(&group);
-        let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
+        let group_blob = group.to_blob();
+        let group_blob_id = group_blob.desc().object_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
@@ -77,7 +77,7 @@ impl GroupStorage {
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_chunk_id: group_chunk_id.object_id(),
+            group_blob_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 GroupStatePath::new(rpath.to_string()),
@@ -108,8 +108,8 @@ impl GroupStorage {
                 log::warn!("get group {} from noc failed {:?}", group_id, err);
                 err
             })?;
-        let group_chunk = ChunkMeta::from(&group);
-        let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
+        let group_blob = group.to_blob();
+        let group_blob_id = group_blob.desc().object_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
@@ -139,7 +139,7 @@ impl GroupStorage {
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_chunk_id: group_chunk_id.object_id(),
+            group_blob_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 state_path,
@@ -180,8 +180,8 @@ impl GroupStorage {
         &self.group
     }
 
-    pub fn group_chunk_id(&self) -> &ObjectId {
-        &self.group_chunk_id
+    pub fn group_blob_id(&self) -> &ObjectId {
+        &self.group_blob_id
     }
 
     pub fn dec_state_id(&self) -> &Option<ObjectId> {
