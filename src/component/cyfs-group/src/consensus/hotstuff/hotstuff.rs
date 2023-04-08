@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::format,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -11,10 +10,9 @@ use cyfs_base::{
     ObjectDesc, ObjectId, ObjectLink, ObjectTypeCode, OwnerObjectDesc, RawConvertTo, RawDecode,
     RawEncode, RsaCPUObjectSigner, SignatureSource, Signer,
 };
-use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
-    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
+    GroupBlob, GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal,
+    GroupProposal, GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::{ExecuteResult, HotstuffBlockQCVote, HotstuffTimeoutVote};
 use cyfs_lib::NONObjectInfo;
@@ -27,7 +25,8 @@ use crate::{
     helper::Timer,
     Committee, GroupObjectMapProcessor, GroupStorage, HotstuffMessage, PendingProposalConsumer,
     RPathEventNotifier, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    HOTSTUFF_TIMEOUT_DEFAULT, PROPOSAL_MAX_TIMEOUT, TIME_PRECISION,
+    GROUP_DEFAULT_CONSENSUS_INTERVAL, HOTSTUFF_TIMEOUT_DEFAULT, PROPOSAL_MAX_TIMEOUT,
+    TIME_PRECISION,
 };
 
 /**
@@ -297,7 +296,7 @@ impl HotstuffRunner {
         let tc = last_tc.clone();
 
         let vote_mgr = VoteMgr::new(committee.clone(), round);
-        let init_timer_interval = store.group().consensus_interval();
+        let init_timer_interval = GROUP_DEFAULT_CONSENSUS_INTERVAL;
         let max_quorum_round = round - 1;
         let header_height = store.header_height();
         let max_height = header_height + 2;
@@ -385,7 +384,7 @@ impl HotstuffRunner {
         {
             // check leader
             let leader_owner = self
-                .get_leader_owner(Some(block.group_chunk_id()), block.round())
+                .get_leader_owner(Some(block.group_blob_id()), block.round())
                 .await?;
 
             if &leader_owner != block.owner() {
@@ -582,17 +581,17 @@ impl HotstuffRunner {
 
     async fn get_leader_owner(
         &self,
-        group_chunk_id: Option<&ObjectId>,
+        group_blob_id: Option<&ObjectId>,
         round: u64,
     ) -> BuckyResult<ObjectId> {
         let leader = self
             .committee
-            .get_leader(group_chunk_id, round)
+            .get_leader(group_blob_id, round)
             .await.map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
                     self,
-                    group_chunk_id, round,
+                    group_blob_id, round,
                     err
                 );
 
@@ -983,7 +982,7 @@ impl HotstuffRunner {
                     round + 1
                 );
 
-                self.timer.reset(group.consensus_interval());
+                self.timer.reset(GROUP_DEFAULT_CONSENSUS_INTERVAL);
                 self.round = round + 1;
                 self.vote_mgr.cleanup(self.round);
                 self.tc = None;
@@ -1144,7 +1143,7 @@ impl HotstuffRunner {
         );
 
         if !only_rebuild_result_state {
-            match self.check_group_is_latest(block.group_chunk_id()).await {
+            match self.check_group_is_latest(block.group_blob_id()).await {
                 Ok(is_latest) if is_latest => {}
                 _ => {
                     log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for the group is not latest",
@@ -1746,7 +1745,7 @@ impl HotstuffRunner {
 
         let latest_group = match self.committee.get_group(None).await {
             Ok(group) => {
-                self.timer.reset(group.consensus_interval());
+                self.timer.reset(GROUP_DEFAULT_CONSENSUS_INTERVAL);
                 group
             }
             Err(err) => {
@@ -2062,11 +2061,7 @@ impl HotstuffRunner {
             })
             .collect();
 
-        let group_chunk_id = ChunkMeta::from(group)
-            .to_chunk()
-            .await
-            .unwrap()
-            .calculate_id();
+        let group_blob_id = group.to_blob().desc().object_id();
 
         let mut block = GroupConsensusBlock::create(
             self.rpath.clone(),
@@ -2075,7 +2070,7 @@ impl HotstuffRunner {
             prev_block.as_ref().map_or(0, |b| b.height()) + 1,
             ObjectId::default(), // TODO: meta block id
             self.round,
-            group_chunk_id.object_id(),
+            group_blob_id,
             self.high_qc.clone(),
             tc,
             self.local_id,
@@ -2256,11 +2251,11 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn check_group_is_latest(&self, group_chunk_id: &ObjectId) -> BuckyResult<bool> {
+    async fn check_group_is_latest(&self, group_blob_id: &ObjectId) -> BuckyResult<bool> {
         let latest_group = self.committee.get_group(None).await?;
-        let group_chunk = ChunkMeta::from(&latest_group).to_chunk().await?;
-        let latest_chunk_id = group_chunk.calculate_id();
-        Ok(latest_chunk_id.as_object_id() == group_chunk_id)
+        let group_blob = latest_group.to_blob();
+        let latest_chunk_id = group_blob.desc().object_id();
+        Ok(&latest_chunk_id == group_blob_id)
     }
 
     async fn make_sure_result_state(
@@ -2379,16 +2374,16 @@ impl HotstuffRunner {
         // Upon booting, generate the very first block (if we are the leader).
         // Also, schedule a timer in case we don't hear from the leader.
         let max_round_block = self.store.block_with_max_round();
-        let group_chunk_id = max_round_block.as_ref().map(|block| block.group_chunk_id());
-        let last_group = self.committee.get_group(group_chunk_id).await;
-        let latest_group = match group_chunk_id.as_ref() {
+        let group_blob_id = max_round_block.as_ref().map(|block| block.group_blob_id());
+        let last_group = self.committee.get_group(group_blob_id).await;
+        let latest_group = match group_blob_id.as_ref() {
             Some(_) => self.committee.get_group(None).await,
             None => last_group.clone(),
         };
 
-        let duration = latest_group
-            .as_ref()
-            .map_or(HOTSTUFF_TIMEOUT_DEFAULT, |g| g.consensus_interval());
+        let duration = latest_group.as_ref().map_or(HOTSTUFF_TIMEOUT_DEFAULT, |g| {
+            GROUP_DEFAULT_CONSENSUS_INTERVAL
+        });
         self.timer.reset(duration);
 
         if let Ok(leader) = self.committee.get_leader(None, self.round).await {

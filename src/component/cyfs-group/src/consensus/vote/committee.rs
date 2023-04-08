@@ -9,13 +9,11 @@ use cyfs_base::{
     ObjectDesc, ObjectId, OwnerObjectDesc, RsaCPUObjectVerifier, SignatureSource,
     SingleKeyObjectDesc, Verifier,
 };
-use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
+    GroupBlob, GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
     GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
-use cyfs_lib::NONObjectInfo;
 
 use crate::network::NONDriverHelper;
 
@@ -24,7 +22,7 @@ pub(crate) struct Committee {
     group_id: ObjectId,
     non_driver: NONDriverHelper,
     local_device_id: ObjectId,
-    group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_chunk_id, group)
+    group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_blob_id, group)
 }
 
 impl Committee {
@@ -37,16 +35,16 @@ impl Committee {
         }
     }
 
-    pub async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
-        self.check_group(group_chunk_id, None).await
+    pub async fn get_group(&self, group_blob_id: Option<&ObjectId>) -> BuckyResult<Group> {
+        self.check_group(group_blob_id, None).await
     }
 
     pub async fn quorum_threshold(
         &self,
         voters: &HashSet<ObjectId>,
-        group_chunk_id: Option<&ObjectId>,
+        group_blob_id: Option<&ObjectId>,
     ) -> BuckyResult<bool> {
-        let group = self.check_group(group_chunk_id, None).await?;
+        let group = self.check_group(group_blob_id, None).await?;
         let voters: Vec<&ObjectId> = voters
             .iter()
             .filter(|id| {
@@ -64,10 +62,10 @@ impl Committee {
 
     pub async fn get_leader(
         &self,
-        group_chunk_id: Option<&ObjectId>,
+        group_blob_id: Option<&ObjectId>,
         round: u64,
     ) -> BuckyResult<ObjectId> {
-        let group = self.check_group(group_chunk_id, None).await?;
+        let group = self.check_group(group_blob_id, None).await?;
         let i = (round % (group.ood_list().len() as u64)) as usize;
         Ok(group.ood_list()[i].object_id().clone())
     }
@@ -94,7 +92,7 @@ impl Committee {
         );
 
         let group = self
-            .check_group(Some(block.group_chunk_id()), Some(&from))
+            .check_group(Some(block.group_blob_id()), Some(&from))
             .await?;
 
         if !self.check_block_sign(&block, &group).await? {
@@ -162,7 +160,7 @@ impl Committee {
             ));
         }
 
-        self.check_group(Some(block_desc.content().group_chunk_id()), Some(&from))
+        self.check_group(Some(block_desc.content().group_blob_id()), Some(&from))
             .await?;
 
         log::debug!(
@@ -252,7 +250,7 @@ impl Committee {
         let is_enough = self
             .quorum_threshold(
                 &tc.votes.iter().map(|v| v.voter).collect(),
-                prev_block.map(|b| b.group_chunk_id()),
+                prev_block.map(|b| b.group_blob_id()),
             )
             .await?;
 
@@ -316,7 +314,7 @@ impl Committee {
         let is_enough = self
             .quorum_threshold(
                 &qc.votes.iter().map(|v| v.voter).collect(),
-                Some(prev_block_desc.group_chunk_id()),
+                Some(prev_block_desc.group_blob_id()),
             )
             .await?;
 
@@ -366,8 +364,8 @@ impl Committee {
             .get_group(&self.group_id, chunk_id, from)
             .await?;
 
-        let group_chunk = ChunkMeta::from(&group).to_chunk().await?;
-        let calc_id = group_chunk.calculate_id().object_id();
+        let group_blob = group.to_blob();
+        let calc_id = group_blob.desc().object_id();
         if let Some(id) = chunk_id {
             assert_eq!(&calc_id, id);
         }

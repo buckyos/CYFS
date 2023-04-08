@@ -417,7 +417,7 @@ message GroupConsensusBlockDescContent {
     bytes meta_block_id = 5;
 
     uint64 round = 7;
-    bytes group_chunk_id = 8;
+    bytes group_blob_id = 8;
 }
 
 message GroupConsensusBlockBodyContent {

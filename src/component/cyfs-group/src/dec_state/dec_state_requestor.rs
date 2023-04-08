@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_core::{GroupConsensusBlockObject, GroupRPath};
+use cyfs_core::{GroupRPath};
 use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;

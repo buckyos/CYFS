@@ -63,39 +63,6 @@ message PeopleBodyContent {
 message GroupMember {
     bytes id = 1;
     string title = 2;
-    string role = 3; // for acl
-    uint64 shares = 4;
-}
-
-message GroupMethodACL {
-    string name = 1;
-
-    // target
-    optional bytes target_dec_id = 2;
-    optional string rpath = 3;
-
-    double min_support_percent = 4;
-    string permissions = 5; // ACL-String
-}
-
-message GroupRoleACL {
-    string name = 1;
-
-    // target
-    optional bytes target_dec_id = 2;
-    optional string rpath = 3;
-    string method = 4;
-
-    double right_percent = 5;
-    bool is_operator = 6;
-    string permissions = 7; // ACL-String
-}
-
-message GroupJoinSignature {
-    bytes signature = 1; // Sign(member_id, group_id, hash, is_admin)
-    bytes member_id = 2;
-    bool is_admin = 4;
-    bytes hash = 5; // Hash(Encode(Group))
 }
 
 message CommonGroupBodyContent {
@@ -105,24 +72,10 @@ message CommonGroupBodyContent {
 
     repeated GroupMember members = 4;
 
-    uint64 total_equity = 5;
-
-    // acl
-    repeated GroupMethodACL method_acls = 6;
-    repeated GroupRoleACL role_acls = 7;
-
-    repeated bytes ood_list = 8; // 1/0 for every member/admin
-
-    optional uint64 history_block_max = 9;
-    optional uint64 history_block_lifespan = 10;
-    optional uint64 consensus_interval = 11; // ms
-
-    repeated bytes revoked_conclusions = 12;
-
-    uint64 version = 13;
-
-    // TODO: 这个Group的签名准备放到Group信息变更的提案里
-    repeated GroupJoinSignature join_signatures = 14; // signature for every member/admin
+    repeated bytes ood_list = 5;
+    
+    optional bytes prev_blob_id = 6;
+    uint64 version = 7;
 }
 
 // simple_group
@@ -130,7 +83,6 @@ message SimpleGroupDescContent {
     bytes unique_id = 1;
     bytes founder_id = 2;
     repeated GroupMember admins = 3;
-    uint32 conclusion_limit = 4; // the admins can make any conclusion with the signatures more than ${conclusion_limit}
 }
 
 message SimpleGroupBodyContent {
@@ -145,8 +97,7 @@ message OrgDescContent {
 
 message OrgBodyContent {
     repeated GroupMember admins = 1;
-    optional bytes token_contract = 2;
-    CommonGroupBodyContent common = 3;
+    CommonGroupBodyContent common = 2;
 }
 
 // tx

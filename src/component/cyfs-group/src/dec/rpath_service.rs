@@ -5,7 +5,6 @@ use cyfs_base::{
     RawConvertTo, RawFrom, RsaCPUObjectSigner, TypelessCoreObject,
 };
 use cyfs_core::{GroupProposal, GroupRPath};
-use cyfs_group_lib::RPathDelegate;
 use cyfs_lib::NONObjectInfo;
 
 use crate::{

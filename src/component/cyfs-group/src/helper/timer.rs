@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::ops::Sub;
-use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 pub struct Timer {

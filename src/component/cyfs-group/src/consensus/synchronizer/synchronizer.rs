@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_std::channel::{Receiver, Sender};
-use cyfs_base::{BuckyResult, NamedObject, ObjectDesc, ObjectId};
+use cyfs_base::{BuckyResult, NamedObject, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
 use futures::FutureExt;
 

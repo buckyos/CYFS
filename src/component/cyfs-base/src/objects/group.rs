@@ -1,7 +1,6 @@
 use crate::codec as cyfs_base;
 use crate::*;
 
-use std::collections::HashSet;
 use std::convert::TryFrom;
 
 pub enum GroupMemberScope {
@@ -72,6 +71,10 @@ impl GroupBodyContent {
         self.common().version
     }
 
+    pub fn prev_blob_id(&self) -> &Option<ObjectId> {
+        &self.common().prev_blob_id
+    }
+
     fn common(&self) -> &CommonGroupBodyContent {
         match self {
             GroupBodyContent::Org(body) => &body.common,
@@ -94,8 +97,6 @@ pub type GroupDesc = NamedObjectDesc<GroupDescContent>;
 pub type GroupId = NamedObjectId<GroupType>;
 pub type Group = NamedObjectBase<GroupType>;
 
-pub const GROUP_DEFAULT_CONSENSUS_INTERVAL: u64 = 5000; // default 5000 ms
-
 impl GroupDesc {
     pub fn group_id(&self) -> GroupId {
         GroupId::try_from(self.calculate_id()).unwrap()
@@ -106,12 +107,10 @@ impl Group {
     pub fn new_simple_group(
         founder_id: ObjectId,
         admins: Vec<GroupMember>,
-        conclusion_limit: Option<u32>,
         area: Area,
     ) -> GroupBuilder {
         let desc_content = SimpleGroupDescContent {
             unique_id: UniqueId::create_with_random(),
-            conclusion_limit: conclusion_limit.map_or((admins.len() as u32 >> 1) + 1, |n| n),
             admins,
             founder_id,
         };
@@ -221,19 +220,13 @@ impl Group {
         self.common_mut().version = version;
     }
 
-    pub fn consensus_interval(&self) -> u64 {
-        let interval = self.common().consensus_interval;
-        if interval == 0 {
-            GROUP_DEFAULT_CONSENSUS_INTERVAL
-        } else {
-            interval
-        }
+    pub fn prev_blob_id(&self) -> &Option<ObjectId> {
+        &self.common().prev_blob_id
     }
 
-    pub fn set_consensus_interval(&mut self, interval: u64) {
-        self.common_mut().consensus_interval = interval;
+    pub fn set_prev_blob_id(&mut self, prev_blob_id: Option<ObjectId>) {
+        self.common_mut().prev_blob_id = prev_blob_id;
     }
-
     // pub fn join_member(
     //     &self,
     //     member_id: &ObjectId,
@@ -387,8 +380,6 @@ impl Group {
 pub struct GroupMember {
     pub id: ObjectId,
     pub title: String,
-    pub role: String,
-    pub shares: u64,
 }
 
 impl GroupMember {
@@ -396,8 +387,6 @@ impl GroupMember {
         GroupMember {
             id,
             title: "".to_string(),
-            role: "".to_string(),
-            shares: 0,
         }
     }
 }
@@ -409,8 +398,6 @@ impl TryFrom<protos::GroupMember> for GroupMember {
         let ret = Self {
             id: ProtobufCodecHelper::decode_buf(value.id)?,
             title: value.title,
-            role: value.role,
-            shares: value.shares,
         };
 
         Ok(ret)
@@ -425,159 +412,6 @@ impl TryFrom<&GroupMember> for protos::GroupMember {
 
         ret.id = value.id.to_vec()?;
         ret.title = value.title.clone();
-        ret.role = value.role.clone();
-        ret.shares = value.shares;
-
-        Ok(ret)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GroupMethodACL {
-    pub name: String,
-    pub target_dec_id: Option<ObjectId>,
-    pub rpath: Option<String>,
-    pub min_support_percent: f64,
-    pub permissions: String, // ACL-String
-}
-
-impl TryFrom<protos::GroupMethodACL> for GroupMethodACL {
-    type Error = BuckyError;
-
-    fn try_from(mut value: protos::GroupMethodACL) -> BuckyResult<Self> {
-        let ret = Self {
-            name: value.take_name(),
-            target_dec_id: if value.has_target_dec_id() {
-                Some(ProtobufCodecHelper::decode_buf(value.take_target_dec_id())?)
-            } else {
-                None
-            },
-            rpath: if value.has_rpath() {
-                Some(value.take_rpath())
-            } else {
-                None
-            },
-            min_support_percent: value.min_support_percent,
-            permissions: value.take_permissions(), // ACL-String
-        };
-
-        Ok(ret)
-    }
-}
-
-impl TryFrom<&GroupMethodACL> for protos::GroupMethodACL {
-    type Error = BuckyError;
-
-    fn try_from(value: &GroupMethodACL) -> BuckyResult<Self> {
-        let mut ret = Self::new();
-
-        ret.name = value.name.clone();
-        if let Some(dec_id) = &value.target_dec_id {
-            ret.set_target_dec_id(dec_id.to_vec()?);
-        }
-        if let Some(rpath) = &value.rpath {
-            ret.set_rpath(rpath.clone());
-        }
-        ret.min_support_percent = value.min_support_percent;
-        ret.permissions = value.permissions.clone();
-
-        Ok(ret)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GroupRoleACL {
-    pub name: String,
-    pub target_dec_id: Option<ObjectId>,
-    pub rpath: Option<String>,
-    pub method: String,
-
-    pub right_percent: f64,
-    pub is_operator: bool,
-    pub permissions: String, // ACL-String
-}
-
-impl TryFrom<protos::GroupRoleACL> for GroupRoleACL {
-    type Error = BuckyError;
-
-    fn try_from(mut value: protos::GroupRoleACL) -> BuckyResult<Self> {
-        let ret = Self {
-            name: value.take_name(),
-            target_dec_id: if value.has_target_dec_id() {
-                Some(ProtobufCodecHelper::decode_buf(value.take_target_dec_id())?)
-            } else {
-                None
-            },
-            rpath: if value.has_rpath() {
-                Some(value.take_rpath())
-            } else {
-                None
-            },
-            method: value.take_method(),
-            right_percent: value.right_percent,
-            is_operator: value.is_operator,
-            permissions: value.take_permissions(), // ACL-String
-        };
-
-        Ok(ret)
-    }
-}
-
-impl TryFrom<&GroupRoleACL> for protos::GroupRoleACL {
-    type Error = BuckyError;
-
-    fn try_from(value: &GroupRoleACL) -> BuckyResult<Self> {
-        let mut ret = Self::new();
-
-        ret.set_name(value.name.clone());
-        if let Some(dec_id) = &value.target_dec_id {
-            ret.set_target_dec_id(dec_id.to_vec()?);
-        }
-        if let Some(rpath) = &value.rpath {
-            ret.set_rpath(rpath.clone());
-        }
-        ret.method = value.method.clone();
-        ret.right_percent = value.right_percent;
-        ret.is_operator = value.is_operator;
-        ret.permissions = value.permissions.clone();
-
-        Ok(ret)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GroupJoinSignature {
-    signature: Signature,
-    member_id: ObjectId,
-    is_admin: bool,
-    hash: HashValue,
-}
-
-impl TryFrom<protos::GroupJoinSignature> for GroupJoinSignature {
-    type Error = BuckyError;
-
-    fn try_from(value: protos::GroupJoinSignature) -> BuckyResult<Self> {
-        let ret = Self {
-            signature: ProtobufCodecHelper::decode_buf(value.signature)?,
-            member_id: ProtobufCodecHelper::decode_buf(value.member_id)?,
-            is_admin: value.is_admin,
-            hash: ProtobufCodecHelper::decode_buf(value.hash)?,
-        };
-
-        Ok(ret)
-    }
-}
-
-impl TryFrom<&GroupJoinSignature> for protos::GroupJoinSignature {
-    type Error = BuckyError;
-
-    fn try_from(value: &GroupJoinSignature) -> BuckyResult<Self> {
-        let mut ret = Self::new();
-
-        ret.signature = value.signature.to_vec()?;
-        ret.member_id = value.member_id.to_vec()?;
-        ret.is_admin = value.is_admin;
-        ret.hash = value.hash.to_vec()?;
 
         Ok(ret)
     }
@@ -590,22 +424,11 @@ struct CommonGroupBodyContent {
     description: String,
 
     members: Vec<GroupMember>,
-    total_equity: u64,
-
-    // map优化以快速匹配
-    method_acls: Vec<GroupMethodACL>,
-
-    role_acls: Vec<GroupRoleACL>,
 
     ood_list: Vec<DeviceId>,
-    history_block_max: u64,
-    history_block_lifespan: u64,
-
-    revoked_conclusions: HashSet<ObjectId>,
 
     version: u64,
-    consensus_interval: u64,
-    join_signatures: Vec<GroupJoinSignature>,
+    prev_blob_id: Option<ObjectId>,
 }
 
 impl CommonGroupBodyContent {
@@ -621,16 +444,9 @@ impl CommonGroupBodyContent {
             icon,
             description,
             members,
-            total_equity: 0,
-            method_acls: vec![],
-            role_acls: vec![],
             ood_list,
-            history_block_max: 0,
-            history_block_lifespan: 0,
-            revoked_conclusions: HashSet::default(),
             version: 0,
-            consensus_interval: 0,
-            join_signatures: vec![],
+            prev_blob_id: None,
         }
     }
 }
@@ -648,24 +464,13 @@ impl TryFrom<protos::CommonGroupBodyContent> for CommonGroupBodyContent {
             },
             description: value.take_description(),
             members: ProtobufCodecHelper::decode_value_list(value.take_members())?,
-            total_equity: value.total_equity,
-            method_acls: ProtobufCodecHelper::decode_value_list(value.take_method_acls())?,
-            role_acls: ProtobufCodecHelper::decode_value_list(value.take_role_acls())?,
             ood_list: ProtobufCodecHelper::decode_buf_list(value.take_ood_list())?,
-            history_block_max: value.get_history_block_max(),
-            history_block_lifespan: value.get_history_block_lifespan(),
-            revoked_conclusions: HashSet::from_iter(ProtobufCodecHelper::decode_buf_list(
-                value.take_revoked_conclusions(),
-            )?),
             version: value.version,
-            consensus_interval: if value.has_consensus_interval() {
-                value.get_consensus_interval()
+            prev_blob_id: if value.has_prev_blob_id() {
+                Some(ProtobufCodecHelper::decode_buf(value.take_prev_blob_id())?)
             } else {
-                0
+                None
             },
-            join_signatures: ProtobufCodecHelper::decode_value_list(
-                value.take_join_signatures().into_vec(),
-            )?,
         };
 
         Ok(ret)
@@ -685,33 +490,14 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
         ret.description = value.description.clone();
 
         ret.set_members(ProtobufCodecHelper::encode_nested_list(&value.members)?);
-        ret.total_equity = value.total_equity;
-        ret.set_method_acls(ProtobufCodecHelper::encode_nested_list(&value.method_acls)?);
-        ret.set_role_acls(ProtobufCodecHelper::encode_nested_list(&value.role_acls)?);
         ret.set_ood_list(ProtobufCodecHelper::encode_buf_list(
             value.ood_list.as_slice(),
         )?);
-        if value.history_block_max > 0 {
-            ret.set_history_block_max(value.history_block_max);
-        }
-        if value.history_block_lifespan > 0 {
-            ret.set_history_block_lifespan(value.history_block_lifespan);
-        }
-        ret.set_revoked_conclusions(ProtobufCodecHelper::encode_buf_list(
-            value
-                .revoked_conclusions
-                .iter()
-                .map(|id| id.clone())
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )?);
+
         ret.version = value.version;
-        if value.consensus_interval > 0 {
-            ret.set_consensus_interval(value.consensus_interval);
+        if let Some(prev_blob_id) = &value.prev_blob_id {
+            ret.set_prev_blob_id(prev_blob_id.to_vec()?);
         }
-        ret.set_join_signatures(ProtobufCodecHelper::encode_nested_list(
-            &value.join_signatures,
-        )?);
 
         Ok(ret)
     }
@@ -722,7 +508,6 @@ pub struct SimpleGroupDescContent {
     unique_id: UniqueId,
     founder_id: ObjectId,
     admins: Vec<GroupMember>,
-    conclusion_limit: u32,
 }
 
 impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
@@ -732,7 +517,6 @@ impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
         let ret = Self {
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
             admins: ProtobufCodecHelper::decode_value_list(value.admins)?,
-            conclusion_limit: value.conclusion_limit,
             founder_id: ProtobufCodecHelper::decode_buf(value.founder_id)?,
         };
 
@@ -749,7 +533,6 @@ impl TryFrom<&SimpleGroupDescContent> for protos::SimpleGroupDescContent {
         ret.unique_id = value.unique_id.to_vec()?;
         ret.founder_id = value.founder_id.to_vec()?;
         ret.set_admins(ProtobufCodecHelper::encode_nested_list(&value.admins)?);
-        ret.conclusion_limit = value.conclusion_limit;
 
         Ok(ret)
     }
@@ -833,7 +616,6 @@ impl TryFrom<&OrgDescContent> for protos::OrgDescContent {
 #[derive(Clone, Debug, Default)]
 pub struct OrgBodyContent {
     admins: Vec<GroupMember>,
-    token_contract: Option<ObjectId>,
     common: CommonGroupBodyContent,
 }
 
@@ -849,7 +631,6 @@ impl OrgBodyContent {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),
             admins,
-            token_contract: None,
         }
     }
 
@@ -868,13 +649,6 @@ impl TryFrom<protos::OrgBodyContent> for OrgBodyContent {
     fn try_from(mut value: protos::OrgBodyContent) -> BuckyResult<Self> {
         let ret = Self {
             admins: ProtobufCodecHelper::decode_value_list(value.take_admins())?,
-            token_contract: if value.has_token_contract() {
-                Some(ProtobufCodecHelper::decode_buf(
-                    value.take_token_contract(),
-                )?)
-            } else {
-                None
-            },
             common: ProtobufCodecHelper::decode_value(value.take_common())?,
         };
 
@@ -890,10 +664,6 @@ impl TryFrom<&OrgBodyContent> for protos::OrgBodyContent {
 
         ret.set_admins(ProtobufCodecHelper::encode_nested_list(&value.admins)?);
         ret.set_common(ProtobufCodecHelper::encode_nested_item(&value.common)?);
-
-        if let Some(token_contract) = value.token_contract {
-            ret.set_token_contract(token_contract.to_vec()?);
-        }
 
         Ok(ret)
     }
