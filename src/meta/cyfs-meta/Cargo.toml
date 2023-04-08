@@ -27,7 +27,7 @@ serde = { version = "1.0", features = ["derive"] }
 hex = "0.4.2"
 chrono = "0.4"
 timer = "0.2.0"
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 http-types = "2.12"
 futures = "0.3"
 libsqlite3-sys = "0.24"

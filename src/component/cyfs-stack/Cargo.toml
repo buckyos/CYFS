@@ -28,7 +28,7 @@ cyfs-meta-lib = { path = "../cyfs-meta-lib" }
 cyfs-perf-client = { path = "../cyfs-perf/cyfs-perf-client" }
 log = "0.4"
 serde = "1.0"
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 http-types = "2.12"
 tide = "0.16"
 serde_json = "1.0"

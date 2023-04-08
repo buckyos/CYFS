@@ -10,7 +10,7 @@ description = "Rust cyfs-chunk-client package"
 
 [dependencies]
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-chunk = { path = "../../component/cyfs-chunk" }
 cyfs-util = { path = "../../component/cyfs-util" }

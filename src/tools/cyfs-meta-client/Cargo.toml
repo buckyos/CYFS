@@ -11,7 +11,7 @@ description = "Rust cyfs-meta-client package"
 [dependencies]
 async-std = "1.11"
 http-types = "2.12"
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 hex = "0.4"
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-base-meta = { path = "../../component/cyfs-base-meta" }

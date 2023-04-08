@@ -28,7 +28,7 @@ lazy_static = '1.4'
 clap = '2.34.0'
 simple_logger = '2.1'
 hex = '0.4'
-async-h1 = '2.3.3'
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 async-trait = '0.1.53'
 futures = '0.3'
 int-enum = '0.4'

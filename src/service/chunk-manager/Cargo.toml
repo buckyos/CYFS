@@ -9,7 +9,7 @@ description = "Rust chunk-manager package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 async-std = { version = "1.11", features = ["attributes"] }
 chrono = "0.4"
 cyfs-base = { path = "../../component/cyfs-base" }
