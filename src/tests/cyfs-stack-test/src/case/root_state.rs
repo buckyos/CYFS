@@ -23,6 +23,10 @@ pub async fn test() {
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
+    test_isolate_path_env_leak(&stack).await;
+    warn!("test isolate path env leak success!");
+    // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
+
     test_group_state().await;
     test_load_with_cache(&device_stack).await;
 
@@ -765,4 +769,39 @@ async fn test_isolate_path_env(stack: &SharedCyfsStack) {
     op_env.commit().await.unwrap();
 
     info!("test_isolate_path_env complete!");
+}
+
+fn random_object(i: usize, j: usize) -> ObjectId {
+    let id = format!("random_object_{}_{}", i, j);
+    Text::create(&id, id.clone(), id.clone()).text_id().object_id().clone()
+}
+
+async fn test_isolate_path_env_leak(stack: &SharedCyfsStack) {
+    let root_state = stack.root_state_stub(None, None);
+
+
+    let mut tasks = vec![];
+    for i in 0..100 {
+        let root_state = root_state.clone();
+        let t = async_std::task::spawn(async move {
+            warn!("will run isolate task: index={}", i);
+            
+            let path_env = root_state.create_isolate_path_op_env().await.unwrap();
+            path_env.create_new(ObjectMapSimpleContentType::Map).await.unwrap();
+            
+            for j in 0..1000 {
+                let object_id = random_object(i, j);
+                let path = format!("/{}", object_id.to_string());
+                path_env.insert_with_path(&path, &object_id).await.unwrap();
+            }
+            
+            warn!("test isolate path will commit, index={}", i);
+            path_env.commit().await.unwrap();
+            warn!("test isolate path commit complete, index={}", i);
+        });
+
+        tasks.push(t);
+    }
+
+    futures::future::join_all(tasks).await;
 }

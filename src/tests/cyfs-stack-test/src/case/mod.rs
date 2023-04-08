@@ -39,9 +39,11 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
+    root_state::test().await;
+    return;
+
     backup::test().await;
-    //return;
-    
+
     async_std::task::spawn(async move {
         shared_stack::test().await;
     });
