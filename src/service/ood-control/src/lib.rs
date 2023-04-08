@@ -1,6 +1,5 @@
 mod controller;
 mod device_info;
-//mod http_bdt_listener;
 mod access_token;
 mod app_bind_manager;
 mod bind;
