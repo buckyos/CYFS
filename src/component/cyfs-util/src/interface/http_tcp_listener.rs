@@ -201,3 +201,80 @@ impl HttpTcpListener {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::super::http_server::HttpServer;
+    use async_std::net::*;
+    use http_types::*;
+
+    async fn test_utf8_header() {
+        const UTF8_HEADER: &str = "错误Header";
+        fn gen_utf8_header() -> http_types::headers::HeaderValue {
+            let header = unsafe {
+                http_types::headers::HeaderValue::from_bytes_unchecked(UTF8_HEADER.as_bytes().to_vec()) 
+            };
+
+            header
+        }
+
+        fn check_header(value: &http_types::headers::HeaderValue) {
+            println!("test={}", value.as_str());
+
+            let decoded_value = percent_encoding::percent_decode_str(value.as_str());
+            let value = decoded_value.decode_utf8().unwrap();
+            println!("origin test={}", value);
+            assert_eq!(UTF8_HEADER, value);
+        }
+
+        async fn on_request(req: tide::Request<()>) -> tide::Result {
+            let value = req.header("test").unwrap().last();
+            check_header(value);
+
+            let mut resp = tide::Response::new(StatusCode::Ok);
+            
+            resp.insert_header("test", gen_utf8_header());
+            Ok(resp)
+        }
+
+        let mut server = tide::Server::new();
+        server.at("/index.html").get(on_request);
+
+        let server  = HttpServer::new(server);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000);
+        let server = HttpTcpListener::new(addr.clone(), server);
+        server.start().await.unwrap();
+
+        let tcp_stream = TcpStream::connect(addr).await.map_err(|e| {
+            let msg = format!("connect to service error: {} {}", addr, e);
+            println!("{}", msg);
+
+            unreachable!();
+        }).unwrap();
+
+        let mut req = http_types::Request::new(Method::Get, "http://127.0.0.1/index.html");
+        req.insert_header("test", gen_utf8_header());
+
+        match async_h1::connect(tcp_stream, req).await {
+            Ok(resp) => {
+                println!("request to service success! {}, {:?}", addr, resp);
+                let value = resp.header("test").unwrap().last();
+                check_header(value);
+            }
+            Err(e) => {
+                let msg = format!("request to service failed! {} {}", addr, e);
+                println!("{}", msg);
+
+                unreachable!();
+            }
+        }
+    }
+
+    #[test]
+    fn test() {
+        async_std::task::block_on(async move {
+            test_utf8_header().await;
+        })
+    }
+}
