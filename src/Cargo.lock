@@ -4850,6 +4850,7 @@ name = "ood-installer"
 version = "0.5.0"
 dependencies = [
  "app-manager",
+ "app-manager-lib",
  "async-std",
  "async-trait",
  "clap 2.34.0",

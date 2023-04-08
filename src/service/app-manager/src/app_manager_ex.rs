@@ -13,7 +13,8 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use version_compare::Version;
-use app_manager_lib::{AppManagerConfig, AppSource};
+use app_manager_lib::{AppManagerConfig, AppSource, RepoMode};
+use cyfs_util::get_cyfs_root_path;
 use crate::docker_api::DockerApi;
 
 //pub const USER_APP_LIST: &str = "user_app";
@@ -265,6 +266,10 @@ impl AppManager {
     }
 
     async fn check_app_update(&self) {
+        if self.config.config.repo_mode == RepoMode::Local {
+            info!("app manager running on local repo mode. skip check app update");
+            return;
+        }
         //更新只是尽力更新，如果中间出错就等下次更新。
         info!("###### will check app update!");
         let status_list = self.status_list.read().unwrap().clone();
@@ -1033,43 +1038,60 @@ impl AppManager {
 
     async fn get_sys_app_list(&self) {
         if self.config.app.can_install_system() {
-            if let Some(id) = self.get_sys_app_list_owner_id() {
-                // 得到AppId
-                let sys_app_list_id = AppList::generate_id(id.clone(), "", APPLIST_APP_CATEGORY);
-                info!("try get sys app list {}", sys_app_list_id);
-                // 用non，从target或链上取真正的AppList
-                match self
-                    .non_helper
-                    .get_object(&sys_app_list_id, None, CYFS_ROUTER_REQUEST_FLAG_FLUSH)
-                    .await
-                {
-                    Ok(resp) => {
-                        if let Ok(app_list) = AppList::clone_from_slice(&resp.object.object_raw) {
-                            // 这里只存储，这个函数只在初始化时候调用，后续有check status的步骤
-                            *self.sys_app_list.write().unwrap() = Some(app_list);
+            if self.config.config.repo_mode == RepoMode::Local{
+                let local_list_path = get_cyfs_root_path().join("app_repo").join("app_list.obj");
+                if local_list_path.exists() {
+                    match AppList::decode_from_file(&local_list_path, &mut vec![]) {
+                        Ok((list, _)) => {
+                            *self.sys_app_list.write().unwrap() = Some(list);
+                        }
+                        Err(e) => {
+                            error!("load local system app list from {} err {}, ignore", local_list_path.display(), e);
                         }
                     }
-                    Err(e) => {
-                        warn!("get sys app list from {} fail, err {}", &id, e);
+                }
+            } else {
+                if let Some(id) = self.get_sys_app_list_owner_id() {
+                    // 得到AppId
+                    let sys_app_list_id = AppList::generate_id(id.clone(), "", APPLIST_APP_CATEGORY);
+                    info!("try get sys app list {}", sys_app_list_id);
+                    // 用non，从target或链上取真正的AppList
+                    match self
+                        .non_helper
+                        .get_object(&sys_app_list_id, None, CYFS_ROUTER_REQUEST_FLAG_FLUSH)
+                        .await
+                    {
+                        Ok(resp) => {
+                            if let Ok(app_list) = AppList::clone_from_slice(&resp.object.object_raw) {
+                                // 这里只存储，这个函数只在初始化时候调用，后续有check status的步骤
+                                *self.sys_app_list.write().unwrap() = Some(app_list);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("get sys app list from {} fail, err {}", &id, e);
+                        }
+                    }
+                }
+
+                // 把app include也加入sys_app_list
+                {
+                    let mut list = self.sys_app_list.write().unwrap();
+                    if self.config.app.include.len() > 0 && list.is_none() {
+                        *list = Some(AppList::create(self.owner.clone(), "", APPLIST_APP_CATEGORY));
+                    }
+                }
+
+                for id in &self.config.app.include {
+                    if let Ok(latest_version) = self.get_app_update_version(id, "0.0.0").await {
+                        info!("add include app {} ver {}", id, &latest_version);
+                        self.sys_app_list.write().unwrap().as_mut().unwrap().put(AppStatus::create(self.owner.clone(), id.clone(), latest_version, true));
                     }
                 }
             }
+
         }
 
-        // 把app include也加入sys_app_list
-        {
-            let mut list = self.sys_app_list.write().unwrap();
-            if self.config.app.include.len() > 0 && list.is_none() {
-                *list = Some(AppList::create(self.owner.clone(), "", APPLIST_APP_CATEGORY));
-            }
-        }
 
-        for id in &self.config.app.include {
-            if let Ok(latest_version) = self.get_app_update_version(id, "0.0.0").await {
-                info!("add include app {} ver {}", id, &latest_version);
-                self.sys_app_list.write().unwrap().as_mut().unwrap().put(AppStatus::create(self.owner.clone(), id.clone(), latest_version, true));
-            }
-        }
     }
 
     async fn get_stack_version(&self) -> BuckyResult<VersionInfo> {
