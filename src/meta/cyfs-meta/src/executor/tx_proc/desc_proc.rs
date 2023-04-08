@@ -55,35 +55,60 @@ impl TxExecutor {
 
         let desc = ret.unwrap();
         if desc.hash()? != tx.desc_hash {
-            error!("data hash mismatch!, except {}, actual {}", &tx.desc_hash, desc.hash()?);
+            error!(
+                "data hash mismatch!, except {}, actual {}",
+                &tx.desc_hash,
+                desc.hash()?
+            );
             error!("tx data hex: {}", hex::encode(data));
             error!("rust data hex: {}", hex::encode(desc.to_vec().unwrap()));
             return Err(meta_err!(ERROR_HASH_ERROR));
         }
 
         let objid = context::id_from_desc(&desc);
+        let state_ref = context.ref_state().to_rc()?;
+
+        if let SavedMetaObject::Group(group) = &desc {
+            group
+                .is_update_valid(None, &PeopleQuerier(state_ref.clone()))
+                .await?;
+        }
 
         //TODO:是否需要检测已经objid 已经有余额存在?
         //     是否需要校验caller能否创建desc?
-        context
-            .ref_state()
-            .to_rc()?
-            .create_obj_desc(&objid, &desc)
-            .await?;
+        state_ref.create_obj_desc(&objid, &desc).await?;
 
         if let SavedMetaObject::File(file) = &desc {
             if file.desc().owner().is_some() {
-                context.ref_state().to_rc()?.set_beneficiary(&file.desc().calculate_id(), file.desc().owner().as_ref().unwrap()).await?;
+                context
+                    .ref_state()
+                    .to_rc()?
+                    .set_beneficiary(
+                        &file.desc().calculate_id(),
+                        file.desc().owner().as_ref().unwrap(),
+                    )
+                    .await?;
             }
         } else if let SavedMetaObject::Data(data) = &desc {
             if let Ok(obj) = AnyNamedObject::clone_from_slice(data.data.as_slice()) {
                 if obj.owner().is_some() {
-                    context.ref_state().to_rc()?.set_beneficiary(&obj.calculate_id(), obj.owner().as_ref().unwrap()).await?;
+                    context
+                        .ref_state()
+                        .to_rc()?
+                        .set_beneficiary(&obj.calculate_id(), obj.owner().as_ref().unwrap())
+                        .await?;
                 }
             }
         } else if let SavedMetaObject::Device(device) = &desc {
             if device.desc().owner().is_some() {
-                context.ref_state().to_rc()?.set_beneficiary(&device.desc().calculate_id(), device.desc().owner().as_ref().unwrap()).await?;
+                context
+                    .ref_state()
+                    .to_rc()?
+                    .set_beneficiary(
+                        &device.desc().calculate_id(),
+                        device.desc().owner().as_ref().unwrap(),
+                    )
+                    .await?;
             }
         }
 
@@ -160,9 +185,27 @@ impl TxExecutor {
         //    return Err(ERROR_ACCESS_DENIED);
         //}
 
-        let mut rent_state = context.ref_state().to_rc()?.get_desc_extra(&objid).await?;
+        let state_ref = context.ref_state().to_rc()?;
+
+        let mut rent_state = state_ref.get_desc_extra(&objid).await?;
         if rent_state.rent_arrears > 0 {
             return Err(crate::meta_err!(ERROR_RENT_ARREARS));
+        }
+
+        if let SavedMetaObject::Group(group) = &desc {
+            let latest_group = state_ref.get_obj_desc(&objid).await?;
+            if let SavedMetaObject::Group(latest_group) = latest_group {
+                group
+                    .is_update_valid(Some(&latest_group), &PeopleQuerier(state_ref.clone()))
+                    .await?;
+            } else {
+                let msg = format!(
+                    "Attempt get group({}) from different type.",
+                    group.desc().object_id()
+                );
+                log::warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+            }
         }
 
         context
@@ -276,5 +319,21 @@ impl TxExecutor {
         self.rent_manager.to_rc()?.delete_rent_desc(&_tx.id).await?;
 
         Ok(())
+    }
+}
+
+struct PeopleQuerier(StateRef);
+
+#[async_trait::async_trait]
+impl MemberQuerier for PeopleQuerier {
+    async fn get_people(&self, people_id: &PeopleId) -> BuckyResult<People> {
+        let obj = self.0.get_obj_desc(people_id.object_id()).await?;
+        if let SavedMetaObject::People(people) = obj {
+            Ok(people)
+        } else {
+            let msg = format!("Attempt get people({}) from different type.", people_id);
+            log::warn!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
+        }
     }
 }
