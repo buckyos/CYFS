@@ -3,19 +3,30 @@ use log::*;
 use std::path::Path;
 use std::str::FromStr;
 
-pub fn create_simple_group_desc(
-    founder_id: ObjectId,
+pub fn create_group_desc(
+    founder_id: Option<ObjectId>,
     admins: Vec<GroupMember>,
-    conclusion_limit: Option<u32>,
+    members: Vec<GroupMember>,
+    oods: Vec<DeviceId>,
     area: Area,
+    name: Option<String>,
+    icon: Option<String>,
+    description: Option<String>,
+    is_org: bool,
 ) -> Group {
-    let area_info = Area::default();
-    Group::new_simple_group(founder_id, admins, conclusion_limit, area).build()
-}
-
-pub fn create_org_desc(founder_id: ObjectId, area: Area) -> Group {
-    let area_info = Area::default();
-    Group::new_org(founder_id, area).build()
+    let mut group = if is_org {
+        let mut group = Group::new_org(founder_id, area).build();
+        group.check_org_body_content_mut().set_admins(admins);
+        group
+    } else {
+        Group::new_simple_group(founder_id, admins, area).build()
+    };
+    group.set_members(members);
+    group.set_ood_list(oods);
+    group.set_name(name);
+    group.set_icon(icon);
+    group.set_description(description);
+    group
 }
 
 pub fn create_people_desc(

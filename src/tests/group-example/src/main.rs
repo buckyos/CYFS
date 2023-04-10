@@ -174,7 +174,7 @@ mod Common {
     ) -> Group {
         log::info!("create group");
 
-        let mut group = Group::new_org(founder.desc().object_id(), Area::default()).build();
+        let mut group = Group::new_org(Some(founder.desc().object_id()), Area::default()).build();
         group.check_org_body_content_mut().set_admins(
             admins
                 .iter()
