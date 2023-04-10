@@ -2,6 +2,7 @@ use crate::codec as cyfs_base;
 use crate::*;
 
 use std::convert::TryFrom;
+use std::str::FromStr;
 
 pub enum GroupMemberScope {
     Admin,
@@ -13,6 +14,15 @@ pub enum GroupMemberScope {
 pub enum GroupDescContent {
     SimpleGroup(SimpleGroupDescContent),
     Org(OrgDescContent),
+}
+
+impl GroupDescContent {
+    pub fn founder_id(&self) -> &Option<ObjectId> {
+        match self {
+            GroupDescContent::SimpleGroup(desc) => &desc.founder_id,
+            GroupDescContent::Org(desc) => &desc.founder_id,
+        }
+    }
 }
 
 #[derive(Clone, Debug, RawEncode, RawDecode)]
@@ -39,16 +49,16 @@ impl BodyContent for GroupBodyContent {
 }
 
 impl GroupBodyContent {
-    pub fn name(&self) -> &str {
-        self.common().name.as_str()
+    pub fn name(&self) -> &Option<String> {
+        &self.common().name
     }
 
-    pub fn icon(&self) -> &Option<FileId> {
+    pub fn icon(&self) -> &Option<String> {
         &self.common().icon
     }
 
-    pub fn description(&self) -> &str {
-        self.common().description.as_str()
+    pub fn description(&self) -> &Option<String> {
+        &self.common().description
     }
 
     pub fn members(&self) -> &Vec<GroupMember> {
@@ -146,27 +156,27 @@ impl Group {
         }
     }
 
-    pub fn name(&self) -> &str {
-        self.common().name.as_str()
+    pub fn name(&self) -> &Option<String> {
+        &self.common().name
     }
 
-    pub fn set_name(&mut self, name: String) {
+    pub fn set_name(&mut self, name: Option<String>) {
         self.common_mut().name = name;
     }
 
-    pub fn icon(&self) -> &Option<FileId> {
+    pub fn icon(&self) -> &Option<String> {
         &self.common().icon
     }
 
-    pub fn set_icon(&mut self, icon: Option<FileId>) {
+    pub fn set_icon(&mut self, icon: Option<String>) {
         self.common_mut().icon = icon;
     }
 
-    pub fn description(&self) -> &str {
-        self.common().description.as_str()
+    pub fn description(&self) -> &Option<String> {
+        &self.common().description
     }
 
-    pub fn set_description(&mut self, description: String) {
+    pub fn set_description(&mut self, description: Option<String>) {
         self.common_mut().description = description;
     }
 
@@ -344,6 +354,9 @@ pub struct GroupMember {
 }
 
 impl GroupMember {
+    pub fn new(id: ObjectId, title: String) -> Self {
+        GroupMember { id, title }
+    }
     pub fn from_member_id(id: ObjectId) -> GroupMember {
         GroupMember {
             id,
@@ -378,11 +391,41 @@ impl TryFrom<&GroupMember> for protos::GroupMember {
     }
 }
 
+impl FromStr for GroupMember {
+    type Err = BuckyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut fields = s.split(":");
+
+        let id = if let Some(id) = fields.next() {
+            PeopleId::from_str(id)?
+        } else {
+            return Err(BuckyError::new(
+                BuckyErrorCode::InvalidFormat,
+                "need peopleid of member.",
+            ));
+        };
+
+        let title = fields.next().unwrap_or("");
+
+        Ok(Self {
+            id: id.object_id().clone(),
+            title: title.to_string(),
+        })
+    }
+}
+
+impl ToString for GroupMember {
+    fn to_string(&self) -> String {
+        format!("{}:{}", self.id, self.title)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct CommonGroupBodyContent {
-    name: String,
-    icon: Option<FileId>,
-    description: String,
+    name: Option<String>,
+    icon: Option<String>,
+    description: Option<String>,
 
     members: Vec<GroupMember>,
 
@@ -394,9 +437,9 @@ struct CommonGroupBodyContent {
 
 impl CommonGroupBodyContent {
     fn new(
-        name: String,
-        icon: Option<FileId>,
-        description: String,
+        name: Option<String>,
+        icon: Option<String>,
+        description: Option<String>,
         members: Vec<GroupMember>,
         ood_list: Vec<DeviceId>,
     ) -> Self {
@@ -417,13 +460,21 @@ impl TryFrom<protos::CommonGroupBodyContent> for CommonGroupBodyContent {
 
     fn try_from(mut value: protos::CommonGroupBodyContent) -> BuckyResult<Self> {
         let ret = Self {
-            name: value.take_name(),
-            icon: if value.has_icon() {
-                Some(ProtobufCodecHelper::decode_buf(value.take_icon())?)
+            name: if value.has_name() {
+                Some(value.take_name())
             } else {
                 None
             },
-            description: value.take_description(),
+            icon: if value.has_icon() {
+                Some(value.take_icon())
+            } else {
+                None
+            },
+            description: if value.has_description() {
+                Some(value.take_description())
+            } else {
+                None
+            },
             members: ProtobufCodecHelper::decode_value_list(value.take_members())?,
             ood_list: ProtobufCodecHelper::decode_buf_list(value.take_ood_list())?,
             version: value.version,
@@ -444,11 +495,15 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
     fn try_from(value: &CommonGroupBodyContent) -> BuckyResult<Self> {
         let mut ret = Self::new();
 
-        ret.name = value.name.clone();
-        if let Some(icon) = &value.icon {
-            ret.set_icon(icon.to_vec()?);
+        if let Some(name) = value.name.as_ref() {
+            ret.set_name(name.clone());
         }
-        ret.description = value.description.clone();
+        if let Some(icon) = value.icon.as_ref() {
+            ret.set_icon(icon.clone());
+        }
+        if let Some(description) = value.description.as_ref() {
+            ret.set_description(description.clone());
+        }
 
         ret.set_members(ProtobufCodecHelper::encode_nested_list(&value.members)?);
         ret.set_ood_list(ProtobufCodecHelper::encode_buf_list(
@@ -469,6 +524,12 @@ pub struct SimpleGroupDescContent {
     unique_id: UniqueId,
     founder_id: Option<ObjectId>,
     admins: Vec<GroupMember>,
+}
+
+impl SimpleGroupDescContent {
+    pub fn admins(&self) -> &Vec<GroupMember> {
+        &self.admins
+    }
 }
 
 impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
@@ -512,9 +573,9 @@ pub struct SimpleGroupBodyContent {
 
 impl SimpleGroupBodyContent {
     fn new(
-        name: String,
-        icon: Option<FileId>,
-        description: String,
+        name: Option<String>,
+        icon: Option<String>,
+        description: Option<String>,
         members: Vec<GroupMember>,
         ood_list: Vec<DeviceId>,
     ) -> Self {
@@ -594,9 +655,9 @@ pub struct OrgBodyContent {
 
 impl OrgBodyContent {
     fn new(
-        name: String,
-        icon: Option<FileId>,
-        description: String,
+        name: Option<String>,
+        icon: Option<String>,
+        description: Option<String>,
         admins: Vec<GroupMember>,
         members: Vec<GroupMember>,
         ood_list: Vec<DeviceId>,

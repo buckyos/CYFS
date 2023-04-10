@@ -125,7 +125,19 @@ impl GroupVerifier for Group {
                     log::warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
                 }
-                None => ([].as_slice(), [].as_slice()),
+                None => {
+                    if let Some(founder) = self.founder_id() {
+                        if self.admins().iter().find(|m| &m.id == founder).is_none() {
+                            let msg = format!(
+                                "Update group({}) the founder({}) must be an administrator.",
+                                group_id, founder
+                            );
+                            log::warn!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+                        }
+                    }
+                    ([].as_slice(), [].as_slice())
+                }
             },
         };
 

@@ -564,10 +564,19 @@ impl ObjectFormat for PeopleBodyContent {
     }
 }
 
-// simple group
+// group
 impl ObjectFormat for GroupDescContent {
     fn format_json(&self) -> serde_json::Value {
-        let map = serde_json::Map::new();
+        let mut map = serde_json::Map::new();
+
+        JsonCodecHelper::encode_option_string_field(
+            &mut map,
+            "founder",
+            self.founder_id().as_ref(),
+        );
+        if let GroupDescContent::SimpleGroup(simple_group) = self {
+            JsonCodecHelper::encode_str_array_field(&mut map, "admins", simple_group.admins());
+        }
 
         map.into()
     }
@@ -577,13 +586,25 @@ impl ObjectFormat for GroupBodyContent {
     fn format_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        JsonCodecHelper::encode_string_field(&mut map, "name", self.name());
-        JsonCodecHelper::encode_str_array_field(
+        JsonCodecHelper::encode_option_string_field(&mut map, "name", self.name().as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut map, "icon", self.icon().as_ref());
+        JsonCodecHelper::encode_option_string_field(
             &mut map,
-            "members",
-            &self.members().iter().map(|m| m.id).collect_vec(),
+            "description",
+            self.description().as_ref(),
         );
+
+        if let GroupBodyContent::Org(org) = self {
+            JsonCodecHelper::encode_str_array_field(&mut map, "admins", org.admins());
+        }
+        JsonCodecHelper::encode_str_array_field(&mut map, "members", self.members());
         JsonCodecHelper::encode_str_array_field(&mut map, "ood_list", self.ood_list());
+        JsonCodecHelper::encode_option_string_field(
+            &mut map,
+            "prev_blob_id",
+            self.prev_blob_id().as_ref(),
+        );
+        JsonCodecHelper::encode_string_field(&mut map, "version", &self.version());
 
         map.into()
     }

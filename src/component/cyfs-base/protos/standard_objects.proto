@@ -66,9 +66,9 @@ message GroupMember {
 }
 
 message CommonGroupBodyContent {
-    string name = 1;
-    optional bytes icon = 2;
-    string description = 3;
+    optional string name = 1;
+    optional string icon = 2;
+    optional string description = 3;
 
     repeated GroupMember members = 4;
 
@@ -81,7 +81,7 @@ message CommonGroupBodyContent {
 // simple_group
 message SimpleGroupDescContent {
     bytes unique_id = 1;
-    bytes founder_id = 2;
+    optional bytes founder_id = 2;
     repeated GroupMember admins = 3;
 }
 
@@ -92,7 +92,7 @@ message SimpleGroupBodyContent {
 // org
 message OrgDescContent {
     bytes unique_id = 1;
-    bytes founder_id = 2;
+    optional bytes founder_id = 2;
 }
 
 message OrgBodyContent {
