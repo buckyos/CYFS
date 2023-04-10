@@ -151,6 +151,10 @@ impl AppCmdExecutor {
         _retry_count: u32,
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
+        // if app already running, return success
+        if self.app_controller.is_app_running(app_id).await? {
+            return Ok(());
+        }
         let cmd_code = cmd.cmd();
         //info!("will execute cmd, app:{}, cmd: {:?}", app_id, cmd_code);
 
@@ -162,8 +166,6 @@ impl AppCmdExecutor {
             false,
         )
         .await?;
-
-        let _ = self.app_controller.stop_app(app_id).await;
 
         //get quota
         let quota = status.lock().unwrap().quota().clone();
@@ -246,6 +248,22 @@ impl AppCmdExecutor {
         _retry_count: u32,
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
+
+        match self.app_controller.is_app_running(app_id).await {
+            Ok(running) => {
+                // if app already not running, return ok
+                if !running {
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                // NotFound means app already uninstalled, return ok
+                if e.code() == BuckyErrorCode::NotFound {
+                    return Ok(());
+                }
+            }
+        }
+
         let cmd_code = cmd.cmd();
 
         self.pre_change_status(
