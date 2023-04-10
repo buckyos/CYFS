@@ -85,6 +85,13 @@ impl GroupVerifier for Group {
         member_querier: &impl MemberQuerier,
     ) -> BuckyResult<()> {
         let group_id = self.desc().object_id();
+
+        if self.admins().len() == 0 {
+            let msg = format!("Update group({}) with no admins.", group_id);
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+        }
+
         let (last_admins, last_members) = match latest_group {
             Some(latest_group) => {
                 let latest_group_id = latest_group.desc().object_id();
