@@ -105,7 +105,7 @@ impl GroupDesc {
 
 impl Group {
     pub fn new_simple_group(
-        founder_id: ObjectId,
+        founder_id: Option<ObjectId>,
         admins: Vec<GroupMember>,
         area: Area,
     ) -> GroupBuilder {
@@ -124,7 +124,7 @@ impl Group {
         .area(area)
     }
 
-    pub fn new_org(founder_id: ObjectId, area: Area) -> GroupBuilder {
+    pub fn new_org(founder_id: Option<ObjectId>, area: Area) -> GroupBuilder {
         let desc_content = OrgDescContent {
             founder_id,
             unique_id: UniqueId::create_with_random(),
@@ -137,6 +137,13 @@ impl Group {
             GroupBodyContent::Org(body_content),
         )
         .area(area)
+    }
+
+    pub fn founder_id(&self) -> &Option<ObjectId> {
+        match self.desc().content() {
+            GroupDescContent::SimpleGroup(s) => &s.founder_id,
+            GroupDescContent::Org(o) => &o.founder_id,
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -227,39 +234,6 @@ impl Group {
     pub fn set_prev_blob_id(&mut self, prev_blob_id: Option<ObjectId>) {
         self.common_mut().prev_blob_id = prev_blob_id;
     }
-    // pub fn join_member(
-    //     &self,
-    //     member_id: &ObjectId,
-    //     private_key: &PrivateKey,
-    // ) -> BuckyResult<&GroupJoinSignature> {
-    //     unimplemented!()
-    // }
-
-    // pub fn verify(
-    //     &self,
-    //     signature: &GroupJoinSignature,
-    //     member_id: &ObjectId,
-    //     public_key: &PublicKey,
-    // ) -> BuckyResult<bool> {
-    //     unimplemented!()
-    // }
-
-    // pub fn verify_member(
-    //     &self,
-    //     member_id: &ObjectId,
-    //     is_admin: bool,
-    //     public_key: &PublicKey,
-    // ) -> BuckyResult<bool> {
-    //     unimplemented!()
-    // }
-
-    // pub fn verify_members(
-    //     &self,
-    //     members: &[(ObjectId, PublicKey)],
-    //     is_admin: bool,
-    // ) -> BuckyResult<bool> {
-    //     unimplemented!()
-    // }
 
     pub fn is_simple_group(&self) -> bool {
         match self.desc().content() {
@@ -353,19 +327,6 @@ impl Group {
         });
         oods
     }
-
-    // pub fn group_hash(&self) -> ObjectId {
-    //     let mut without_sign = self.clone();
-    //     without_sign.common_mut().join_signatures = vec![];
-
-    //     let mut hash = HashValue::default();
-    //     let remain = without_sign
-    //         .raw_encode(hash.as_mut_slice(), &Some(RawEncodePurpose::Hash))
-    //         .unwrap();
-    //     assert_eq!(remain.len(), 0);
-
-    //     ObjectId::from_slice_value(&hash.as_slice()[..31])
-    // }
 
     fn common(&self) -> &CommonGroupBodyContent {
         self.body().as_ref().unwrap().content().common()
@@ -506,18 +467,22 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
 #[derive(Clone, Debug)]
 pub struct SimpleGroupDescContent {
     unique_id: UniqueId,
-    founder_id: ObjectId,
+    founder_id: Option<ObjectId>,
     admins: Vec<GroupMember>,
 }
 
 impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
     type Error = BuckyError;
 
-    fn try_from(value: protos::SimpleGroupDescContent) -> BuckyResult<Self> {
+    fn try_from(mut value: protos::SimpleGroupDescContent) -> BuckyResult<Self> {
         let ret = Self {
+            founder_id: if value.has_founder_id() {
+                ProtobufCodecHelper::decode_buf(value.take_founder_id())?
+            } else {
+                None
+            },
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
             admins: ProtobufCodecHelper::decode_value_list(value.admins)?,
-            founder_id: ProtobufCodecHelper::decode_buf(value.founder_id)?,
         };
 
         Ok(ret)
@@ -531,7 +496,9 @@ impl TryFrom<&SimpleGroupDescContent> for protos::SimpleGroupDescContent {
         let mut ret = Self::new();
 
         ret.unique_id = value.unique_id.to_vec()?;
-        ret.founder_id = value.founder_id.to_vec()?;
+        if let Some(founder_id) = value.founder_id.as_ref() {
+            ret.set_founder_id(founder_id.to_vec()?);
+        }
         ret.set_admins(ProtobufCodecHelper::encode_nested_list(&value.admins)?);
 
         Ok(ret)
@@ -584,16 +551,20 @@ impl TryFrom<&SimpleGroupBodyContent> for protos::SimpleGroupBodyContent {
 #[derive(Clone, Debug)]
 pub struct OrgDescContent {
     unique_id: UniqueId,
-    founder_id: ObjectId,
+    founder_id: Option<ObjectId>,
 }
 
 impl TryFrom<protos::OrgDescContent> for OrgDescContent {
     type Error = BuckyError;
 
-    fn try_from(value: protos::OrgDescContent) -> BuckyResult<Self> {
+    fn try_from(mut value: protos::OrgDescContent) -> BuckyResult<Self> {
         let ret = Self {
+            founder_id: if value.has_founder_id() {
+                Some(ProtobufCodecHelper::decode_buf(value.take_founder_id())?)
+            } else {
+                None
+            },
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
-            founder_id: ProtobufCodecHelper::decode_buf(value.founder_id)?,
         };
 
         Ok(ret)
@@ -607,7 +578,9 @@ impl TryFrom<&OrgDescContent> for protos::OrgDescContent {
         let mut ret = Self::new();
 
         ret.unique_id = value.unique_id.to_vec()?;
-        ret.founder_id = value.founder_id.to_vec()?;
+        if let Some(founder_id) = value.founder_id.as_ref() {
+            ret.set_founder_id(founder_id.to_vec()?);
+        }
 
         Ok(ret)
     }
