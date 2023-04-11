@@ -70,9 +70,9 @@ message CommonGroupBodyContent {
     optional string icon = 2;
     optional string description = 3;
 
-    repeated GroupMember members = 4;
+    repeated GroupMember members = 4; // sort by id deduplicated ascending order
 
-    repeated bytes ood_list = 5;
+    repeated bytes ood_list = 5; // sort by id deduplicated ascending order
     
     optional bytes prev_blob_id = 6;
     uint64 version = 7;
@@ -82,7 +82,7 @@ message CommonGroupBodyContent {
 message SimpleGroupDescContent {
     bytes unique_id = 1;
     optional bytes founder_id = 2;
-    repeated GroupMember admins = 3;
+    repeated GroupMember admins = 3; // sort by id deduplicated ascending order
 }
 
 message SimpleGroupBodyContent {
@@ -96,7 +96,7 @@ message OrgDescContent {
 }
 
 message OrgBodyContent {
-    repeated GroupMember admins = 1;
+    repeated GroupMember admins = 1; // sort by id deduplicated ascending order
     CommonGroupBodyContent common = 2;
 }
 

@@ -575,7 +575,15 @@ impl ObjectFormat for GroupDescContent {
             self.founder_id().as_ref(),
         );
         if let GroupDescContent::SimpleGroup(simple_group) = self {
-            JsonCodecHelper::encode_str_array_field(&mut map, "admins", simple_group.admins());
+            JsonCodecHelper::encode_str_array_field(
+                &mut map,
+                "admins",
+                &simple_group
+                    .admins()
+                    .values()
+                    .sorted_by(|l, r| l.id.cmp(&r.id))
+                    .collect::<Vec<_>>(),
+            );
         }
 
         map.into()
@@ -595,9 +603,24 @@ impl ObjectFormat for GroupBodyContent {
         );
 
         if let GroupBodyContent::Org(org) = self {
-            JsonCodecHelper::encode_str_array_field(&mut map, "admins", org.admins());
+            JsonCodecHelper::encode_str_array_field(
+                &mut map,
+                "admins",
+                &org.admins()
+                    .values()
+                    .sorted_by(|l, r| l.id.cmp(&r.id))
+                    .collect::<Vec<_>>(),
+            );
         }
-        JsonCodecHelper::encode_str_array_field(&mut map, "members", self.members());
+        JsonCodecHelper::encode_str_array_field(
+            &mut map,
+            "members",
+            &self
+                .members()
+                .values()
+                .sorted_by(|l, r| l.id.cmp(&r.id))
+                .collect::<Vec<_>>(),
+        );
         JsonCodecHelper::encode_str_array_field(&mut map, "ood_list", self.ood_list());
         JsonCodecHelper::encode_option_string_field(
             &mut map,

@@ -141,8 +141,8 @@ impl DeviceInfoManagerImpl {
         let group = object.as_group();
         let sign_object_ids = HashSet::<ObjectId>::from_iter(
             [
-                group.admins().iter().map(|m| m.id).collect::<Vec<_>>(),
-                group.members().iter().map(|m| m.id).collect::<Vec<_>>(),
+                group.admins().iter().map(|m| m.1.id).collect::<Vec<_>>(),
+                group.members().iter().map(|m| m.1.id).collect::<Vec<_>>(),
             ]
             .concat()
             .into_iter(),

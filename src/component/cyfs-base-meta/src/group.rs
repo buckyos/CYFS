@@ -114,7 +114,22 @@ impl GroupVerifier for Group {
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
                 }
 
-                (latest_group.admins(), latest_group.members())
+                (
+                    HashSet::<ObjectId>::from_iter(
+                        latest_group
+                            .admins()
+                            .keys()
+                            .filter(|m| m.obj_type_code() == ObjectTypeCode::People)
+                            .map(|m| *m),
+                    ),
+                    HashSet::<ObjectId>::from_iter(
+                        latest_group
+                            .members()
+                            .keys()
+                            .filter(|m| m.obj_type_code() == ObjectTypeCode::People)
+                            .map(|m| *m),
+                    ),
+                )
             }
             None => match self.prev_blob_id() {
                 Some(prev_blob_id) => {
@@ -127,7 +142,7 @@ impl GroupVerifier for Group {
                 }
                 None => {
                     if let Some(founder) = self.founder_id() {
-                        if self.admins().iter().find(|m| &m.id == founder).is_none() {
+                        if self.admins().values().find(|m| &m.id == founder).is_none() {
                             let msg = format!(
                                 "Update group({}) the founder({}) must be an administrator.",
                                 group_id, founder
@@ -136,7 +151,7 @@ impl GroupVerifier for Group {
                             return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
                         }
                     }
-                    ([].as_slice(), [].as_slice())
+                    (HashSet::new(), HashSet::new())
                 }
             },
         };
@@ -144,33 +159,21 @@ impl GroupVerifier for Group {
         // admins: > 1/2
         // new members: all
 
-        let last_admins = HashSet::<ObjectId>::from_iter(
-            last_admins
-                .iter()
-                .filter(|m| m.id.obj_type_code() == ObjectTypeCode::People)
-                .map(|m| m.id),
-        );
-        let last_members = HashSet::<ObjectId>::from_iter(
-            last_members
-                .iter()
-                .filter(|m| m.id.obj_type_code() == ObjectTypeCode::People)
-                .map(|m| m.id),
-        );
         let add_admins = HashSet::<ObjectId>::from_iter(
             self.admins()
-                .iter()
+                .keys()
                 .filter(|m| {
-                    m.id.obj_type_code() == ObjectTypeCode::People && !last_admins.contains(&m.id)
+                    m.obj_type_code() == ObjectTypeCode::People && !last_admins.contains(*m)
                 })
-                .map(|m| m.id),
+                .map(|m| *m),
         );
         let add_members = HashSet::<ObjectId>::from_iter(
             self.members()
-                .iter()
+                .keys()
                 .filter(|m| {
-                    m.id.obj_type_code() == ObjectTypeCode::People && !last_members.contains(&m.id)
+                    m.obj_type_code() == ObjectTypeCode::People && !last_members.contains(*m)
                 })
-                .map(|m| m.id),
+                .map(|m| *m),
         );
 
         if add_admins.len() != self.admins().len() - last_admins.len() {
