@@ -11,21 +11,21 @@ use std::sync::Arc;
 
 // 每个root共享一个大的读cache，每个op_env都有独立的写cache，在commit时候提交
 pub struct ObjectMapIsolatePathOpEnv {
-    // 每个root下的op_env都有唯一的一个sid
+    // each op_env under root has the unique SID
     sid: u64,
 
-    // 当前op_env的所属root
+    // The root current op_env's belonging to
     root_holder: ObjectMapRootHolder,
 
     path: OnceCell<ObjectMapPath>,
 
-    // env级别的cache
+    // the cache owned by current op-env
     cache: ObjectMapOpEnvCacheRef,
 
-    // 写锁，确保顺序写
+    // Write locks, ensure order writing
     write_lock: AsyncMutex<()>,
 
-    // 权限相关
+    // Permission related
     access: Option<OpEnvPathAccess>,
 }
 
@@ -141,8 +141,8 @@ impl ObjectMapIsolatePathOpEnv {
         self.load(&value).await
     }
 
-    // 加载指定路径上的object_map
-    // root不能使用single_op_env直接操作，所以必须至少要指定一个key
+    // Load object_map on the specified path
+    // The root object cannot use single_op_env to operate directly, so at least one key must be specified!
     pub async fn load_by_key(&self, path: &str, key: &str) -> BuckyResult<()> {
         // First check access permissions!
         if let Some(access) = &self.access {
@@ -185,7 +185,8 @@ impl ObjectMapIsolatePathOpEnv {
         self.sid
     }
 
-    // 调用次方法会导致path快照被绑定，所以如果需要lock，那么需要按照create_op_env->lock->访问其它方法的次序操作
+    // Calling this method will cause the path snapshot to be bound, so if a lock is needed, 
+    // you should follow the sequence of create_op_env -> lock -> access other methods for operations.
     pub fn root(&self) -> Option<ObjectId> {
         self.path.get().map(|path| path.root())
     }
@@ -360,19 +361,20 @@ impl ObjectMapIsolatePathOpEnv {
     pub async fn update(&self) -> BuckyResult<ObjectId> {
         let _write_lock = self.write_lock.lock().await;
 
-        // 提交所有pending的对象到noc
+        // First gc temporary objects that are generated
         let root = self.path()?.root();
         if let Err(e) = self.cache.gc(false, &root).await {
             error!("path env's cache gc error! root={}, {}", root, e);
         }
 
+        // Save all result objects to noc
         self.cache.commit().await?;
 
         Ok(root)
     }
 
-    // 提交操作，只可以调用一次
-    // 提交成功，返回最新的root id
+    // Commit operation, can only be called once
+    // Return the newest root id if commit success!
     pub async fn commit(self) -> BuckyResult<ObjectId> {
         self.update().await
     }
@@ -380,7 +382,7 @@ impl ObjectMapIsolatePathOpEnv {
     pub fn abort(self) -> BuckyResult<()> {
         info!("will abort isolate_path_op_env: sid={}", self.sid);
 
-        // 释放cache里面的pending
+        // Relase the pending objects in cache
         self.cache.abort();
 
         Ok(())

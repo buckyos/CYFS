@@ -3412,6 +3412,14 @@ mod test {
 
     #[test]
     fn test_simple_map_limit() {
+        use std::str::FromStr;
+
+        let object_id = ObjectId::default();
+        let object_id = ObjectId::from_str("95RvaS5Wy2UZC4Pzy7A6PZTs47bsWLCPtZe834oVvbQ4").unwrap();
+        let s = object_id.to_string();
+        let len = object_id.raw_measure(&None).unwrap() + s.raw_measure(&None).unwrap();
+        println!("len={}", len);
+
         let mut content = ObjectMapSimpleContent::new(ObjectMapSimpleContentType::Map, 0);
         let object_id = ObjectId::default();
         let mut index = 0;
