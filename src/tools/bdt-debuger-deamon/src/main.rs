@@ -56,10 +56,26 @@ fn load_dev_vec(path: &str) -> Option<Vec<Device>> {
     }
 }
 
-fn load_sn() -> Option<Vec<Device>> {
-    load_dev_vec("sn-miner.desc")
-}
+fn load_sn(sns: Vec<&str>) -> Option<Vec<Device>> {
+    let mut dev_vec = Vec::new();
 
+    if sns.len() == 0 {
+        match load_dev_by_path("sn-miner.desc") {
+            Some(dev) => {
+                dev_vec.push(dev);
+                Some(dev_vec)
+            },
+            _ => None
+        }
+    } else {
+        for sn in sns {
+            let dev = load_dev_by_path(sn).unwrap();
+            dev_vec.push(dev);
+        }
+
+        Some(dev_vec)
+    }
+}
 fn create_device(sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>) -> (Device, PrivateKey) {
     let private_key = PrivateKey::generate_rsa(1024).unwrap();
     let public_key = private_key.public();
@@ -123,6 +139,7 @@ async fn main() {
                         .arg(Arg::with_name("quiet").long("quiet").takes_value(false).default_value("0").help("quiet mode"))
                         .arg(Arg::with_name("udp_sn_only").long("udp_sn_only").takes_value(false).default_value("0").help("udp sn only"))
                         .arg(Arg::with_name("sn_bench").long("sn_bench").takes_value(false).default_value("0").help("sn bench, clients"))
+                        .arg(Arg::with_name("sn").long("sn").multiple(true).takes_value(false).default_value("").help("sn desc file"))
                         .get_matches();
 
     let mut endpoints = vec![];
@@ -139,7 +156,13 @@ async fn main() {
     let udp_sn_only = u16::from_str(matches.value_of("udp_sn_only").unwrap()).unwrap();
     let sn_bench = usize::from_str(matches.value_of("sn_bench").unwrap()).unwrap();
 
-    let sns = load_sn();
+    let mut sns = vec![];
+    for sn in matches.values_of("sn").unwrap() {
+        if sn.len() != 0 {
+            sns.push(sn);
+        }
+    }
+    let sns = load_sn(sns);
 
     if sn_bench > 0 {
         loger_init(quiet, "sn_bench");
