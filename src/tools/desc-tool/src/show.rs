@@ -206,7 +206,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
                 "immutable"
             }
         );
-        for member in group.admins() {
+        for (_, member) in group.admins() {
             print!("{};", member.to_string());
         }
         println!("]");
@@ -214,7 +214,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
 
     if is_all || matches.is_present("show_members") {
         print!("members: [");
-        for member in group.members() {
+        for (_, member) in group.members() {
             print!("{};", member.to_string());
         }
         println!("]");

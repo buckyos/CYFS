@@ -1,6 +1,10 @@
+use itertools::Itertools;
+
 use crate::codec as cyfs_base;
+use crate::protos::standard_objects;
 use crate::*;
 
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -61,11 +65,11 @@ impl GroupBodyContent {
         &self.common().description
     }
 
-    pub fn members(&self) -> &Vec<GroupMember> {
+    pub fn members(&self) -> &HashMap<ObjectId, GroupMember> {
         &self.common().members
     }
 
-    pub fn members_mut(&mut self) -> &mut Vec<GroupMember> {
+    pub fn members_mut(&mut self) -> &mut HashMap<ObjectId, GroupMember> {
         &mut self.common_mut().members
     }
 
@@ -121,7 +125,7 @@ impl Group {
     ) -> GroupBuilder {
         let desc_content = SimpleGroupDescContent {
             unique_id: UniqueId::create_with_random(),
-            admins,
+            admins: HashMap::from_iter(admins.into_iter().map(|m| (m.id, m))),
             founder_id,
         };
 
@@ -180,40 +184,47 @@ impl Group {
         self.common_mut().description = description;
     }
 
-    pub fn admins(&self) -> &[GroupMember] {
+    pub fn admins(&self) -> &HashMap<ObjectId, GroupMember> {
         if self.is_org() {
-            self.check_org_body_content().admins.as_slice()
+            &self.check_org_body_content().admins
         } else {
-            self.check_simple_group_desc_content().admins.as_slice()
+            &self.check_simple_group_desc_content().admins
         }
     }
 
-    pub fn members(&self) -> &[GroupMember] {
-        self.common().members.as_slice()
+    pub fn members(&self) -> &HashMap<ObjectId, GroupMember> {
+        &self.common().members
     }
 
     pub fn set_members(&mut self, members: Vec<GroupMember>) {
-        self.common_mut().members = members;
+        self.common_mut().members = HashMap::from_iter(members.into_iter().map(|m| (m.id, m)));
     }
 
-    pub fn ood_list(&self) -> &[DeviceId] {
-        self.common().ood_list.as_slice()
+    pub fn ood_list(&self) -> &Vec<DeviceId> {
+        &self.common().ood_list
     }
 
     pub fn set_ood_list(&mut self, oods: Vec<DeviceId>) {
-        self.common_mut().ood_list = oods;
+        self.common_mut().ood_list = HashSet::<DeviceId>::from_iter(oods.into_iter())
+            .into_iter()
+            .sorted()
+            .collect();
     }
 
     pub fn contain_ood(&self, ood_id: &ObjectId) -> bool {
-        self.ood_list()
-            .iter()
-            .find(|id| id.object_id() == ood_id)
-            .is_some()
+        match DeviceId::try_from(ood_id) {
+            Ok(device_id) => self.ood_list().contains(&device_id),
+            Err(_) => false,
+        }
     }
 
     pub fn is_same_ood_list(&self, other: &Group) -> bool {
         let my_oods = self.ood_list();
         let other_oods = other.ood_list();
+
+        if my_oods.len() != other_oods.len() {
+            return false;
+        }
 
         for id in my_oods {
             if !other_oods.contains(id) {
@@ -221,11 +232,6 @@ impl Group {
             }
         }
 
-        for id in other_oods {
-            if !my_oods.contains(id) {
-                return false;
-            }
-        }
         true
     }
 
@@ -307,11 +313,11 @@ impl Group {
         scope: GroupMemberScope,
     ) -> Vec<&ObjectId> {
         let mut members = match scope {
-            GroupMemberScope::Admin => self.admins().iter().map(|m| &m.id).collect::<Vec<_>>(),
-            GroupMemberScope::Member => self.members().iter().map(|m| &m.id).collect::<Vec<_>>(),
+            GroupMemberScope::Admin => self.admins().keys().collect::<Vec<_>>(),
+            GroupMemberScope::Member => self.members().keys().collect::<Vec<_>>(),
             GroupMemberScope::All => [
-                self.admins().iter().map(|m| &m.id).collect::<Vec<_>>(),
-                self.members().iter().map(|m| &m.id).collect::<Vec<_>>(),
+                self.admins().keys().collect::<Vec<_>>(),
+                self.members().keys().collect::<Vec<_>>(),
             ]
             .concat(),
         };
@@ -325,16 +331,16 @@ impl Group {
     }
 
     pub fn ood_list_with_distance(&self, target: &ObjectId) -> Vec<&ObjectId> {
-        let mut oods = self
+        let oods = self
             .ood_list()
             .iter()
             .map(|id| id.object_id())
+            .sorted_unstable_by(|l, r| {
+                let dl = l.distance_of(target);
+                let dr = r.distance_of(target);
+                dl.cmp(&dr)
+            })
             .collect::<Vec<_>>();
-        oods.sort_unstable_by(|l, r| {
-            let dl = l.distance_of(target);
-            let dr = r.distance_of(target);
-            dl.cmp(&dr)
-        });
         oods
     }
 
@@ -415,7 +421,7 @@ impl FromStr for GroupMember {
     }
 }
 
-impl ToString for GroupMember {
+impl ToString for &GroupMember {
     fn to_string(&self) -> String {
         format!("{}:{}", self.id, self.title)
     }
@@ -427,7 +433,7 @@ struct CommonGroupBodyContent {
     icon: Option<String>,
     description: Option<String>,
 
-    members: Vec<GroupMember>,
+    members: HashMap<ObjectId, GroupMember>,
 
     ood_list: Vec<DeviceId>,
 
@@ -447,8 +453,11 @@ impl CommonGroupBodyContent {
             name,
             icon,
             description,
-            members,
-            ood_list,
+            members: HashMap::from_iter(members.into_iter().map(|m| (m.id, m))),
+            ood_list: HashSet::<DeviceId>::from_iter(ood_list.into_iter())
+                .into_iter()
+                .sorted()
+                .collect::<Vec<_>>(),
             version: 0,
             prev_blob_id: None,
         }
@@ -459,6 +468,9 @@ impl TryFrom<protos::CommonGroupBodyContent> for CommonGroupBodyContent {
     type Error = BuckyError;
 
     fn try_from(mut value: protos::CommonGroupBodyContent) -> BuckyResult<Self> {
+        let mut ood_list = ProtobufCodecHelper::decode_buf_list(value.take_ood_list())?;
+        ood_list.sort();
+
         let ret = Self {
             name: if value.has_name() {
                 Some(value.take_name())
@@ -475,8 +487,16 @@ impl TryFrom<protos::CommonGroupBodyContent> for CommonGroupBodyContent {
             } else {
                 None
             },
-            members: ProtobufCodecHelper::decode_value_list(value.take_members())?,
-            ood_list: ProtobufCodecHelper::decode_buf_list(value.take_ood_list())?,
+            members:
+                HashMap::from_iter(
+                    ProtobufCodecHelper::decode_value_list::<
+                        GroupMember,
+                        standard_objects::GroupMember,
+                    >(value.take_members())?
+                    .into_iter()
+                    .map(|m| (m.id, m)),
+                ),
+            ood_list,
             version: value.version,
             prev_blob_id: if value.has_prev_blob_id() {
                 Some(ProtobufCodecHelper::decode_buf(value.take_prev_blob_id())?)
@@ -505,10 +525,21 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
             ret.set_description(description.clone());
         }
 
-        ret.set_members(ProtobufCodecHelper::encode_nested_list(&value.members)?);
-        ret.set_ood_list(ProtobufCodecHelper::encode_buf_list(
-            value.ood_list.as_slice(),
-        )?);
+        let members = value
+            .members
+            .values()
+            .sorted_by(|l, r| l.id.cmp(&r.id))
+            .map(|m| m.clone())
+            .collect::<Vec<_>>();
+        ret.set_members(ProtobufCodecHelper::encode_nested_list(&members)?);
+
+        let oods = value
+            .ood_list
+            .iter()
+            .sorted()
+            .map(|id| id.clone())
+            .collect::<Vec<_>>();
+        ret.set_ood_list(ProtobufCodecHelper::encode_buf_list(oods.as_slice())?);
 
         ret.version = value.version;
         if let Some(prev_blob_id) = &value.prev_blob_id {
@@ -523,11 +554,11 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
 pub struct SimpleGroupDescContent {
     unique_id: UniqueId,
     founder_id: Option<ObjectId>,
-    admins: Vec<GroupMember>,
+    admins: HashMap<ObjectId, GroupMember>,
 }
 
 impl SimpleGroupDescContent {
-    pub fn admins(&self) -> &Vec<GroupMember> {
+    pub fn admins(&self) -> &HashMap<ObjectId, GroupMember> {
         &self.admins
     }
 }
@@ -543,7 +574,15 @@ impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
                 None
             },
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
-            admins: ProtobufCodecHelper::decode_value_list(value.admins)?,
+            admins:
+                HashMap::from_iter(
+                    ProtobufCodecHelper::decode_value_list::<
+                        GroupMember,
+                        standard_objects::GroupMember,
+                    >(value.admins)?
+                    .into_iter()
+                    .map(|m| (m.id, m)),
+                ),
         };
 
         Ok(ret)
@@ -560,7 +599,14 @@ impl TryFrom<&SimpleGroupDescContent> for protos::SimpleGroupDescContent {
         if let Some(founder_id) = value.founder_id.as_ref() {
             ret.set_founder_id(founder_id.to_vec()?);
         }
-        ret.set_admins(ProtobufCodecHelper::encode_nested_list(&value.admins)?);
+
+        let admins = value
+            .admins
+            .values()
+            .sorted_by(|l, r| l.id.cmp(&r.id))
+            .map(|m| m.clone())
+            .collect::<Vec<_>>();
+        ret.set_admins(ProtobufCodecHelper::encode_nested_list(&admins)?);
 
         Ok(ret)
     }
@@ -649,7 +695,7 @@ impl TryFrom<&OrgDescContent> for protos::OrgDescContent {
 
 #[derive(Clone, Debug, Default)]
 pub struct OrgBodyContent {
-    admins: Vec<GroupMember>,
+    admins: HashMap<ObjectId, GroupMember>,
     common: CommonGroupBodyContent,
 }
 
@@ -664,16 +710,16 @@ impl OrgBodyContent {
     ) -> Self {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),
-            admins,
+            admins: HashMap::from_iter(admins.into_iter().map(|m| (m.id, m))),
         }
     }
 
-    pub fn admins(&self) -> &Vec<GroupMember> {
+    pub fn admins(&self) -> &HashMap<ObjectId, GroupMember> {
         &self.admins
     }
 
     pub fn set_admins(&mut self, admins: Vec<GroupMember>) {
-        self.admins = admins;
+        self.admins = HashMap::from_iter(admins.into_iter().map(|m| (m.id, m)));
     }
 }
 
@@ -682,7 +728,15 @@ impl TryFrom<protos::OrgBodyContent> for OrgBodyContent {
 
     fn try_from(mut value: protos::OrgBodyContent) -> BuckyResult<Self> {
         let ret = Self {
-            admins: ProtobufCodecHelper::decode_value_list(value.take_admins())?,
+            admins:
+                HashMap::from_iter(
+                    ProtobufCodecHelper::decode_value_list::<
+                        GroupMember,
+                        standard_objects::GroupMember,
+                    >(value.take_admins())?
+                    .into_iter()
+                    .map(|m| (m.id, m)),
+                ),
             common: ProtobufCodecHelper::decode_value(value.take_common())?,
         };
 
@@ -696,7 +750,14 @@ impl TryFrom<&OrgBodyContent> for protos::OrgBodyContent {
     fn try_from(value: &OrgBodyContent) -> BuckyResult<Self> {
         let mut ret = Self::new();
 
-        ret.set_admins(ProtobufCodecHelper::encode_nested_list(&value.admins)?);
+        let admins = value
+            .admins
+            .values()
+            .sorted_by(|l, r| l.id.cmp(&r.id))
+            .map(|m| m.clone())
+            .collect::<Vec<_>>();
+
+        ret.set_admins(ProtobufCodecHelper::encode_nested_list(&admins)?);
         ret.set_common(ProtobufCodecHelper::encode_nested_item(&value.common)?);
 
         Ok(ret)
