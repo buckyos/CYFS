@@ -1,7 +1,7 @@
 use clap::{App, SubCommand, Arg, ArgMatches};
-use crate::util::{get_eps_from_matches, get_deviceids_from_matches, get_group_members_from_matches};
+use crate::util::{get_eps_from_matches, get_deviceids_from_matches, get_group_members_from_matches, get_objids_from_matches};
 use log::*;
-use cyfs_base::{StandardObject, FileDecoder, FileEncoder, NamedObject, AnyNamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, FileId, Group, BuckyError, GroupMember, BuckyErrorCode, BuckyResult, DeviceId};
+use cyfs_base::{StandardObject, FileDecoder, FileEncoder, NamedObject, AnyNamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, FileId, Group, BuckyError, GroupMember, BuckyErrorCode, BuckyResult, DeviceId, bucky_time_now};
 use cyfs_core::{CoreObjectType, DecApp, DecAppObj, AppList, AppStatus, AppListObj, AppStatusObj, DecAppId};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -12,13 +12,15 @@ pub fn modify_subcommand<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("desc").required(true).index(1).help("desc file to modify"))
         .arg(Arg::with_name("sn").short("s").long("sn").value_delimiter(";").help("new sn list"))
         .arg(Arg::with_name("eps").long("eps").short("e").value_delimiter(";").help("new endpoint list"))
-        .arg(Arg::with_name("admins").long("admins").short("A").value_delimiter(";").help("administrators set to group"))
-        .arg(Arg::with_name("add_admins").long("add_admin").short("aA").value_delimiter(";").help("administrators append to group"))
-        .arg(Arg::with_name("members").long("members").short("m").value_delimiter(";").help("members set to group"))
-        .arg(Arg::with_name("add_members").long("add_member").short("am").value_delimiter(";").help("members append to group"))
+        .arg(Arg::with_name("admins").long("admins").short("A").value_delimiter(";").help("set administrators to group. format [PeopleId:title]"))
+        .arg(Arg::with_name("add_admins").long("add_admin").value_delimiter(";").help("append administrators to group. format [PeopleId:title]"))
+        .arg(Arg::with_name("remove_admins").long("rm_admin").value_delimiter(";").help("remove administrators from group. format [PeopleId]"))
+        .arg(Arg::with_name("members").long("members").short("m").value_delimiter(";").help("set members to group. format [PeopleId:title]"))
+        .arg(Arg::with_name("add_members").long("add_member").value_delimiter(";").help("append members to group. format [PeopleId:title]"))
+        .arg(Arg::with_name("remove_members").long("rm_member").value_delimiter(";").help("remove members from group. format [PeopleId]"))
         .arg(Arg::with_name("description").short("d").long("description").takes_value(true).help("description of group"))
         .arg(Arg::with_name("version").short("v").long("version").takes_value(true).help("version of group"))
-        .arg(Arg::with_name("prev_blob_id").short("p").long("prev").takes_value(true).help("prev-blob-id of group"))
+        .arg(Arg::with_name("prev_blob_id").long("prev_blob").takes_value(true).help("prev-blob-id of group"))
         .arg(Arg::with_name("add_oods").long("add_ood").short("o").value_delimiter(";").help("device id append to people or group"))
         .arg(Arg::with_name("ood_lists").long("ood_lists").short("l").value_delimiter(";").help("device id set to people or group"))
         .arg(Arg::with_name("name").short("n").long("name").takes_value(true).help("name of people or group"))
@@ -51,6 +53,7 @@ pub fn modify_desc(matches: &ArgMatches) {
                         StandardObject::Group(mut g) => {
                             if modify_group_desc(&mut g, matches).is_ok() {
                                 g.encode_to_file(path.as_ref(), false).expect("write desc file err");
+                                info!("modify success");
                             }
                         }
                         StandardObject::People(mut p) => {
@@ -136,7 +139,9 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
 
     match get_group_members_from_matches(matches, "members") {
         Ok(members) => {
-            group.set_members(members);
+            if let Some(members) = members {
+                group.set_members(members);
+            }
         },
         Err(err) => {
             log::error!("update group({}) failed for invalid member.", group_id);
@@ -146,25 +151,35 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
 
     match get_group_members_from_matches(matches, "add_members") {
         Ok(additional_members) => {
-            let mut members = HashMap::<ObjectId, String>::from_iter(group.members().iter().map(|m| (m.id, m.title.clone())));
-            additional_members.into_iter().for_each(|m| {members.insert(m.id, m.title);});
-            group.set_members(members.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());
+            if let Some(additional_members) = additional_members {
+                let mut members = HashMap::<ObjectId, String>::from_iter(group.members().iter().map(|m| (m.id, m.title.clone())));
+                additional_members.into_iter().for_each(|m| {members.insert(m.id, m.title);});
+                group.set_members(members.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());                
+            }
         },
         Err(err) => {
             log::error!("update group({}) failed for invalid member.", group_id);
             return Err(err);
         }
     }
+
+    if let Some(remove_members) = get_objids_from_matches(matches, "remove_members") {
+        let mut members = HashMap::<ObjectId, String>::from_iter(group.members().iter().map(|m| (m.id, m.title.clone())));
+        remove_members.iter().for_each(|m| {members.remove(m);});
+        group.set_members(members.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());
+    }
     
     match get_group_members_from_matches(matches, "admins") {
         Ok(admins) => {
-            if group.is_simple_group() {
-                let msg = format!("update group({}) failed for the administrators of simple-group is immutable.", group_id);
-                log::error!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+            if let Some(admins) = admins {
+                if group.is_simple_group() {
+                    let msg = format!("update group({}) failed for the administrators of simple-group is immutable.", group_id);
+                    log::error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+                }
+                let org = group.check_org_body_content_mut();
+                org.set_admins(admins);                
             }
-            let org = group.check_org_body_content_mut();
-            org.set_admins(admins);
         },
         Err(err) => {
             log::error!("update group({}) failed for invalid administrator.", group_id);
@@ -174,15 +189,17 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
 
     match get_group_members_from_matches(matches, "add_admins") {
         Ok(additional_admins) => {
-            if group.is_simple_group() {
-                let msg = format!("update group({}) failed for the administrators of simple-group is immutable.", group_id);
-                log::error!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+            if let Some(additional_admins) = additional_admins {
+                if group.is_simple_group() {
+                    let msg = format!("update group({}) failed for the administrators of simple-group is immutable.", group_id);
+                    log::error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+                }
+                let org = group.check_org_body_content_mut();
+                let mut admins = HashMap::<ObjectId, String>::from_iter(org.admins().iter().map(|m| (m.id, m.title.clone())));
+                additional_admins.into_iter().for_each(|m| {admins.insert(m.id, m.title);});
+                org.set_admins(admins.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());                
             }
-            let org = group.check_org_body_content_mut();
-            let mut admins = HashMap::<ObjectId, String>::from_iter(org.admins().iter().map(|m| (m.id, m.title.clone())));
-            additional_admins.into_iter().for_each(|m| {admins.insert(m.id, m.title);});
-            org.set_admins(admins.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());
         },
         Err(err) => {
             log::error!("update group({}) failed for invalid administrator.", group_id);
@@ -190,13 +207,15 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
         }
     }
 
-    match get_deviceids_from_matches(matches, "ood_lists") {
-        Some(oods) => {
-            group.set_ood_list(oods);
-        },
-        None => {
-            group.set_ood_list(vec![]);
-        }
+    if let Some(remove_members) = get_objids_from_matches(matches, "remove_admins") {
+        let org = group.check_org_body_content_mut();
+        let mut admins = HashMap::<ObjectId, String>::from_iter(org.admins().iter().map(|m| (m.id, m.title.clone())));
+        remove_members.iter().for_each(|m| {admins.remove(m);});
+        org.set_admins(admins.into_iter().map(|(id, title)| GroupMember::new(id, title)).collect());
+    }
+
+    if let Some(oods) = get_deviceids_from_matches(matches, "ood_lists") {
+        group.set_ood_list(oods);
     }
     if let Some(additional_oods) = get_deviceids_from_matches(matches, "add_oods") {
         let mut oods = HashSet::<DeviceId>::from_iter(group.ood_list().iter().map(|id| id.clone()));
@@ -210,6 +229,10 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
 
     if let Some(icon) = matches.value_of("icon") {
         group.set_icon(Some(icon.to_string()));
+    }
+
+    if let Some(name) = matches.value_of("name") {
+        group.set_name(Some(name.to_string()));
     }
 
     if let Some(version) = matches.value_of("version") {
@@ -227,7 +250,7 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
     if let Some(prev_blob_id) = matches.value_of("prev_blob_id") {
         let prev_blob_id = match ObjectId::from_str(prev_blob_id) {
             Ok(prev_blob_id) => prev_blob_id,
-            Err(e) => {
+            Err(_) => {
                 let msg = format!("update group({}) failed for invalid prev-blob-id {}", group_id, prev_blob_id);
                 log::error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
@@ -235,6 +258,14 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
         };
         group.set_prev_blob_id(Some(prev_blob_id));
     }
+
+    if group.admins().is_empty() {
+        let msg = format!("update group({}) failed for no administrators", group_id);
+        log::error!("{}", msg);
+        return Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg));        
+    }
+
+    group.body_mut().as_mut().unwrap().set_update_time(bucky_time_now());
 
     Ok(())
 }
