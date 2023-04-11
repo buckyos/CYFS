@@ -109,6 +109,11 @@ pub async fn sign_desc(matches: &ArgMatches<'_>) {
                             })
                         } else if let Ok(index) = str.parse::<u8>() {
                             SignatureSource::RefIndex(index)
+                        } else if let Ok((obj, _)) = AnyNamedObject::decode_from_file(str.as_ref(), &mut vec![]) {
+                            SignatureSource::Object(ObjectLink {
+                                obj_id: obj.object_id(),
+                                obj_owner: None,
+                            })                            
                         } else {
                             SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER)
                         }
