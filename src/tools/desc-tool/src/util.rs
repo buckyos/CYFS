@@ -55,14 +55,14 @@ pub fn get_eps_from_matches(matches: &ArgMatches, name: &str) -> Option<Vec<Endp
 pub fn get_group_members_from_matches(
     matches: &ArgMatches,
     name: &str,
-) -> BuckyResult<Vec<GroupMember>> {
+) -> BuckyResult<Option<Vec<GroupMember>>> {
     if let Some(strs) = matches.values_of_lossy(name) {
         let mut ret = vec![];
         for str in &strs {
             ret.push(GroupMember::from_str(str)?);
         }
-        Ok(ret)
+        Ok(Some(ret))
     } else {
-        Ok(vec![])
+        Ok(None)
     }
 }

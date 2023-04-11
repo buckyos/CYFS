@@ -207,7 +207,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
             }
         );
         for member in group.admins() {
-            print!("{}, ", member.to_string());
+            print!("{};", member.to_string());
         }
         println!("]");
     }
@@ -215,7 +215,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
     if is_all || matches.is_present("show_members") {
         print!("members: [");
         for member in group.members() {
-            print!("{}, ", member.to_string());
+            print!("{};", member.to_string());
         }
         println!("]");
     }
@@ -223,7 +223,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
     if is_all || matches.is_present("show_oodlist") {
         print!("ood_list: [");
         for ood in group.ood_list() {
-            print!("{}, ", ood);
+            print!("{};", ood);
         }
         println!("]");
     }

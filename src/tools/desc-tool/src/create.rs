@@ -1,7 +1,7 @@
 use crate::desc;
 use crate::desc::create_people_desc;
 use crate::util::{
-    get_deviceids_from_matches, get_group_members_from_matches, get_objids_from_matches,
+    get_deviceids_from_matches, get_group_members_from_matches,
 };
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cyfs_base::{
@@ -13,6 +13,8 @@ use log::*;
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
+
+// .\desc-tool.exe create group -F=5r4MYfFfTakY1h6vdEuMurpkawk4MZpB5RmY9CFqSj99 -A=5r4MYfFfTakY1h6vdEuMurpkawk4MZpB5RmY9CFqSj99:;5r4MYfFPPRDNNcJdvve4XVx3FE355PUDpqaA5Mm9UcFh:;5r4MYfFAiXjbEkHZvc1NtHgJkZ4A7LJQcrY7cJeMz5YB:;5r4MYfFKmpMT2u2P13p3bLC6KtGEVsp42X85h5e2onhZ:; -M=5r4MYfF5r9cUfL9JemVXwLWJjufXETYSjfXqEsR3Qwn5:;5r4MYfF8ZaksbXfnZbdjiYJuJv8U4FfvyBgdHq7RiPhY:;5r4MYfFQxUB7okJMvia5yGksrkMBzPrUrwCFgja4Djv3:;5r4MYfFXjPJ9BBYvvdP5QHudAWLNrMzuzZpNpr45pYEc:;5r4MYfFXuCNgbhRPaqtUKsNvNH1RNGF5prFXg7UqiWDS:;5r4MYfFJHxPCYqwLWrHQ24jjv3ZvCbK4dPhBCNn8r3aE:;5r4MYfFXAtLvsW52oCRRAALEt7rEJB7qUdRDEEKAgPJJ:;5r4MYfFdFYt8ytAw9noVjg1aXfeQvHWpaChax73wWKwJ:;5r4MYfFbDWG8jibePJhSoL25mv6tv6ZMDaMZHRzKVEEB:; -l=5aSixgN8tVt1SAM4xBfc1dYvdrU7d5fVeZrzNFpx8FiB;5aSixgMxgNuMQFcG41fW1CN7MTsKMqEuVjW16BnJWrGW;5aSixgN64mtdhmNvKZ681P3iPZbnQPyQsezTFNB2HSdx;5aSixgNS8ij1mkjjNe2UWHVgVYFhr4dJF5BuxxpTb1m8; -n="group" -I="icon" -d="description" -a=0:0:0:0 -O --savepath="./" --idfile="./group.id.txt"
 
 pub fn create_subcommand<'a, 'b>() -> App<'a, 'b> {
     let id_file_arg = Arg::with_name("id_file")
@@ -36,19 +38,19 @@ pub fn create_subcommand<'a, 'b>() -> App<'a, 'b> {
                 .help("Object area info, if not set,will calc base ip. format [county:carrier:city:inner]"))
             .arg(id_file_arg.clone()).arg(save_path.clone()))
         .subcommand(SubCommand::with_name("group").about("create group desc")
-            .arg(Arg::with_name("founder").long("founder").short("f")
+            .arg(Arg::with_name("founder").long("founder").short("F").takes_value(true)
                 .help("founder of group"))
             .arg(Arg::with_name("admins").required(true).long("admins").short("A").value_delimiter(";")
-                .help("admins in group. format [peopleid:title]"))
-            .arg(Arg::with_name("members").long("members").short("m").value_delimiter(";")
-                .help("members in group. format [peopleid:title]"))
+                .help("admins in group. format [PeopleId:title]"))
+            .arg(Arg::with_name("members").long("members").short("M").value_delimiter(";")
+                .help("members in group. format [PeopleId:title]"))
             .arg(Arg::with_name("ood_list").long("oodlist").short("l").value_delimiter(";")
                 .help("oods in group"))
-            .arg(Arg::with_name("name").long("name").short("n")
+            .arg(Arg::with_name("name").long("name").short("n").takes_value(true)
                 .help("name of group"))
-            .arg(Arg::with_name("icon").long("icon").short("I")
+            .arg(Arg::with_name("icon").long("icon").short("I").takes_value(true)
                 .help("icon of group"))
-            .arg(Arg::with_name("description").long("description").short("d")
+            .arg(Arg::with_name("description").long("description").short("d").takes_value(true)
                 .help("description of group"))
             .arg(Arg::with_name("area").required(true).long("area").short("a").takes_value(true)
                 .help("Object area info. format [county:carrier:city:inner]"))
@@ -300,11 +302,13 @@ pub async fn create_desc(matches: &ArgMatches<'_>) {
 pub async fn create_group_desc(matches: &ArgMatches<'_>) {
     let admins = match get_group_members_from_matches(matches, "admins") {
         Ok(admins) => {
-            if admins.len() == 0 {
-                log::error!("empty admins.");
-                return;
+            match admins {
+                Some(admins) if admins.len() > 0 => admins,
+                _ => {
+                    log::error!("empty admins.");
+                    return;                    
+                }
             }
-            admins
         }
         Err(e) => {
             log::error!("invalid admins: {}", e.msg());
@@ -335,7 +339,7 @@ pub async fn create_group_desc(matches: &ArgMatches<'_>) {
     };
 
     let members = match get_group_members_from_matches(matches, "members") {
-        Ok(members) => members,
+        Ok(members) => members.unwrap_or(vec![]),
         Err(e) => {
             log::error!("invalid members: {}", e.msg());
             return;
@@ -370,7 +374,7 @@ pub async fn create_group_desc(matches: &ArgMatches<'_>) {
         .join(&groupid.to_string())
         .with_extension("desc");
     if let Err(e) = group_desc.encode_to_file(&desc_file, true) {
-        error!("write group desc file failed, err {}", e);
+        error!("write group desc file({:?}) failed, err {}", desc_file, e);
     } else {
         info!(
             "write group({}) desc file succ to {}",
