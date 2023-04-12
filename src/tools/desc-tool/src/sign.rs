@@ -13,6 +13,8 @@ use cyfs_base::{
 use log::*;
 use std::str::FromStr;
 
+// .\desc-tool sign ${desc-path} -s=${signer-secret-path} -t=${signer-desc-path} -dba
+
 pub fn sign_subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("sign")
         .about("sign desc")
@@ -109,11 +111,13 @@ pub async fn sign_desc(matches: &ArgMatches<'_>) {
                             })
                         } else if let Ok(index) = str.parse::<u8>() {
                             SignatureSource::RefIndex(index)
-                        } else if let Ok((obj, _)) = AnyNamedObject::decode_from_file(str.as_ref(), &mut vec![]) {
+                        } else if let Ok((obj, _)) =
+                            AnyNamedObject::decode_from_file(str.as_ref(), &mut vec![])
+                        {
                             SignatureSource::Object(ObjectLink {
                                 obj_id: obj.object_id(),
                                 obj_owner: None,
-                            })                            
+                            })
                         } else {
                             SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER)
                         }
@@ -191,6 +195,10 @@ pub async fn sign_desc(matches: &ArgMatches<'_>) {
             if signed {
                 obj.encode_to_file(matches.value_of("desc").unwrap().as_ref(), true)
                     .unwrap();
+
+                info!("signature success.");
+            } else {
+                error!("signature failed!");
             }
         } else {
             error!("invalid desc file");

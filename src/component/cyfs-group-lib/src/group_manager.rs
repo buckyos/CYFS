@@ -345,7 +345,7 @@ impl GroupManager {
             })
     }
 
-    async fn on_commited(&self, mut cmd: GroupCommandCommited) -> BuckyResult<()> {
+    async fn on_commited(&self, cmd: GroupCommandCommited) -> BuckyResult<()> {
         let rpath = cmd.block.rpath();
         let service = self
             .find_or_restart_service(

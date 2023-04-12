@@ -16,7 +16,6 @@ pub use input_request::*;
 pub use objects::*;
 pub use output_request::*;
 pub use processor::*;
-pub(crate) use request::*;
 pub use request_codec::*;
 pub use requestor::*;
 pub use rpath_client::*;
