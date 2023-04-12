@@ -264,16 +264,19 @@ impl DockerApi {
 
             match child.wait_timeout(Duration::from_secs(INSTALL_CMD_TIME_OUT_IN_SECS))? {
                 None => {
-                    error!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
+                    let msg = format!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
+                    error!("{}", &msg);
                     let _ = child.kill();
                     let _ = child.wait();
+                    return Err(BuckyError::new(BuckyErrorCode::Timeout, msg));
                 }
                 Some(status) => {
                     if status.success() {
                         info!("app {} run install cmd {} success", id, &cmd);
                     } else {
-                        error!("app {} run install cmd {}, exit code {}", id, &cmd, code_to_string(status.code()));
-                        return Err(BuckyError::from(BuckyErrorCode::Failed));
+                        let msg = format!("app {} run install cmd {}, exit code {}", id, &cmd, code_to_string(status.code()));
+                        error!("{}", &msg);
+                        return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
                     }
                 }
             }
