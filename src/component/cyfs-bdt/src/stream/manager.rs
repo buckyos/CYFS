@@ -347,12 +347,17 @@ impl OnPackage<TcpSynConnection, &TunnelContainer> for StreamManager {
             } else {
                 let mut question = vec![0; pkg.payload.as_ref().len()];
                 question.copy_from_slice(pkg.payload.as_ref());
-                self.try_accept(
-                    stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 
-                    pkg.to_vport,
-                    pkg.sequence,  
-                    pkg.from_session_id, 
-                    question)
+                if let Some(guard) = stack.tunnel_manager().container_of(tunnel.remote()) {
+                    self.try_accept(
+                        guard, 
+                        pkg.to_vport,
+                        pkg.sequence,  
+                        pkg.from_session_id, 
+                        question)
+                } else {
+                    error!("{} tunnel released, pkg={:?}, tunnel={}", self, pkg, tunnel);
+                    None
+                }
             }
         } {
             Some(stream) => stream.on_package(pkg, None), 
