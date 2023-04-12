@@ -24,7 +24,7 @@ impl SystemConfigGen {
         }
     }
 
-    pub fn gen(&self) -> BuckyResult<()> {
+    pub fn gen(&self, overwrite: bool) -> BuckyResult<()> {
         let platform_target = Self::get_platform();
 
         // 如果是solo模式，那么config也使用本地配置
@@ -50,14 +50,14 @@ impl SystemConfigGen {
 
         info!("system-config.toml as follows:\n{}", value);
 
-        return Self::save(value);
+        return Self::save(value, overwrite);
     }
 
     fn get_platform() -> &'static str {
         cyfs_base::get_target()
     }
 
-    fn save(value: String) -> BuckyResult<()> {
+    fn save(value: String, overwrite: bool) -> BuckyResult<()> {
         let root = ::cyfs_util::get_cyfs_root_path()
             .join("etc")
             .join("ood-daemon");
@@ -75,9 +75,14 @@ impl SystemConfigGen {
         let config_file_path = root.join("system-config.toml");
         if config_file_path.exists() {
             warn!(
-                "{} already exists! now will overwrite.",
-                config_file_path.display()
+                "{} already exists! now will {}.",
+                config_file_path.display(),
+                if overwrite {"overwrite"} else {"skip save"}
             );
+            if !overwrite {
+                return Ok(());
+            }
+
         }
 
         if let Err(e) = std::fs::write(&config_file_path, value.as_bytes()) {

@@ -310,7 +310,7 @@ async fn main_run() {
     }
 
     let config_gen = SystemConfigGen::new(&target);
-    if let Err(_e) = config_gen.gen() {
+    if let Err(_e) = config_gen.gen(matches.is_present("overwrite")) {
         std::process::exit(-1);
     }
     // 初始化system_config+device_config，sync-repo和初始化ood-daemon需要依赖此操作
