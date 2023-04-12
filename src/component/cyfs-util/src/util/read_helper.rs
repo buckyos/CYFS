@@ -103,6 +103,8 @@ pub struct ChunkReaderWithHash {
     reader: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
     hash: sha2::Sha256,
     error_handler: Option<Box<dyn ChunkHashErrorHandler>>,
+    seeked: bool,
+    hashed_len: usize,
 }
 
 impl ChunkReaderWithHash {
@@ -118,6 +120,8 @@ impl ChunkReaderWithHash {
             reader,
             hash: sha2::Sha256::new(),
             error_handler,
+            seeked: false,
+            hashed_len: 0,
         }
     }
 }
@@ -133,31 +137,45 @@ impl async_std::io::Read for ChunkReaderWithHash {
             Poll::Ready(ret) => match ret {
                 Ok(size) => {
                     if size > 0 {
+                        self.hashed_len += size;
                         self.hash.input(&buf[0..size]);
                         Poll::Ready(Ok(size))
                     } else {
-                        let hash_value = self.hash.clone().result().into();
-                        let actual_id = ChunkId::new(&hash_value, self.chunk_id.len() as u32);
-
-                        if actual_id.eq(&self.chunk_id) {
-                            debug!(
-                                "read chunk from file complete! chunk={}, file={}",
-                                self.chunk_id, self.path
+                        if self.seeked {
+                            warn!(
+                                "read chunk with hash but seeked already! chunk={}",
+                                self.chunk_id
                             );
                             Poll::Ready(Ok(0))
+                        } else if self.hashed_len != self.chunk_id.len() {
+                            error!("read chunk with hash but ended with unmatched length! chunk={}, len={}, read len={}", 
+                                self.chunk_id, self.chunk_id.len(), self.hashed_len,);
+                            // FIXME what should we do?
+                            Poll::Ready(Ok(0))
                         } else {
-                            let msg = format!(
-                                "content in file not match chunk id: chunk={}, file={}, expect hash={}, got={}",
-                                self.chunk_id, self.path, self.chunk_id, actual_id
-                            );
-                            error!("{}", msg);
+                            let hash_value = self.hash.clone().result().into();
+                            let actual_id = ChunkId::new(&hash_value, self.chunk_id.len() as u32);
 
-                            if let Some(error_handler) = self.error_handler.take() {
-                                error_handler.on_hash_error(&self.chunk_id, &self.path);
+                            if actual_id.eq(&self.chunk_id) {
+                                debug!(
+                                    "read chunk from file complete! chunk={}, file={}",
+                                    self.chunk_id, self.path
+                                );
+                                Poll::Ready(Ok(0))
+                            } else {
+                                let msg = format!(
+                                    "content in file not match chunk id: chunk={}, file={}, expect hash={}, got={}",
+                                    self.chunk_id, self.path, self.chunk_id, actual_id
+                                );
+                                error!("{}", msg);
+
+                                if let Some(error_handler) = self.error_handler.take() {
+                                    error_handler.on_hash_error(&self.chunk_id, &self.path);
+                                }
+
+                                let err = BuckyError::new(BuckyErrorCode::InvalidData, msg);
+                                Poll::Ready(Err(err.into()))
                             }
-
-                            let err = BuckyError::new(BuckyErrorCode::InvalidData, msg);
-                            Poll::Ready(Err(err.into()))
                         }
                     }
                 }
@@ -174,6 +192,7 @@ impl async_std::io::Seek for ChunkReaderWithHash {
         cx: &mut Context<'_>,
         pos: SeekFrom,
     ) -> Poll<std::io::Result<u64>> {
+        self.seeked = true;
         Pin::new(self.reader.as_mut()).poll_seek(cx, pos)
     }
 }
@@ -194,13 +213,14 @@ mod tests {
 
         let file = "C:\\cyfs\\data\\test\\2JtHrtiW4J";
         let chunk_id = ChunkId::from_str("7C8WXUGiYVyag6WXdsFz6B8JgpedMMgkng3MRM4XoPrX").unwrap();
-        
+
         //let buf = std::fs::read(file).unwrap();
         //let real_id = ChunkId::calculate_sync(&buf).unwrap();
         //assert_eq!(real_id, chunk_id);
 
         let reader = async_std::fs::File::open(file).await.unwrap();
-        let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader), None);
+        let mut reader =
+            ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader), None);
 
         let mut buf2 = vec![];
         reader.read_to_end(&mut buf2).await.unwrap_err();
