@@ -43,7 +43,7 @@ impl ChunkStoreReader {
         chunk: &ChunkId,
         path: &Path,
         offset: u64,
-        fixer: Box<dyn ChunkHashErrorHandler>,
+        // fixer: Box<dyn ChunkHashErrorHandler>,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         debug!(
             "begin read chunk from file, chunk={}, offset={}, len={}, path={}",
@@ -130,7 +130,7 @@ impl ChunkStoreReader {
             path.to_string_lossy().to_string(),
             chunk.to_owned(),
             limit_reader,
-            Some(fixer),
+            None,
         );
 
         Ok(Box::new(hash_reader))
@@ -159,16 +159,16 @@ impl ChunkStoreReader {
                     //FIXME
                     TrackerPostion::File(path) => {
                         info!("will read chunk from file: chunk={}, file={}", chunk, path);
-                        let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
-                        Self::read_chunk(chunk, Path::new(path), 0, fixer).await
+                        // let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
+                        Self::read_chunk(chunk, Path::new(path), 0).await
                     }
                     TrackerPostion::FileRange(fr) => {
                         info!(
                             "will read chunk from file range: chunk={}, file={}, range={}:{}",
                             chunk, fr.path, fr.range_begin, fr.range_end
                         );
-                        let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
-                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin, fixer)
+                        // let fixer = ChunkTrackerPosFixer::new(self.tracker.clone(), c.pos.clone());
+                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin)
                             .await
                     }
                     TrackerPostion::ChunkManager => {
@@ -368,7 +368,7 @@ mod tests {
         let file = PathBuf::from("C:\\cyfs\\data\\test\\2KGw87zzn4.txt");
         let chunk_id = ChunkId::from_str("7C8WW21osqTTTMyRLhUN8jDbYiRdBDNEMHMiHPdDEdBB").unwrap();
 
-        let _reader = ChunkStoreReader::read_chunk(&chunk_id, &file, 8388608, None).await;
+        let _reader = ChunkStoreReader::read_chunk(&chunk_id, &file, 8388608).await;
         //let buf = std::fs::read(file).unwrap();
         //let real_id = ChunkId::calculate_sync(&buf).unwrap();
         //assert_eq!(real_id, chunk_id);
