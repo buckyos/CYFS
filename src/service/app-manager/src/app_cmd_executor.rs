@@ -144,7 +144,7 @@ impl AppCmdExecutor {
         }
     }
 
-    async fn execute_start(
+    pub(crate) async fn execute_start(
         &self,
         status: Arc<Mutex<AppLocalStatus>>,
         cmd: &AppCmd,
@@ -241,7 +241,7 @@ impl AppCmdExecutor {
         Ok(())
     }
 
-    async fn execute_stop(
+    pub(crate) async fn execute_stop(
         &self,
         status: Arc<Mutex<AppLocalStatus>>,
         cmd: &AppCmd,
@@ -297,7 +297,7 @@ impl AppCmdExecutor {
         Ok(())
     }
 
-    async fn execute_install(
+    pub(crate) async fn execute_install(
         &self,
         status: Arc<Mutex<AppLocalStatus>>,
         cmd: &AppCmd,
@@ -326,7 +326,7 @@ impl AppCmdExecutor {
 
         let mut sub_err = SubErrorCode::None;
         let target_status_code = match self
-            .install_internal(status.clone(), cmd, retry_count, &ver)
+            .install_internal(status.clone(), app_id, retry_count, &ver)
             .await
         {
             Ok(v) => {
@@ -359,12 +359,10 @@ impl AppCmdExecutor {
     async fn install_internal(
         &self,
         status: Arc<Mutex<AppLocalStatus>>,
-        cmd: &AppCmd,
+        app_id: &DecAppId,
         _retry_count: u32,
         version: &str,
     ) -> AppActionResult<AppLocalStatusCode> {
-        let app_id = cmd.app_id();
-
         let dec_app = self
             .non_helper
             .get_dec_app(app_id.object_id(), None)
@@ -418,7 +416,7 @@ impl AppCmdExecutor {
         Ok(target_status_code)
     }
 
-    async fn execute_uninstall(
+    pub(crate) async fn execute_uninstall(
         &self,
         status: Arc<Mutex<AppLocalStatus>>,
         cmd: &AppCmd,

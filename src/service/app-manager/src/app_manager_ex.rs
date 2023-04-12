@@ -332,16 +332,72 @@ impl AppManager {
 
     async fn fix_status_on_startup(&self) {
         let status_list = self.status_list.read().unwrap().clone();
-        for (app_id, status) in status_list {
+        for (app_id, status_a) in status_list {
             let mut status_clone = None;
             {
-                let mut status = status.lock().unwrap();
+                let mut status = status_a.lock().unwrap();
                 let status_code = status.status();
                 let fix_status = match status_code {
-                    AppLocalStatusCode::Stopping => Some(AppLocalStatusCode::StopFailed),
-                    AppLocalStatusCode::Starting => Some(AppLocalStatusCode::StartFailed),
-                    AppLocalStatusCode::Installing => Some(AppLocalStatusCode::InstallFailed),
-                    AppLocalStatusCode::Uninstalling => Some(AppLocalStatusCode::UninstallFailed),
+                    AppLocalStatusCode::Stopping => {
+                        info!("find app {} status {} on startup, try stop again", app_id, status_code);
+                        match self.cmd_executor.as_ref().unwrap().execute_stop(
+                            status_a.clone(),
+                            &AppCmd::stop(self.owner.clone(), app_id.clone()),
+                            0).await {
+                            Ok(_) => {
+                                Some(AppLocalStatusCode::Stop)
+                            }
+                            Err(e) => {
+                                error!("stop app {} on startup err {}", app_id, e);
+                                Some(AppLocalStatusCode::StopFailed)
+                            }
+                        }
+                    },
+                    AppLocalStatusCode::Starting => {
+                        info!("find app {} status {} on startup, try start again", app_id, status_code);
+                        match self.cmd_executor.as_ref().unwrap().execute_start(
+                            status_a.clone(),
+                            &AppCmd::start(self.owner.clone(), app_id.clone()),
+                            0).await {
+                            Ok(_) => {
+                                Some(AppLocalStatusCode::Running)
+                            }
+                            Err(e) => {
+                                error!("start app {} on startup err {}", app_id, e);
+                                Some(AppLocalStatusCode::StartFailed)
+                            }
+                        }
+                    },
+                    AppLocalStatusCode::Installing => {
+                        info!("find app {} status {} on startup, try install again", app_id, status_code);
+                        match self.cmd_executor.as_ref().unwrap().execute_install(
+                            status_a.clone(),
+                            &AppCmd::install(self.owner.clone(), app_id.clone(), status.version().unwrap(), true),
+                            0).await {
+                            Ok(_) => {
+                                Some(AppLocalStatusCode::Running)
+                            }
+                            Err(e) => {
+                                error!("start app {} on startup err {}", app_id, e);
+                                Some(AppLocalStatusCode::InstallFailed)
+                            }
+                        }
+                    },
+                    AppLocalStatusCode::Uninstalling => {
+                        info!("find app {} status {} on startup, try uninstall again", app_id, status_code);
+                        match self.cmd_executor.as_ref().unwrap().execute_uninstall(
+                            status_a.clone(),
+                            &AppCmd::uninstall(self.owner.clone(), app_id.clone()),
+                            0).await {
+                            Ok(_) => {
+                                Some(AppLocalStatusCode::Uninstalled)
+                            }
+                            Err(e) => {
+                                error!("start app {} on startup err {}", app_id, e);
+                                Some(AppLocalStatusCode::UninstallFailed)
+                            }
+                        }
+                    },
                     _ => None,
                 };
                 if fix_status.is_some() {
@@ -448,11 +504,10 @@ impl AppManager {
     除Running状态的其他非中间状态，不用管。
     */
     async fn check_app_status(&self) {
-        info!("###### will check app status!");
         let status_list = self.status_list.read().unwrap().clone();
         for (app_id, status) in status_list {
             let status_code = status.lock().unwrap().status();
-            info!(
+            debug!(
                 "###[STATUS CHECK] app:{}, status should be: {}",
                 app_id, status_code
             );
@@ -569,7 +624,6 @@ impl AppManager {
             .await
         {
             Ok(is_running) => {
-                info!("[RUNNING CHECK] running: [{}] app:{}", is_running, app_id);
                 if is_running {
                     let mut writer = self.start_couter.write().unwrap();
                     let running_counter = writer.entry(app_id.clone()).or_insert(0);
@@ -586,7 +640,7 @@ impl AppManager {
                         let cur_status_code = status.status();
                         if cur_status_code != AppLocalStatusCode::Running {
                             //判断状态是否还是Running，如果不是就不改变状态了
-                            info!(
+                            debug!(
                             "[RUNNING CHECK] after check app running, but current status is not running, skip. app:{}, status: {}",
                             app_id, cur_status_code
                         );
@@ -616,7 +670,7 @@ impl AppManager {
             }
             Err(e) => {
                 warn!(
-                    "[RUNNING CHECK] checking running status failed will reinstall it, app:{}, err: {}",
+                    "[RUNNING CHECK] checking running status failed. will reinstall it, app:{}, err: {}",
                     app_id, e
                 );
                 let version = status.lock().unwrap().version().unwrap().to_owned();
