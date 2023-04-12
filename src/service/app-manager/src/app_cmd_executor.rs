@@ -151,11 +151,21 @@ impl AppCmdExecutor {
         _retry_count: u32,
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
+        let cmd_code = cmd.cmd();
         // if app already running, return success
         if self.app_controller.is_app_running(app_id).await? {
+            let _ = self
+                .post_change_status(
+                    app_id,
+                    status.clone(),
+                    cmd_code,
+                    AppLocalStatusCode::Starting,
+                    AppLocalStatusCode::Running,
+                    SubErrorCode::None,
+                )
+                .await;
             return Ok(());
         }
-        let cmd_code = cmd.cmd();
         //info!("will execute cmd, app:{}, cmd: {:?}", app_id, cmd_code);
 
         self.pre_change_status(
@@ -248,22 +258,6 @@ impl AppCmdExecutor {
         _retry_count: u32,
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
-
-        match self.app_controller.is_app_running(app_id).await {
-            Ok(running) => {
-                // if app already not running, return ok
-                if !running {
-                    return Ok(());
-                }
-            }
-            Err(e) => {
-                // NotFound means app already uninstalled, return ok
-                if e.code() == BuckyErrorCode::NotFound {
-                    return Ok(());
-                }
-            }
-        }
-
         let cmd_code = cmd.cmd();
 
         self.pre_change_status(
@@ -320,7 +314,7 @@ impl AppCmdExecutor {
             status.clone(),
             cmd_code,
             AppLocalStatusCode::Installing,
-            true,
+            false,
         )
         .await?;
 

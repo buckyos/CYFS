@@ -333,24 +333,19 @@ impl AppManager {
     async fn fix_status_on_startup(&self) {
         let status_list = self.status_list.read().unwrap().clone();
         for (app_id, status_a) in status_list {
-            let mut status_clone = None;
             {
-                let mut status = status_a.lock().unwrap();
-                let status_code = status.status();
+                let status_code = status_a.lock().unwrap().status();
                 let fix_status = match status_code {
                     AppLocalStatusCode::Stopping => {
                         info!("find app {} status {} on startup, try stop again", app_id, status_code);
-                        match self.cmd_executor.as_ref().unwrap().execute_stop(
+                        if let Err(e) = self.cmd_executor.as_ref().unwrap().execute_stop(
                             status_a.clone(),
                             &AppCmd::stop(self.owner.clone(), app_id.clone()),
                             0).await {
-                            Ok(_) => {
-                                Some(AppLocalStatusCode::Stop)
-                            }
-                            Err(e) => {
-                                error!("stop app {} on startup err {}", app_id, e);
-                                Some(AppLocalStatusCode::StopFailed)
-                            }
+                            warn!("stop app {} on startup failed, err {}", &app_id, e);
+                            Some(AppLocalStatusCode::StopFailed)
+                        } else {
+                            None
                         }
                     },
                     AppLocalStatusCode::Starting => {
@@ -360,7 +355,7 @@ impl AppManager {
                             &AppCmd::start(self.owner.clone(), app_id.clone()),
                             0).await {
                             Ok(_) => {
-                                Some(AppLocalStatusCode::Running)
+                                None
                             }
                             Err(e) => {
                                 error!("start app {} on startup err {}", app_id, e);
@@ -370,15 +365,16 @@ impl AppManager {
                     },
                     AppLocalStatusCode::Installing => {
                         info!("find app {} status {} on startup, try install again", app_id, status_code);
+                        let version = status_a.lock().unwrap().version().map(|s|s.to_owned());
                         match self.cmd_executor.as_ref().unwrap().execute_install(
                             status_a.clone(),
-                            &AppCmd::install(self.owner.clone(), app_id.clone(), status.version().unwrap(), true),
+                            &AppCmd::install(self.owner.clone(), app_id.clone(), &version.unwrap(), true),
                             0).await {
                             Ok(_) => {
-                                Some(AppLocalStatusCode::Running)
+                                None
                             }
                             Err(e) => {
-                                error!("start app {} on startup err {}", app_id, e);
+                                error!("install app {} on startup err {}", app_id, e);
                                 Some(AppLocalStatusCode::InstallFailed)
                             }
                         }
@@ -390,28 +386,28 @@ impl AppManager {
                             &AppCmd::uninstall(self.owner.clone(), app_id.clone()),
                             0).await {
                             Ok(_) => {
-                                Some(AppLocalStatusCode::Uninstalled)
+                                None
                             }
                             Err(e) => {
-                                error!("start app {} on startup err {}", app_id, e);
+                                error!("uninstall app {} on startup err {}", app_id, e);
                                 Some(AppLocalStatusCode::UninstallFailed)
                             }
                         }
                     },
                     _ => None,
                 };
-                if fix_status.is_some() {
-                    let fix_code = fix_status.unwrap();
-                    status.set_status(fix_code);
-                    status_clone = Some(status.clone());
+                if let Some(fix_code) = fix_status {
+                    let new_status = {
+                        let mut status = status_a.lock().unwrap();
+                        status.set_status(fix_code);
+                        status.clone()
+                    };
+                    let _ = self.non_helper.put_local_status(&new_status).await;
                     info!(
                         "### fix app status on startup, app:{}, from {} to {}",
                         app_id, status_code, fix_code
                     );
                 }
-            }
-            if let Some(new_status) = status_clone {
-                let _ = self.non_helper.put_local_status(&new_status).await;
             }
         }
     }
