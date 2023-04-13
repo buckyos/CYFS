@@ -847,6 +847,9 @@ impl AppManager {
                 cmd_code, status_code, next_status_code, app_id, cmd_group_code
             );
             status.set_status(next_status_code);
+            if let CmdCode::Install(install) = cmd_code {
+                status.set_version(&install.ver);
+            }
             status_clone = status.clone();
         }
 

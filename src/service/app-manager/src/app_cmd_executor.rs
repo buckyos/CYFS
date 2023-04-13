@@ -307,6 +307,7 @@ impl AppCmdExecutor {
             error!("{}", err);
             return Err(BuckyError::from((BuckyErrorCode::InvalidParam, err)));
         }
+
         status.lock().unwrap().set_version(&ver);
 
         self.pre_change_status(
@@ -437,7 +438,7 @@ impl AppCmdExecutor {
         {
             let status = status.lock().unwrap();
             web_id = status.web_dir().cloned();
-            ver = status.version().unwrap().to_owned();
+            ver = status.version().unwrap_or("noversion").to_owned();
         }
 
         let mut target_status_code = AppLocalStatusCode::Uninstalled;
