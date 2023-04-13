@@ -18,7 +18,7 @@
 |       |   // 且不同${r-path}之间是并列的，不能嵌套
 |       |--.link // 区块链结构，记录状态变更链条
 |           |--${r-path}
-|               |--group-blob-->BLOB(Group)
+|               |--group-shell-->ObjectShell(Group)
 |               |--users
 |               |   |--${user-id}
 |               |       |--xxx

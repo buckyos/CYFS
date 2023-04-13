@@ -6,7 +6,7 @@ use cyfs_base::{
 };
 
 use cyfs_core::{
-    GroupBlob, GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, GroupShell,
     HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::GroupRPathStatus;
@@ -42,7 +42,7 @@ pub struct GroupStorage {
     rpath: String,
     local_device_id: ObjectId,
     non_driver: NONDriverHelper,
-    group_blob_id: ObjectId,
+    group_shell_id: ObjectId,
 
     cache: StorageCacheInfo,
 
@@ -60,8 +60,8 @@ impl GroupStorage {
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
-        let group_blob = group.to_blob();
-        let group_blob_id = group_blob.desc().object_id();
+        let group_shell = group.to_shell();
+        let group_shell_id = group_shell.shell_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
@@ -77,7 +77,7 @@ impl GroupStorage {
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_blob_id,
+            group_shell_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 GroupStatePath::new(rpath.to_string()),
@@ -108,8 +108,8 @@ impl GroupStorage {
                 log::warn!("get group {} from noc failed {:?}", group_id, err);
                 err
             })?;
-        let group_blob = group.to_blob();
-        let group_blob_id = group_blob.desc().object_id();
+        let group_shell = group.to_shell();
+        let group_shell_id = group_shell.shell_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
@@ -139,7 +139,7 @@ impl GroupStorage {
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_blob_id,
+            group_shell_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 state_path,
@@ -180,8 +180,8 @@ impl GroupStorage {
         &self.group
     }
 
-    pub fn group_blob_id(&self) -> &ObjectId {
-        &self.group_blob_id
+    pub fn group_shell_id(&self) -> &ObjectId {
+        &self.group_shell_id
     }
 
     pub fn dec_state_id(&self) -> &Option<ObjectId> {

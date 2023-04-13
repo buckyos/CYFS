@@ -104,7 +104,7 @@ impl DecStateSynchronizer {
 
 struct DecStateSynchronizerCache {
     state_cache: DecStorageCache,
-    group_blob_id: ObjectId,
+    group_shell_id: ObjectId,
     group: Group,
 }
 
@@ -112,7 +112,7 @@ struct UpdateNotifyInfo {
     header_block: GroupConsensusBlock,
     qc: HotstuffBlockQC,
     remotes: HashSet<ObjectId>,
-    group_blob_id: ObjectId,
+    group_shell_id: ObjectId,
     group: Group,
 }
 
@@ -247,7 +247,7 @@ impl DecStateSynchronizerRunner {
                                     header_block: notify_info.header_block.clone(),
                                     qc: notify_info.qc.clone(),
                                 },
-                                group_blob_id: notify_info.group_blob_id,
+                                group_shell_id: notify_info.group_shell_id,
                                 group: notify_info.group.clone(),
                             });
                             self.update_notifies = None;
@@ -276,15 +276,15 @@ impl DecStateSynchronizerRunner {
         if self.state_cache.is_none() {
             let state_cache = self.store.cur_state().await;
             if let Some(state_cache) = state_cache {
-                let group_blob_id = state_cache.header_block.group_blob_id().clone();
+                let group_shell_id = state_cache.header_block.group_shell_id().clone();
                 let group = self
                     .non_driver
-                    .get_group(self.rpath.group_id(), Some(&group_blob_id), None)
+                    .get_group(self.rpath.group_id(), Some(&group_shell_id), None)
                     .await;
                 if let Ok(group) = group {
                     self.state_cache = Some(DecStateSynchronizerCache {
                         state_cache,
-                        group_blob_id,
+                        group_shell_id,
                         group,
                     });
                 }
@@ -320,15 +320,15 @@ impl DecStateSynchronizerRunner {
         {
             let group = self
                 .committee
-                .check_group(Some(header_block.group_blob_id()), None)
+                .check_group(Some(header_block.group_shell_id()), None)
                 .await?;
-            let group_blob_id = header_block.group_blob_id().clone();
+            let group_shell_id = header_block.group_shell_id().clone();
 
             self.update_notifies = Some(UpdateNotifyInfo {
                 header_block: header_block,
                 qc: qc,
                 remotes: HashSet::from([remote]),
-                group_blob_id,
+                group_shell_id,
                 group,
             });
         };

@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId,
-    ObjectTypeCode, People, PeopleId, RawConvertTo, RsaCPUObjectVerifier, Signature,
+    ObjectTypeCode, People, PeopleId, RawEncode, RsaCPUObjectVerifier, Signature,
     SingleKeyObjectDesc, Verifier,
 };
-use cyfs_core::GroupBlob;
+use cyfs_core::{GroupShell, ObjectShell};
 
 async fn verify_signature(
     signs: Option<&Vec<Signature>>,
@@ -44,7 +44,7 @@ async fn verify_group_signature(
 ) -> BuckyResult<()> {
     let people = member_querier.get_people(people_id).await?;
     let verifier = RsaCPUObjectVerifier::new(people.desc().public_key().clone());
-    let desc_buf = group.desc().to_vec()?;
+    let desc_buf = group.desc().raw_hash_value()?;
     verify_signature(
         group.signs().desc_signs(),
         desc_buf.as_slice(),
@@ -52,7 +52,7 @@ async fn verify_group_signature(
         people_id,
     )
     .await?;
-    let body_buf = group.body().to_vec()?;
+    let body_buf = group.body().as_ref().unwrap().raw_hash_value()?;
     verify_signature(
         group.signs().body_signs(),
         body_buf.as_slice(),
@@ -104,12 +104,12 @@ impl GroupVerifier for Group {
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
                 }
 
-                let latest_group_blob = latest_group.to_blob();
-                let latest_group_blob_id = latest_group_blob.desc().object_id();
+                let latest_group_shell = latest_group.to_shell();
+                let latest_group_shell_id = latest_group_shell.shell_id();
                 if self.version() != latest_group.version() + 1
-                    || self.prev_blob_id() != &Some(latest_group_blob_id)
+                    || self.prev_shell_id() != &Some(latest_group_shell_id)
                 {
-                    let msg = format!("Attempt to update group({}) from unknown version({}/{:?}), latest version: {}/{}.", group_id, self.version() - 1, self.prev_blob_id(), latest_group.version(), latest_group_blob_id);
+                    let msg = format!("Attempt to update group({}) from unknown version({}-1/{:?}), latest version: {}/{}.", group_id, self.version(), self.prev_shell_id(), latest_group.version(), latest_group_shell_id);
                     log::warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
                 }
@@ -131,11 +131,11 @@ impl GroupVerifier for Group {
                     ),
                 )
             }
-            None => match self.prev_blob_id() {
-                Some(prev_blob_id) => {
+            None => match self.prev_shell_id() {
+                Some(prev_shell_id) => {
                     let msg = format!(
-                        "The latest group({}) is necessary for update. prev_blob_id: {}",
-                        group_id, prev_blob_id
+                        "The latest group({}) is necessary for update. prev_shell_id: {}",
+                        group_id, prev_shell_id
                     );
                     log::warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
@@ -185,7 +185,7 @@ impl GroupVerifier for Group {
             return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
         }
 
-        if add_members.len() != self.members().len() - add_members.len() {
+        if add_members.len() != self.members().len() - last_members.len() {
             let msg = format!(
                 "Update group({}) with duplicate members or invalid members.",
                 group_id
@@ -218,7 +218,7 @@ impl GroupVerifier for Group {
 
         let (last_admin_signs, add_member_signs) = check_peoples.split_at(last_admins.len());
         let last_admin_sign_count = last_admin_signs.iter().filter(|s| s.is_ok()).count();
-        if last_admin_sign_count <= last_admins.len() / 2 {
+        if last_admins.len() > 0 && last_admin_sign_count <= last_admins.len() / 2 {
             let msg = format!(
                 "Update group({}) failed for signatures from admins in latest version is not enough: expected {}, got {}.",
                 group_id,
@@ -245,9 +245,9 @@ impl GroupVerifier for Group {
                     "Update group({}) verify ok, from {:?}/{:?}, to {}/{}",
                     group_id,
                     latest_group.map(|group| group.version()),
-                    self.prev_blob_id(),
+                    self.prev_shell_id(),
                     self.version(),
-                    self.to_blob().desc().object_id()
+                    self.to_shell().shell_id()
                 );
                 Ok(())
             }

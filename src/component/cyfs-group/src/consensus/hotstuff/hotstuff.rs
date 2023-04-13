@@ -11,8 +11,8 @@ use cyfs_base::{
     RawEncode, RsaCPUObjectSigner, SignatureSource, Signer,
 };
 use cyfs_core::{
-    GroupBlob, GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal,
-    GroupProposal, GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal,
+    GroupProposal, GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout, GroupShell,
 };
 use cyfs_group_lib::{ExecuteResult, HotstuffBlockQCVote, HotstuffTimeoutVote};
 use cyfs_lib::NONObjectInfo;
@@ -384,7 +384,7 @@ impl HotstuffRunner {
         {
             // check leader
             let leader_owner = self
-                .get_leader_owner(Some(block.group_blob_id()), block.round())
+                .get_leader_owner(Some(block.group_shell_id()), block.round())
                 .await?;
 
             if &leader_owner != block.owner() {
@@ -581,17 +581,17 @@ impl HotstuffRunner {
 
     async fn get_leader_owner(
         &self,
-        group_blob_id: Option<&ObjectId>,
+        group_shell_id: Option<&ObjectId>,
         round: u64,
     ) -> BuckyResult<ObjectId> {
         let leader = self
             .committee
-            .get_leader(group_blob_id, round)
+            .get_leader(group_shell_id, round)
             .await.map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
                     self,
-                    group_blob_id, round,
+                    group_shell_id, round,
                     err
                 );
 
@@ -1143,7 +1143,7 @@ impl HotstuffRunner {
         );
 
         if !only_rebuild_result_state {
-            match self.check_group_is_latest(block.group_blob_id()).await {
+            match self.check_group_is_latest(block.group_shell_id()).await {
                 Ok(is_latest) if is_latest => {}
                 _ => {
                     log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for the group is not latest",
@@ -2061,7 +2061,7 @@ impl HotstuffRunner {
             })
             .collect();
 
-        let group_blob_id = group.to_blob().desc().object_id();
+        let group_shell_id = group.to_shell().shell_id();
 
         let mut block = GroupConsensusBlock::create(
             self.rpath.clone(),
@@ -2070,7 +2070,7 @@ impl HotstuffRunner {
             prev_block.as_ref().map_or(0, |b| b.height()) + 1,
             ObjectId::default(), // TODO: meta block id
             self.round,
-            group_blob_id,
+            group_shell_id,
             self.high_qc.clone(),
             tc,
             self.local_id,
@@ -2251,11 +2251,11 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn check_group_is_latest(&self, group_blob_id: &ObjectId) -> BuckyResult<bool> {
+    async fn check_group_is_latest(&self, group_shell_id: &ObjectId) -> BuckyResult<bool> {
         let latest_group = self.committee.get_group(None).await?;
-        let group_blob = latest_group.to_blob();
-        let latest_chunk_id = group_blob.desc().object_id();
-        Ok(&latest_chunk_id == group_blob_id)
+        let group_shell = latest_group.to_shell();
+        let latest_chunk_id = group_shell.shell_id();
+        Ok(&latest_chunk_id == group_shell_id)
     }
 
     async fn make_sure_result_state(
@@ -2374,9 +2374,9 @@ impl HotstuffRunner {
         // Upon booting, generate the very first block (if we are the leader).
         // Also, schedule a timer in case we don't hear from the leader.
         let max_round_block = self.store.block_with_max_round();
-        let group_blob_id = max_round_block.as_ref().map(|block| block.group_blob_id());
-        let last_group = self.committee.get_group(group_blob_id).await;
-        let latest_group = match group_blob_id.as_ref() {
+        let group_shell_id = max_round_block.as_ref().map(|block| block.group_shell_id());
+        let last_group = self.committee.get_group(group_shell_id).await;
+        let latest_group = match group_shell_id.as_ref() {
             Some(_) => self.committee.get_group(None).await,
             None => last_group.clone(),
         };

@@ -244,7 +244,7 @@ impl QCMaker {
             self.thresholded = committee
                 .quorum_threshold(
                     &self.votes.iter().map(|v| v.0).collect(),
-                    Some(block.group_blob_id()),
+                    Some(block.group_shell_id()),
                 )
                 .await?;
             if self.thresholded {
@@ -315,7 +315,7 @@ impl TCMaker {
             self.thresholded = committee
                 .quorum_threshold(
                     &self.votes.iter().map(|v| v.voter).collect(),
-                    block.map(|block| block.group_blob_id()),
+                    block.map(|block| block.group_shell_id()),
                 )
                 .await?;
 

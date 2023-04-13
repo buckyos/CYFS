@@ -5,14 +5,14 @@ use crate::util::{
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cyfs_base::{
     bucky_time_now, AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, DeviceId, FileDecoder,
-    FileEncoder, FileId, Group, GroupMember, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
-    StandardObject,
+    FileEncoder, FileId, Group, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
+    StandardObject, RawEncode,
 };
 use cyfs_core::{
     AppList, AppListObj, AppStatus, AppStatusObj, CoreObjectType, DecApp, DecAppId, DecAppObj,
 };
 use log::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -92,10 +92,10 @@ pub fn modify_subcommand<'a, 'b>() -> App<'a, 'b> {
                 .help("version of group"),
         )
         .arg(
-            Arg::with_name("prev_blob_id")
-                .long("prev_blob")
+            Arg::with_name("prev_shell_id")
+                .long("prev_shell")
                 .takes_value(true)
-                .help("prev-blob-id of group"),
+                .help("prev-shell-id of group"),
         )
         .arg(
             Arg::with_name("add_oods")
@@ -267,6 +267,7 @@ pub fn modify_desc(matches: &ArgMatches) {
 
 fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()> {
     let group_id = group.desc().object_id();
+    let body_hash = group.body().as_ref().unwrap().raw_hash_encode()?;
 
     match get_group_members_from_matches(matches, "members") {
         Ok(members) => {
@@ -402,19 +403,19 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
         group.set_version(version);
     }
 
-    if let Some(prev_blob_id) = matches.value_of("prev_blob_id") {
-        let prev_blob_id = match ObjectId::from_str(prev_blob_id) {
-            Ok(prev_blob_id) => prev_blob_id,
+    if let Some(prev_shell_id) = matches.value_of("prev_shell_id") {
+        let prev_shell_id = match ObjectId::from_str(prev_shell_id) {
+            Ok(prev_shell_id) => prev_shell_id,
             Err(_) => {
                 let msg = format!(
-                    "update group({}) failed for invalid prev-blob-id {}",
-                    group_id, prev_blob_id
+                    "update group({}) failed for invalid prev-shell-id {}",
+                    group_id, prev_shell_id
                 );
                 log::error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
             }
         };
-        group.set_prev_blob_id(Some(prev_blob_id));
+        group.set_prev_shell_id(Some(prev_shell_id));
     }
 
     if group.admins().is_empty() {
@@ -423,11 +424,18 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
         return Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg));
     }
 
+    if body_hash == group.body().as_ref().unwrap().raw_hash_encode()? {
+        log::info!("success with no change");
+        return Ok(());
+    }
+
     group
         .body_mut()
         .as_mut()
         .unwrap()
         .set_update_time(bucky_time_now());
+
+    group.signs_mut().clear_body_signs();
 
     Ok(())
 }

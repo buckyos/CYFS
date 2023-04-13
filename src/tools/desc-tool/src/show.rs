@@ -4,7 +4,7 @@ use cyfs_base::{
     InnerNode, NDNObjectInfo, NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource,
     SingleKeyObjectDesc, StandardObject,
 };
-use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj};
+use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj, GroupShell};
 use std::convert::TryFrom;
 use std::path::Path;
 
@@ -179,21 +179,33 @@ fn show_group(group: &Group, matches: &ArgMatches) {
             "founder: {}",
             group.founder_id().map_or("".to_string(), |f| f.to_string())
         );
-        println!("icon: {}", group.icon().as_ref().map_or("", |icon| icon.as_str()));
+        println!(
+            "icon: {}",
+            group.icon().as_ref().map_or("", |icon| icon.as_str())
+        );
         println!(
             "description: {}",
             group.description().as_ref().map_or("", |d| d.as_str())
         );
         println!(
             "area: {}",
-            group.desc().area().as_ref().map_or("None".to_string(), |a| a.to_string())
+            group
+                .desc()
+                .area()
+                .as_ref()
+                .map_or("None".to_string(), |a| a.to_string())
         );
         println!("version: {}", group.version());
         println!(
-            "prev-blob-id: {}",
+            "prev-shell-id: {}",
             group
-                .prev_blob_id()
+                .prev_shell_id()
                 .map_or("None".to_string(), |prev| prev.to_string())
+        );
+        println!("shell-id: {}", group.to_shell().shell_id());
+        println!(
+            "body-hash: {}",
+            group.body().as_ref().unwrap().raw_hash_value().unwrap()
         );
     }
 

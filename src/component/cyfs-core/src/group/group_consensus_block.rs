@@ -16,7 +16,7 @@ pub struct GroupConsensusBlockDescContent {
     height: u64,
     meta_block_id: ObjectId,
     round: u64,
-    group_blob_id: ObjectId,
+    group_shell_id: ObjectId,
 }
 
 impl DescContent for GroupConsensusBlockDescContent {
@@ -55,8 +55,8 @@ impl GroupConsensusBlockDescContent {
         self.round
     }
 
-    pub fn group_blob_id(&self) -> &ObjectId {
-        &self.group_blob_id
+    pub fn group_shell_id(&self) -> &ObjectId {
+        &self.group_shell_id
     }
 }
 
@@ -242,7 +242,7 @@ pub trait GroupConsensusBlockObject {
         height: u64,
         meta_block_id: ObjectId,
         round: u64,
-        group_blob_id: ObjectId,
+        group_shell_id: ObjectId,
         qc: Option<HotstuffBlockQC>,
         tc: Option<HotstuffTimeout>,
         owner: ObjectId,
@@ -259,7 +259,7 @@ pub trait GroupConsensusBlockObject {
     fn named_object(&self) -> &NamedObjectBase<GroupConsensusBlockType>;
     fn named_object_mut(&mut self) -> &mut NamedObjectBase<GroupConsensusBlockType>;
     fn round(&self) -> u64;
-    fn group_blob_id(&self) -> &ObjectId;
+    fn group_shell_id(&self) -> &ObjectId;
     fn qc(&self) -> &Option<HotstuffBlockQC>;
     fn tc(&self) -> &Option<HotstuffTimeout>;
 }
@@ -272,7 +272,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         height: u64,
         meta_block_id: ObjectId,
         round: u64,
-        group_blob_id: ObjectId,
+        group_shell_id: ObjectId,
         qc: Option<HotstuffBlockQC>,
         tc: Option<HotstuffTimeout>,
         owner: ObjectId,
@@ -287,7 +287,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
             meta_block_id,
             body_hash: body.hash(),
             round,
-            group_blob_id,
+            group_shell_id,
         };
 
         let block = GroupConsensusBlockBuilder::new(desc, body)
@@ -371,9 +371,9 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         desc.round
     }
 
-    fn group_blob_id(&self) -> &ObjectId {
+    fn group_shell_id(&self) -> &ObjectId {
         let desc = self.0.desc().content();
-        &desc.group_blob_id
+        &desc.group_shell_id
     }
 
     fn qc(&self) -> &Option<HotstuffBlockQC> {

@@ -3,7 +3,7 @@ use cyfs_base::{ObjectId, ObjectIdDataBuilder};
 pub const STATE_PATH_SEPARATOR: &str = "/";
 pub const GROUP_STATE_PATH_DEC_STATE: &str = ".dec-state";
 pub const GROUP_STATE_PATH_LINK: &str = ".link";
-pub const GROUP_STATE_PATH_GROUP_BLOB: &str = "group-blob";
+pub const GROUP_STATE_PATH_GROUP_SHELL: &str = "group-shell";
 pub const GROUP_STATE_PATH_LAST_VOTE_ROUNDS: &str = "last-vote-round";
 pub const GROUP_STATE_PATH_LAST_QC: &str = "last-qc";
 pub const GROUP_STATE_PATH_LAST_TC: &str = "last-tc";
@@ -30,7 +30,7 @@ pub struct GroupStatePath {
     root: String,
     dec_state: String,
     link: String,
-    group_blob: String,
+    group_shell: String,
     last_vote_round: String,
     last_qc: String,
     last_tc: String,
@@ -49,11 +49,11 @@ impl GroupStatePath {
             root: Self::join(&["", rpath.as_str()]),
             dec_state: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
             link: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_LINK]),
-            group_blob: Self::join(&[
+            group_shell: Self::join(&[
                 "",
                 rpath.as_str(),
                 GROUP_STATE_PATH_LINK,
-                GROUP_STATE_PATH_GROUP_BLOB,
+                GROUP_STATE_PATH_GROUP_SHELL,
             ]),
             last_vote_round: Self::join(&[
                 "",
@@ -138,8 +138,8 @@ impl GroupStatePath {
         self.link.as_str()
     }
 
-    pub fn group_blob(&self) -> &str {
-        self.group_blob.as_str()
+    pub fn group_shell(&self) -> &str {
+        self.group_shell.as_str()
     }
 
     pub fn last_vote_round(&self) -> &str {

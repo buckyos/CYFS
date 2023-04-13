@@ -163,16 +163,16 @@ impl NONDriverHelper {
     pub async fn get_group(
         &self,
         group_id: &ObjectId,
-        group_blob_id: Option<&ObjectId>,
+        group_shell_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
     ) -> BuckyResult<Group> {
-        // TODO: ignore group_blob_id first
-        // match group_blob_id {
-        //     Some(group_blob_id) => {
-        //         let blob = self.get_object(group_blob_id, from).await?;
-        //         let (group_blob, remain) = Storage::raw_decode(blob.object_raw.as_slice())?;
+        // TODO: ignore group_shell_id first
+        // match group_shell_id {
+        //     Some(group_shell_id) => {
+        //         let shell = self.get_object(group_shell_id, from).await?;
+        //         let (group_shell, remain) = Storage::raw_decode(shell.object_raw.as_slice())?;
         //         assert_eq!(remain.len(), 0);
-        //         let group = Group::from_blob(&group_blob)?;
+        //         let group = Group::from_shell(&group_shell)?;
         //         if &group.desc().object_id() == group_id {
         //             Ok(group)
         //         } else {

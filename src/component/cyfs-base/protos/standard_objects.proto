@@ -74,7 +74,7 @@ message CommonGroupBodyContent {
 
     repeated bytes ood_list = 5; // sort by id deduplicated ascending order
     
-    optional bytes prev_blob_id = 6;
+    optional bytes prev_shell_id = 6;
     uint64 version = 7;
 }
 

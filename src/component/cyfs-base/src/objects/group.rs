@@ -85,8 +85,8 @@ impl GroupBodyContent {
         self.common().version
     }
 
-    pub fn prev_blob_id(&self) -> &Option<ObjectId> {
-        &self.common().prev_blob_id
+    pub fn prev_shell_id(&self) -> &Option<ObjectId> {
+        &self.common().prev_shell_id
     }
 
     fn common(&self) -> &CommonGroupBodyContent {
@@ -243,12 +243,12 @@ impl Group {
         self.common_mut().version = version;
     }
 
-    pub fn prev_blob_id(&self) -> &Option<ObjectId> {
-        &self.common().prev_blob_id
+    pub fn prev_shell_id(&self) -> &Option<ObjectId> {
+        &self.common().prev_shell_id
     }
 
-    pub fn set_prev_blob_id(&mut self, prev_blob_id: Option<ObjectId>) {
-        self.common_mut().prev_blob_id = prev_blob_id;
+    pub fn set_prev_shell_id(&mut self, prev_shell_id: Option<ObjectId>) {
+        self.common_mut().prev_shell_id = prev_shell_id;
     }
 
     pub fn is_simple_group(&self) -> bool {
@@ -438,7 +438,7 @@ struct CommonGroupBodyContent {
     ood_list: Vec<DeviceId>,
 
     version: u64,
-    prev_blob_id: Option<ObjectId>,
+    prev_shell_id: Option<ObjectId>,
 }
 
 impl CommonGroupBodyContent {
@@ -459,7 +459,7 @@ impl CommonGroupBodyContent {
                 .sorted()
                 .collect::<Vec<_>>(),
             version: 0,
-            prev_blob_id: None,
+            prev_shell_id: None,
         }
     }
 }
@@ -498,8 +498,8 @@ impl TryFrom<protos::CommonGroupBodyContent> for CommonGroupBodyContent {
                 ),
             ood_list,
             version: value.version,
-            prev_blob_id: if value.has_prev_blob_id() {
-                Some(ProtobufCodecHelper::decode_buf(value.take_prev_blob_id())?)
+            prev_shell_id: if value.has_prev_shell_id() {
+                Some(ProtobufCodecHelper::decode_buf(value.take_prev_shell_id())?)
             } else {
                 None
             },
@@ -542,8 +542,8 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
         ret.set_ood_list(ProtobufCodecHelper::encode_buf_list(oods.as_slice())?);
 
         ret.version = value.version;
-        if let Some(prev_blob_id) = &value.prev_blob_id {
-            ret.set_prev_blob_id(prev_blob_id.to_vec()?);
+        if let Some(prev_shell_id) = &value.prev_shell_id {
+            ret.set_prev_shell_id(prev_shell_id.to_vec()?);
         }
 
         Ok(ret)

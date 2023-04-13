@@ -624,8 +624,8 @@ impl ObjectFormat for GroupBodyContent {
         JsonCodecHelper::encode_str_array_field(&mut map, "ood_list", self.ood_list());
         JsonCodecHelper::encode_option_string_field(
             &mut map,
-            "prev_blob_id",
-            self.prev_blob_id().as_ref(),
+            "prev_shell_id",
+            self.prev_shell_id().as_ref(),
         );
         JsonCodecHelper::encode_string_field(&mut map, "version", &self.version());
 

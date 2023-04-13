@@ -23,6 +23,36 @@ use crate::{
     GroupDecService::MyRPathDelegate,
 };
 
+/**
+ * Build the group for test
+ * .\desc-tool create people --savepath=test-group/admins --idfile=test-group/admins/people-1.id
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-1.sec -t=test-group/admins/people-1.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-2.sec -t=test-group/admins/people-2.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-3.sec -t=test-group/admins/people-3.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-4.sec -t=test-group/admins/people-4.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-1.sec -t=test-group/members/people-1.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-2.sec -t=test-group/members/people-2.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-3.sec -t=test-group/members/people-3.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-4.sec -t=test-group/members/people-4.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-5.sec -t=test-group/members/people-5.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-6.sec -t=test-group/members/people-6.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-7.sec -t=test-group/members/people-7.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-8.sec -t=test-group/members/people-8.desc -dba
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-9.sec -t=test-group/members/people-9.desc -dba
+ *
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-5 -d=test-group/members/people-5.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-6 -d=test-group/members/people-6.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-7 -d=test-group/members/people-7.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-8 -d=test-group/members/people-8.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-9 -d=test-group/members/people-9.desc 1 0
+ * 
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 1 0
+ * 
+ * .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
+ * 
+ * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_blob= -v=1
+*/
+
 mod Common {
     use std::{
         fmt::format, io::ErrorKind, net::SocketAddrV4, sync::Arc, thread::sleep, time::Duration,
