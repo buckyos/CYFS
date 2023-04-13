@@ -13,6 +13,7 @@ mod stack;
 
 use std::str::FromStr;
 
+use cyfs_base::BuckyErrorCode;
 use cyfs_debug::*;
 use cyfs_lib::BrowserSanboxMode;
 use stack::PROXY_PORT;
@@ -104,7 +105,7 @@ async fn main_run() {
     if !root.is_dir() {
         if let Err(e) = std::fs::create_dir_all(&root) {
             error!("create root dir failed! dir={}, err={}", root.display(), e);
-            std::process::exit(-1);
+            std::process::exit(BuckyErrorCode::IoError.into());
         }
     }
 
@@ -155,7 +156,7 @@ async fn main_run() {
         Some(v) => {
             Some(BrowserSanboxMode::from_str(v).map_err(|e| {
                 println!("invalid browser mode param! {}, {}", v, e);
-                std::process::exit(-1);
+                std::process::exit(e.code().into());
             }).unwrap())
         }
         None => {
@@ -175,8 +176,7 @@ async fn main_run() {
         let mut runtime = runtime::CyfsRuntime::new(stack_config);
         if let Err(e) = runtime.start().await {
             error!("cyfs runtime init failed: {}", e);
-            let code: u16 = e.code().into();
-            std::process::exit(code as i32);
+            std::process::exit(e.code().into());
         }
     });
 

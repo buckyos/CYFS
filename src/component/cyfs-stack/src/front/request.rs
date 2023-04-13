@@ -176,7 +176,7 @@ impl FrontARequestDec {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum FrontARequestVersion {
     Version(String),
     DirID(ObjectId),
@@ -215,6 +215,8 @@ pub struct FrontARequest {
     pub group: Option<String>,
 
     pub flags: u32,
+
+    pub flush_cache: bool,
 }
 
 pub enum FrontAResponse {

@@ -321,12 +321,21 @@ impl DApp {
 
         match exit_status {
             None => {
-                let _ = process.kill();
-                let _ = process.wait();
                 error!(
                     "process not exit after timeout, app:{}, cmd:{}",
                     app_id, cmd
                 );
+
+                #[cfg(windows)]
+                {
+                    let pid = process.id();
+                    let _ = Command::new("taskkill").args(["/F", "/T", "/PID", &pid.to_string()])
+                        .status();
+                }
+
+                let _ = process.kill();
+                let _ = process.wait();
+
                 Err(BuckyError::from(BuckyErrorCode::ExecuteError))
             }
             Some(status) => wait_exit_status(status),

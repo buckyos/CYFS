@@ -541,11 +541,6 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
     }
 
     async fn gc(&self, single: bool, target: &ObjectId) -> BuckyResult<()> {
-        info!(
-            "objectmap op_env cache will gc, single={}, target={}",
-            single, target
-        );
-
         let mut pending = HashMap::new();
         {
             let mut inner = self.pending.lock().unwrap();
@@ -553,6 +548,15 @@ impl ObjectMapOpEnvCache for ObjectMapOpEnvMemoryCache {
         }
 
         let prev_count = pending.len();
+
+        /*
+        let mut total = 0;
+        for (key, value) in pending.iter() {
+            let len = key.raw_measure(&None).unwrap() + value.item.lock().await.raw_measure(&None).unwrap();
+            total += len;
+        }
+        */
+
         let gc = ObjectMapOpEnvMemoryCacheGC::new(pending);
         let result = if single {
             gc.single_gc(target).await?

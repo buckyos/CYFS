@@ -2,7 +2,7 @@
 name: 'Suggest a tutorial '
 about: 'Suggest a tutorial to our developers platform '
 title: ''
-labels: documentation
+labels: ''
 assignees: ''
 
 ---

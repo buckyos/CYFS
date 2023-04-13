@@ -337,7 +337,6 @@ impl CyfsStackImpl {
         let (non_service, ndn_service) = NONService::new(
             noc.clone(),
             noc_relation,
-            bdt_stack.clone(),
             &named_data_components,
             forward_manager.clone(),
             acl_manager.clone(),

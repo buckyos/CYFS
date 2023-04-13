@@ -255,8 +255,19 @@ impl ObjectPackWriter for ZipObjectPackWriter {
             self.cache_buf.set_len(0);
         }
 
-        if let Err(e) = data.read_to_end(&mut self.cache_buf).await {
-            return Ok(Err(e.into()));
+        match data.read_to_end(&mut self.cache_buf).await {
+            Ok(len) => {
+                if object_id.obj_type_code() == ObjectTypeCode::Chunk {
+                    if object_id.as_chunk_id().len() != len {
+                        let msg = format!("read chunk but got unmatched chunk len! chunk={}, excepted={}, got={}", object_id, object_id.as_chunk_id().len(), len);
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+                    }
+                }
+            }
+            Err(e) => {
+                return Ok(Err(e.into()));
+            }
         }
 
         self.add_data(object_id, None, meta)

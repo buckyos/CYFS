@@ -162,6 +162,7 @@ impl PingClients {
     fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
         info!("{} client {} finished {:?}", self, client, result);
         if result.is_err() {
+            self.stop();
             return ;
         }
         struct NextStep {
@@ -232,15 +233,7 @@ impl PingClients {
                     let mut next = NextStep::none();
                     if client.ptr_eq(active) {
                         match status {
-                            SnStatus::Online => {
-                                next.waiter = Some(waiter.transfer());
-                                info!("{} online with client {}", self, client);
-                                state.state = ClientsState::Active {
-                                    waiter: StateWaiter::new(), 
-                                    client: client.clone()
-                                };
-                                next.to_wait = Some(client.clone());       
-                            },
+                            SnStatus::Online => {},
                             SnStatus::Offline => {
                                 if let Some(index) = next_index {
                                     let stack = Stack::from(&self.0.stack);

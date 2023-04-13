@@ -354,10 +354,18 @@ impl NONRequestor {
             }
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!(
-                "post object to non service error! object={}, {}",
-                object_id, e
-            );
+            if e.code() ==  BuckyErrorCode::NotHandled {
+                warn!(
+                    "post object to non service but not handled! object={}, {}",
+                    object_id, e
+                );
+            } else {
+                error!(
+                    "post object to non service error! object={}, {}",
+                    object_id, e
+                );
+            }
+            
             Err(e)
         }
     }

@@ -19,7 +19,7 @@ cyfs-chunk-client = { path = "../../tools/cyfs-chunk-client" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 url = "2.2"
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 http-types = "2.12"
 serde_json = "1.0"
 clap = "2.34.0"

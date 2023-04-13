@@ -22,7 +22,7 @@ log = "0.4"
 async-std = { version = "1.11", features = ["attributes"] }
 async-trait = "0.1.53"
 futures = "0.3"
-async-h1 = "2.3.3"
+async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 clap = "2.34.0"
 url = "2.2"
 bytes = "1.1"

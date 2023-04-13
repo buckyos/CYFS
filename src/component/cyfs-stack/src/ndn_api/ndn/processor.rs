@@ -9,11 +9,8 @@ use crate::meta::ObjectFailHandler;
 use crate::ndn::*;
 use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
-use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
-use cyfs_bdt_ext::{ContextManager, NDNTaskCancelStrategy, TransContextHolder};
-use cyfs_chunk_cache::ChunkManagerRef;
+use cyfs_bdt_ext::*;
 use cyfs_lib::*;
 
 use std::convert::TryFrom;
@@ -27,11 +24,9 @@ ndn 依赖的non对象加载
 pub(crate) struct NDNLevelInputProcessor {
     acl: AclManagerRef,
 
-    bdt_stack: StackGuard,
+    named_data_components: NamedDataComponentsRef,
 
-    chunk_manager: ChunkManagerRef,
-
-    // 对象加载器
+    // object loader
     target_object_loader: NDNObjectLoader,
 
     // local ndn
@@ -41,15 +36,12 @@ pub(crate) struct NDNLevelInputProcessor {
 
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
-
-    context_manager: ContextManager,
 }
 
 impl NDNLevelInputProcessor {
     fn new(
         acl: AclManagerRef,
-        bdt_stack: StackGuard,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
         non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
@@ -63,14 +55,12 @@ impl NDNLevelInputProcessor {
 
         let ret = Self {
             acl,
-            bdt_stack,
-            chunk_manager: named_data_components.chunk_manager.clone(),
+            named_data_components: named_data_components.clone(),
             target_object_loader,
             ndc_processor,
             router_handlers,
             forward,
             fail_handler,
-            context_manager: named_data_components.context_manager.clone(),
         };
 
         Arc::new(Box::new(ret))
@@ -78,8 +68,7 @@ impl NDNLevelInputProcessor {
 
     pub(crate) fn new_zone(
         acl: AclManagerRef,
-        bdt_stack: StackGuard,
-        named_data_components: &NamedDataComponents,
+        named_data_components: &NamedDataComponentsRef,
         non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
@@ -88,7 +77,6 @@ impl NDNLevelInputProcessor {
         // 不带input acl的处理器
         let processor = Self::new(
             acl,
-            bdt_stack,
             named_data_components,
             non_processor,
             router_handlers,
@@ -120,8 +108,7 @@ impl NDNLevelInputProcessor {
 
         // 获取到目标的processor
         let processor = NDNForwardDataOutputProcessor::new(
-            self.bdt_stack.clone(),
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             context,
         );
 
@@ -216,6 +203,7 @@ impl NDNLevelInputProcessor {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).encode_string();
                 let context = self
+                    .named_data_components
                     .context_manager
                     .create_download_context_from_trans_context(
                         &req.common.source.dec,
@@ -231,6 +219,7 @@ impl NDNLevelInputProcessor {
                 if let Some(device_id) = self.get_target(req.common.target.as_ref())? {
                     let referer = BdtDataRefererInfo::from(req).encode_string();
                     let context = self
+                        .named_data_components
                         .context_manager
                         .create_download_context_from_target(referer, device_id)
                         .await?;

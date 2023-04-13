@@ -432,12 +432,24 @@ impl NONRouter {
             match noc_processor.get_object(req.clone()).await {
                 Ok(resp) => {
                     if let Some(next) = &router_info.next_hop {
-                        info!(
-                            "router get_object from local noc cache! id={}, next_hop={}",
-                            req.object_id, next
-                        );
+                        if let Some(inner_path) = &req.inner_path {
+                            info!(
+                                "router get_object from local noc cache! id={}, inner_path={}, result={}, next_hop={}",
+                                req.object_id, inner_path, resp.object.object_id(), next
+                            );
+                        } else {
+                            info!(
+                                "router get_object from local noc cache! id={}, next_hop={}",
+                                req.object_id, next
+                            );
+                        }
+                        
                     } else {
-                        info!("router get_object from local noc! id={}", req.object_id,);
+                        if let Some(inner_path) = &req.inner_path {
+                            info!("router get_object from local noc! id={}, inner_path={}, result={}", req.object_id, inner_path, resp.object.object_id());
+                        } else {
+                            info!("router get_object from local noc! id={}", req.object_id,);
+                        }
                     }
 
                     return Ok(resp);
@@ -510,11 +522,11 @@ impl NONRouter {
         }
 
         if router_info.next_hop.is_none() {
-            // 没有下一跳了，那么返回失败
+            // There is no next jump, so should end with failure with NotFound code
             let msg =
                 format!(
-                "router get object from final target but not found: obj={}, source={}, device={}",
-                req.object_id, req.common.source, self.zone_manager.get_current_device_id(),
+                "router get object from final target but not found: obj={}, inner_path={:?}, source={}, device={}",
+                req.object_id, req.inner_path, req.common.source, self.zone_manager.get_current_device_id(),
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -581,7 +593,7 @@ impl NONRouter {
             }
         }
 
-        // 通过forward查询成功后，本地需要缓存
+        // After the get_object are successful, the local needs to cache locally
         if ret.is_ok() && save_to_noc {
             let put_req = NONPutObjectInputRequest {
                 common: req.common.clone(),

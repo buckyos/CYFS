@@ -284,7 +284,8 @@ impl PrivateKey {
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
-        output.copy_from_slice(&data);
+        output[..data.len()].copy_from_slice(&data);
+
         Ok((input, data.len()))
     }
 
@@ -509,5 +510,19 @@ mod test {
         let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
         assert_eq!(buf.len(), 0);
         assert_eq!(aes_key.as_slice(), data2);
+    }
+
+    #[test]
+    fn crypto_unaligned() {
+        let pk1 = PrivateKey::generate_rsa(1024).unwrap();
+
+        let origin_data = "test data".as_bytes();
+        let data = pk1.public().encrypt_data(origin_data).unwrap();
+        println!("len={}", data.len());
+
+        let mut output = vec![0; 48];
+        let (_buf, size) = pk1.decrypt_aeskey(&data, &mut output).unwrap();
+        assert_eq!(size, origin_data.len());
+        assert_eq!(&output[..origin_data.len()], origin_data);
     }
 }

@@ -28,8 +28,8 @@ impl CyfsPanicInfo {
             hash,
         };
 
-        info!("{}", ret.msg);
-        info!("{}", ret.msg_with_symbol);
+        warn!("{}", ret.msg);
+        warn!("{}", ret.msg_with_symbol);
         ret
     }
 

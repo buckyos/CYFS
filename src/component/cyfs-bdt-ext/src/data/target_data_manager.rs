@@ -1,7 +1,5 @@
 use crate::*;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use async_std::io::Read;
@@ -10,21 +8,21 @@ use std::ops::Range;
 
 // 用以向远程device发起chunk/file操作
 pub struct TargetDataManager {
-    bdt_stack: StackGuard,
-    chunk_manager: ChunkManagerRef,
+    named_data_components: NamedDataComponentsRef,
     context: TransContextHolder,
+    need_cache: bool,
 }
 
 impl TargetDataManager {
     pub fn new(
-        bdt_stack: StackGuard,
-        chunk_manager: ChunkManagerRef,
+        named_data_components: NamedDataComponentsRef,
         context: TransContextHolder,
+        need_cache: bool,
     ) -> Self {
         Self {
-            bdt_stack,
-            chunk_manager,
+            named_data_components,
             context,
+            need_cache,
         }
     }
 
@@ -61,7 +59,7 @@ impl TargetDataManager {
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_file(
-            &self.bdt_stack,
+            &self.named_data_components.bdt_stack(),
             file_obj.to_owned(),
             group,
             self.context.clone(),
@@ -73,7 +71,7 @@ impl TargetDataManager {
         })?;
 
         info!(
-            "get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}, task={:?}",
+            "get file data from target: {}, file={}, file_len={}, len={}, ranges={:?}, task={:?}",
             self.context.debug_string(),
             file_id,
             file_obj.len(),
@@ -82,23 +80,36 @@ impl TargetDataManager {
             reader.task().abs_group_path(),
         );
 
-        let reader = ChunkListCacheReader::new(
-            self.chunk_manager.clone(),
-            file_id.to_string(),
-            total_size,
-            Box::new(reader),
-        );
+        let resp = if self.need_cache {
+            let reader = ChunkListCacheReader::new(
+                self.named_data_components.clone(),
+                file_id.to_string(),
+                total_size,
+                Box::new(reader),
+            ); 
 
-        let resp = if let Some(ranges) = ranges {
-            assert!(ranges.len() > 0);
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
 
-            let reader =
-                ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         };
-
+        
         let resp = Self::wait_read_and_return(resp).await?;
 
         Ok((resp, total_size, Some(id)))
@@ -132,7 +143,7 @@ impl TargetDataManager {
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_chunk(
-            &self.bdt_stack,
+            &self.named_data_components.bdt_stack(),
             chunk_id.clone(),
             group,
             self.context.clone(),
@@ -152,23 +163,35 @@ impl TargetDataManager {
             reader.task().abs_group_path(),
         );
 
-        let reader = ChunkListCacheReader::new(
-            self.chunk_manager.clone(),
-            chunk_id.to_string(),
-            total_size as u64,
-            Box::new(reader),
-        );
-
-        let resp = if let Some(ranges) = ranges {
-            assert!(ranges.len() > 0);
-
-            let reader =
-                ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        let resp = if self.need_cache {
+            let reader = ChunkListCacheReader::new(
+                self.named_data_components.clone(),
+                chunk_id.to_string(),
+                total_size as u64,
+                Box::new(reader),
+            );
+    
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         } else {
-            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            if let Some(ranges) = ranges {
+                assert!(ranges.len() > 0);
+    
+                let reader =
+                    ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            } else {
+                Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+            }
         };
-
+        
         let resp = Self::wait_read_and_return(resp).await?;
 
         Ok((resp, total_size as u64, Some(id)))

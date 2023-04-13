@@ -166,8 +166,9 @@ async fn main_run() {
     let mode = matches.value_of("mode").unwrap();
     let mode = match ServiceMode::from_str(mode) {
         Ok(v) => v,
-        Err(_) => {
-            return;
+        Err(e) => {
+            error!("unsupport ood daemon service mode: {}, {}", mode, e);
+            std::process::exit(e.code().into());
         }
     };
     SERVICE_MANAGER.change_mode(mode.clone());

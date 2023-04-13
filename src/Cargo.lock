@@ -947,6 +947,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
 
 [[package]]
+name = "cache_control"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf2a5fb3207c12b5d208ebc145f967fea5cac41a021c37417ccc31ba40f39ee"
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1005,9 +1011,9 @@ dependencies = [
 name = "chunk-manager"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-std",
  "chrono",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-chunk",
@@ -1508,6 +1514,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-async-h1"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f9f63d61a06a44930c5f451dee4e52be3ce8df89f9fc9739fcb770baadf1c43"
+dependencies = [
+ "async-channel",
+ "async-dup",
+ "async-std",
+ "futures-core",
+ "http-types",
+ "httparse",
+ "log 0.4.17",
+ "percent-encoding 2.2.0",
+ "pin-project",
+]
+
+[[package]]
 name = "cyfs-backup"
 version = "0.1.0"
 dependencies = [
@@ -1551,9 +1574,9 @@ dependencies = [
 name = "cyfs-backup-lib"
 version = "0.1.0"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -1591,7 +1614,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.6.11"
+version = "0.6.12"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1644,7 +1667,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base-meta"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1662,7 +1685,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1784,8 +1807,8 @@ dependencies = [
 name = "cyfs-chunk-client"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-std",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-chunk",
@@ -1834,11 +1857,11 @@ dependencies = [
 name = "cyfs-client"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-recursion",
  "async-std",
  "async-trait",
  "clap 2.34.0",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-bdt",
@@ -1901,13 +1924,13 @@ dependencies = [
 
 [[package]]
 name = "cyfs-debug"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "backtrace",
  "chrono",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-util",
  "flexi_logger",
@@ -1948,14 +1971,14 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "async-tungstenite",
  "bytes 1.4.0",
  "chrono",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-core",
@@ -1985,13 +2008,13 @@ dependencies = [
 name = "cyfs-meta"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "base58",
  "base64 0.13.1",
  "byteorder",
  "chrono",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-core",
@@ -2018,10 +2041,10 @@ dependencies = [
 name = "cyfs-meta-client"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-recursion",
  "async-std",
  "clap 2.34.0",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-meta-lib",
@@ -2241,11 +2264,11 @@ name = "cyfs-runtime"
 version = "0.5.0"
 dependencies = [
  "android_logger",
- "async-h1",
  "async-std",
  "async-trait",
  "bytes 1.4.0",
  "clap 2.34.0",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -2287,11 +2310,12 @@ dependencies = [
 name = "cyfs-stack"
 version = "0.5.2"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "byteorder",
+ "cache_control",
  "crossbeam",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-bdt-ext",
@@ -2440,14 +2464,14 @@ dependencies = [
 
 [[package]]
 name = "cyfs-util"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "c_linked_list",
  "clap 2.34.0",
  "clippy",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-sha2",
  "dirs 4.0.0",
@@ -2464,6 +2488,7 @@ dependencies = [
  "named-lock",
  "nix 0.24.3",
  "once_cell",
+ "percent-encoding 2.2.0",
  "rand 0.8.5",
  "rusqlite",
  "serde",
@@ -3278,11 +3303,11 @@ dependencies = [
 name = "gateway"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "bytes 1.4.0",
  "clap 2.34.0",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-core",
@@ -4763,9 +4788,9 @@ name = "ood-control"
 version = "0.5.1"
 dependencies = [
  "android_logger",
- "async-h1",
  "async-std",
  "async-trait",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-debug",
  "cyfs-lib",
@@ -4789,10 +4814,10 @@ dependencies = [
 name = "ood-daemon"
 version = "0.5.0"
 dependencies = [
- "async-h1",
  "async-std",
  "async-trait",
  "clap 2.34.0",
+ "cyfs-async-h1",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-client",
@@ -4825,6 +4850,7 @@ name = "ood-installer"
 version = "0.5.0"
 dependencies = [
  "app-manager",
+ "app-manager-lib",
  "async-std",
  "async-trait",
  "clap 2.34.0",

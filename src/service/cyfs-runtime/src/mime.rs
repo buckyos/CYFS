@@ -12,15 +12,25 @@ pub(crate) struct MimeHelper;
 impl MimeHelper {
     fn mime_from_ext(ext: &str) -> Option<Mime> {
         match ext.to_lowercase().as_ref() {
-            "html" => Some(mime::HTML),
+            "html" | "htm" => Some(mime::HTML),
             "js" | "mjs" | "jsonp" => Some(mime::JAVASCRIPT),
             "json" => Some(mime::JSON),
             "css" => Some(mime::CSS),
             "svg" => Some(mime::SVG),
             "xml" => Some(mime::XML),
+            "txt" => Some(mime::PLAIN),
+
             "png" => Some(mime::PNG),
-            "jpg" => Some(mime::JPEG),
+            "jpg" | "jpeg" => Some(mime::JPEG),
             "ico" => Some(mime::ICO),
+            "gif" => Some(Mime::from_str("image/gif").unwrap()),
+            "webp" => Some(Mime::from_str("image/webp").unwrap()),
+
+            "mp3" => Some(Mime::from_str("audio/mpeg").unwrap()),
+            "wav" => Some(Mime::from_str("audio/wav").unwrap()),
+            "mp4" => Some(Mime::from_str("video/mp4").unwrap()),
+            "webm" => Some(Mime::from_str("video/webm").unwrap()),
+
             _ => None,
         }
     }
@@ -181,5 +191,19 @@ impl MimeHelper {
 
         let tail_body = http_types::Body::from_reader(body_reader, tail_len);
         new_body.chain(tail_body)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        let m = Mime::from_str("image/gif").unwrap();
+        println!("{}", m);
+
+        let mut resp  = http_types::Response::new(http_types::StatusCode::Ok);
+        resp.set_content_type(m);        
     }
 }

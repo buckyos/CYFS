@@ -9,11 +9,11 @@ use std::fmt::{self, Debug, Display};
 use std::io::ErrorKind;
 // use std::process::{ExitCode, Termination};
 
-// 系统的内置error code范围 [BUCKY_SYSTEM_ERROR_CODE_START, BUCKY_SYSTEM_ERROR_CODE_END)
+// The built-in Error Code range of the system [BUCKY_SYSTEM_ERROR_CODE_START, BUCKY_SYSTEM_ERROR_CODE_END)
 pub const BUCKY_SYSTEM_ERROR_CODE_START: u16 = 0;
 pub const BUCKY_SYSTEM_ERROR_CODE_END: u16 = 5000;
 
-// MetaChain的error code范围
+// ERROR CODE range of MetaChain
 // [BUCKY_META_ERROR_CODE_START, BUCKY_META_ERROR_CODE_END)
 pub const BUCKY_META_ERROR_CODE_START: u16 = 5000;
 pub const BUCKY_META_ERROR_CODE_END: u16 = 6000;
@@ -21,12 +21,12 @@ pub const BUCKY_META_ERROR_CODE_END: u16 = 6000;
 pub const BUCKY_META_ERROR_CODE_MAX: u16 =
     BUCKY_META_ERROR_CODE_END - BUCKY_META_ERROR_CODE_START - 1;
 
-// 应用扩展的错误码范围
+// The scope of the error code of the application ext(DEC)
 // [BUCKY_DEC_ERROR_CODE_START, BUCKY_DEC_ERROR_CODE_END)
 pub const BUCKY_DEC_ERROR_CODE_START: u16 = 15000;
 pub const BUCKY_DEC_ERROR_CODE_END: u16 = u16::MAX;
 
-// 应用扩展错误码DecError(code)中的code的最大取值
+// The maximum value of CODE in DEC ERROR (Code)
 pub const BUCKY_DEC_ERROR_CODE_MAX: u16 = BUCKY_DEC_ERROR_CODE_END - BUCKY_DEC_ERROR_CODE_START;
 
 pub fn is_system_error_code(code: u16) -> bool {
@@ -41,7 +41,7 @@ pub fn is_dec_error_code(code: u16) -> bool {
     code >= BUCKY_DEC_ERROR_CODE_START
 }
 
-// CYFS框架的错误码定义
+// Cyfs's error definition
 #[repr(u16)]
 #[derive(
     Debug, Clone, Copy, Eq, IntEnum, PartialEq, RawEncode, RawDecode, Serialize, Deserialize,

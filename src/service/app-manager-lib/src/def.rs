@@ -16,7 +16,7 @@ pub enum SandBoxMode {
     Docker
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RepoMode {
     NamedData,

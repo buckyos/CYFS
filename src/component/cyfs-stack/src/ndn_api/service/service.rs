@@ -10,7 +10,6 @@ use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -25,28 +24,28 @@ pub struct NDNService {
 impl NDNService {
     pub(crate) fn new(
         acl: AclManagerRef,
-        bdt_stack: StackGuard,
         named_data_components: &NamedDataComponents,
 
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
 
-        // 带acl的non router
+        // NON Router with ACL
         non_router: NONInputProcessorRef,
 
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> Self {
+        let named_data_components = Arc::new(named_data_components.clone());
+
         let ndc_processor = NDCLevelInputProcessor::new_local(
             acl.clone(),
-            named_data_components,
+            &named_data_components,
             non_router.clone(),
         );
 
         let ndn_processor = NDNLevelInputProcessor::new_zone(
             acl.clone(),
-            bdt_stack.clone(),
-            named_data_components,
+            &named_data_components,
             non_router.clone(),
             router_handlers.clone(),
             forward.clone(),
@@ -55,8 +54,7 @@ impl NDNService {
 
         let router = NDNRouter::new_acl(
             acl,
-            bdt_stack,
-            named_data_components,
+            &named_data_components,
             non_router,
             zone_manager,
             router_handlers,
@@ -133,24 +131,24 @@ impl NDNService {
 #[async_trait::async_trait]
 impl NDNInputProcessor for NDNService {
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
-        NDNService::put_data(&self, req).await
+        Self::put_data(&self, req).await
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        NDNService::get_data(&self, req).await
+        Self::get_data(&self, req).await
     }
 
     async fn delete_data(
         &self,
         req: NDNDeleteDataInputRequest,
     ) -> BuckyResult<NDNDeleteDataInputResponse> {
-        NDNService::delete_data(&self, req).await
+        Self::delete_data(&self, req).await
     }
 
     async fn query_file(
         &self,
         req: NDNQueryFileInputRequest,
     ) -> BuckyResult<NDNQueryFileInputResponse> {
-        NDNService::query_file(&self, req).await
+        Self::query_file(&self, req).await
     }
 }

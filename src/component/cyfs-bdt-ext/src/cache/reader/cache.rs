@@ -1,7 +1,8 @@
 use cyfs_base::*;
 use cyfs_bdt::{chunk::ChunkCache, DownloadTaskSplitRead};
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_chunk_lib::*;
+use crate::stack::NamedDataComponentsRef;
+use super::super::writer::ChunkManagerStateUpdater;
 
 use async_std::io::{Read, Result};
 use std::io::{Seek, SeekFrom};
@@ -16,7 +17,7 @@ pub struct ChunkListCacheReader {
     task_id: String,
     reader: Box<dyn ChunkSplitReader + Unpin + Send + Sync + 'static>,
 
-    chunk_manager: ChunkManagerRef,
+    named_data_components: NamedDataComponentsRef,
     last_cache_chunk: Option<ChunkId>,
     full_len: u64,
     read_len: u64,
@@ -24,7 +25,7 @@ pub struct ChunkListCacheReader {
 
 impl ChunkListCacheReader {
     pub fn new(
-        chunk_manager: ChunkManagerRef,
+        named_data_components: NamedDataComponentsRef,
         task_id: String,
         full_len: u64,
         reader: Box<dyn ChunkSplitReader + Unpin + Send + Sync + 'static>,
@@ -32,11 +33,38 @@ impl ChunkListCacheReader {
         Self {
             task_id,
             reader,
-            chunk_manager,
+            named_data_components,
             last_cache_chunk: None,
             full_len,
             read_len: 0,
         }
+    }
+
+    async fn cache_chunk(com: NamedDataComponentsRef, cache: &ChunkCache) -> BuckyResult<()> {
+        let chunk_id = cache.chunk();
+        let ret = com.chunk_manager.exist(cache.chunk()).await;
+        if ret {
+            debug!(
+                "cache chunk to chunk manager but already exists! chunk={}",
+                cache.chunk()
+            );
+            return Ok(());
+        }
+
+        let cache_wrapper = ChunkCacheWrapper::new(cache.clone());
+        com.chunk_manager
+            .put_chunk(cache.chunk(), Box::new(cache_wrapper))
+            .await?;
+
+        ChunkManagerStateUpdater::update_chunk_state(&com.ndc, chunk_id).await?;
+        ChunkManagerStateUpdater::update_chunk_tracker(&com.tracker, chunk_id).await?;
+
+        info!(
+            "cache chunk to chunk manager success! chunk={}",
+            chunk_id
+        );
+
+        Ok(())
     }
 
     fn try_cache_chunk(&mut self, cache: &ChunkCache) {
@@ -66,35 +94,14 @@ impl ChunkListCacheReader {
         self.last_cache_chunk = Some(chunk_id.to_owned());
 
         let cache = cache.clone();
-        let chunk_manager = self.chunk_manager.clone();
+        let com = self.named_data_components.clone();
         async_std::task::spawn(async move {
-            let ret = chunk_manager.exist(cache.chunk()).await;
-            if ret {
-                debug!(
-                    "cache chunk to chunk manager but already exists! chunk={}",
-                    cache.chunk()
+            if let Err(e) = Self::cache_chunk(com, &cache).await {
+                error!(
+                    "cache chunk to chunk manager failed! chunk={}, {}",
+                    cache.chunk(),
+                    e
                 );
-                return;
-            }
-
-            let cache_wrapper = ChunkCacheWrapper::new(cache.clone());
-            match chunk_manager
-                .put_chunk(cache.chunk(), Box::new(cache_wrapper))
-                .await
-            {
-                Ok(()) => {
-                    info!(
-                        "cache chunk to chunk manager success! chunk={}",
-                        cache.chunk()
-                    );
-                }
-                Err(e) => {
-                    info!(
-                        "cache chunk to chunk manager failed! chunk={}, {}",
-                        cache.chunk(),
-                        e
-                    );
-                }
             }
         });
     }

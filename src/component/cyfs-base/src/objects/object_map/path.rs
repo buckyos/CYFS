@@ -174,7 +174,7 @@ impl ObjectMapPath {
 
         // 判断是不是root
         if path == "/" {
-            debug!("object map path list: path={}, list={:?}", path, obj_list);
+            trace!("object map path list: path={}, list={:?}", path, obj_list);
             return Ok(Some(obj_list));
         }
 
@@ -261,7 +261,7 @@ impl ObjectMapPath {
             let current_id = current_obj_map.obj_map.flush_id();
             assert_ne!(prev_id, current_id);
 
-            debug!(
+            trace!(
                 "update objectmap path seg: seg={:?}, {} -> {}",
                 current_obj_map.seg, prev_id, current_id
             );

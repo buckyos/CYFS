@@ -55,4 +55,7 @@ pub struct BdtStackParams {
     pub known_passive_pn: Vec<Device>,
     pub udp_sn_only: Option<bool>,
     pub sn_mode: SNMode,
+
+    // sn ping interval in seconds, default is 25s
+    pub ping_interval: Option<u32>,
 }

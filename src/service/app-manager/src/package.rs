@@ -26,6 +26,17 @@ use crate::dapp::DApp;
 pub struct AppPackage {
 }
 
+fn remove_dir(path: &Path) -> BuckyResult<()> {
+    if path.exists() {
+        if path.is_dir() {
+            fs::remove_dir_all(path)?;
+        } else {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
 impl AppPackage {
     pub async fn install(app_id: &DecAppId, version: &str, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, repo_mode: RepoMode, stack: SharedCyfsStack) -> BuckyResult<Option<ObjectId>> {
         match repo_mode {
@@ -71,9 +82,19 @@ impl AppPackage {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, format!("local path {} not found", local_path.display())));
         }
         let app_str = app_id.to_string();
+
         let service_path = get_app_dir(&app_str);
+        remove_dir(&service_path)?;
+
         let acl_path = get_app_acl_dir(&app_str);
+        remove_dir(&service_path)?;
+
         let dep_path = get_app_dep_dir(&app_str);
+        remove_dir(&service_path)?;
+
+        let web_path = get_app_web_dir2(&app_str, version);
+        remove_dir(&web_path)?;
+
         // 拷贝acl
         Self::copy_dir_contents(&local_path.join("acl"), &acl_path)?;
         // 拷贝dep
@@ -81,7 +102,6 @@ impl AppPackage {
         // 拷贝service
         Self::copy_dir_contents(&local_path.join("service"), &service_path)?;
         // 拷贝webdir
-        let web_path = get_app_web_dir2(&app_str, version);
         Self::copy_dir_contents(&local_path.join("web"), &web_path)?;
 
         if delete_source {

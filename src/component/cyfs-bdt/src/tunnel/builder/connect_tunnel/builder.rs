@@ -103,7 +103,7 @@ impl ConnectTunnelBuilder {
             let nearest_sn = build_params.nearest_sn(&stack);
             if let Some(sn) = nearest_sn {
                 info!("{} call nearest sn, sn={}", self, sn);
-                let timeout_ret = future::timeout(stack.config().stream.stream.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
+                let timeout_ret = future::timeout(stack.config().tunnel.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
                 let retry_sn_list = match timeout_ret {
                     Ok(finish_ret) => {
                         match finish_ret {
@@ -111,10 +111,10 @@ impl ConnectTunnelBuilder {
                                 info!("{} call nearest sn finished, sn={}", self, sn);
                                 if TunnelBuilderState::Establish != self.state() {
                                     let escaped = self.escaped();
-                                    if stack.config().stream.stream.retry_sn_timeout > escaped {
+                                    if stack.config().tunnel.retry_sn_timeout < escaped {
                                         Some(Duration::from_secs(0))
                                     } else {
-                                        Some(stack.config().stream.stream.retry_sn_timeout - escaped)
+                                        Some(stack.config().tunnel.retry_sn_timeout - escaped)
                                     }
                                 } else {
                                     None

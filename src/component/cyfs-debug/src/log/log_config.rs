@@ -350,7 +350,7 @@ impl LogConfig {
             ("async_tungstenite", LogLevel::Warn),
             ("tungstenite", LogLevel::Warn),
             ("async_std", LogLevel::Warn),
-            ("tide", LogLevel::Warn),
+            ("tide", LogLevel::Off),
         ];
 
         mod_list.iter().for_each(|(name, level)| {

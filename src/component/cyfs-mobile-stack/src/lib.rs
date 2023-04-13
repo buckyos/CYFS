@@ -60,12 +60,12 @@ mod ios {
             .build()
             .unwrap();
 
-        if CombineLogger::new()
+        CombineLogger::new()
             .append(Box::new(IosLogger::new(&loglevel, log)))
             .append(module_log.into())
-            .start() {
-            PanicBuilder::new("cyfs-sdk", "cyfsstack").build().start();
-        }
+            .start();
+
+        PanicBuilder::new("cyfs-sdk", "cyfs-mobile-stack").exit_on_panic(true).build().start();
 
         // 输出环境信息，用以诊断一些环境问题
         for argument in std::env::args() {
@@ -184,12 +184,12 @@ mod android {
             .build()
             .unwrap();
 
-        if CombineLogger::new()
+        CombineLogger::new()
             .append(Box::new(android_logger))
             .append(module_log.into())
-            .start() {
-            PanicBuilder::new("cyfs-sdk", "cyfsstack").build().start();
-        }
+            .start();
+
+        PanicBuilder::new("cyfs-sdk", "cyfs-mobile-stack").exit_on_panic(true).build().start();
 
         // 输出环境信息，用以诊断一些环境问题
         for argument in std::env::args() {

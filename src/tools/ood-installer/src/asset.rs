@@ -155,7 +155,7 @@ impl OODAsset {
         self.extract_from_asset(&root, "gateway.toml")
     }
 
-    fn extract_app_manager(&self) -> BuckyResult<()> {
+    pub(crate) fn extract_app_manager(&self) -> BuckyResult<()> {
         let root = ::cyfs_util::get_cyfs_root_path()
             .join("etc")
             .join("app-manager")
