@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-util'
-version = '0.6.7'
+version = '0.6.8'
 authors = ['weiqiushi <weiqiushi@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -28,7 +28,7 @@ lazy_static = '1.4'
 clap = '2.34.0'
 simple_logger = '2.1'
 hex = '0.4'
-async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
+async-h1 = { package = 'cyfs-async-h1', version = '2.3.3' }
 async-trait = '0.1.53'
 futures = '0.3'
 int-enum = '0.4'
@@ -39,7 +39,7 @@ log-panics = { version = '2.0', features = ['with-backtrace'] }
 sysinfo = '0.27'
 dirs = '4.0'
 thread_local = '1.1'
-tide = "0.16"
+tide = '0.16'
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = '0.3.6', features = [
