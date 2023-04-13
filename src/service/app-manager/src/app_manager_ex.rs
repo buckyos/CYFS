@@ -369,7 +369,7 @@ impl AppManager {
                         if let Some(version) = version {
                             match self.cmd_executor.as_ref().unwrap().execute_install(
                                 status_a.clone(),
-                                &AppCmd::install(self.owner.clone(), app_id.clone(), &version.unwrap(), true),
+                                &AppCmd::install(self.owner.clone(), app_id.clone(), &version, true),
                                 0).await {
                                 Ok(_) => {
                                     None
