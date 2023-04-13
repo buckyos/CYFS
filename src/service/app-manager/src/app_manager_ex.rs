@@ -366,17 +366,21 @@ impl AppManager {
                     AppLocalStatusCode::Installing => {
                         info!("find app {} status {} on startup, try install again", app_id, status_code);
                         let version = status_a.lock().unwrap().version().map(|s|s.to_owned());
-                        match self.cmd_executor.as_ref().unwrap().execute_install(
-                            status_a.clone(),
-                            &AppCmd::install(self.owner.clone(), app_id.clone(), &version.unwrap(), true),
-                            0).await {
-                            Ok(_) => {
-                                None
+                        if let Some(version) = version {
+                            match self.cmd_executor.as_ref().unwrap().execute_install(
+                                status_a.clone(),
+                                &AppCmd::install(self.owner.clone(), app_id.clone(), &version.unwrap(), true),
+                                0).await {
+                                Ok(_) => {
+                                    None
+                                }
+                                Err(e) => {
+                                    error!("install app {} on startup err {}", app_id, e);
+                                    Some(AppLocalStatusCode::InstallFailed)
+                                }
                             }
-                            Err(e) => {
-                                error!("install app {} on startup err {}", app_id, e);
-                                Some(AppLocalStatusCode::InstallFailed)
-                            }
+                        } else {
+                            Some(AppLocalStatusCode::InstallFailed)
                         }
                     },
                     AppLocalStatusCode::Uninstalling => {
