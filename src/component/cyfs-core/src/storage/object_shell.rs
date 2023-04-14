@@ -166,9 +166,9 @@ where
                         .raw_encode(freedom_remain, &None)
                         .expect("encode desc signature for object-shell failed.");
                     exist_freedom_field_flags.freedom_desc_signature();
+                    const_raw.signs_mut().clear_desc_signs();
                 }
             }
-            const_raw.signs_mut().clear_desc_signs();
         }
 
         if self.flags.is_body_sign_freedom() {
@@ -179,9 +179,9 @@ where
                         .raw_encode(freedom_remain, &None)
                         .expect("encode body signature for object-shell failed.");
                     exist_freedom_field_flags.freedom_body_signature();
+                    const_raw.signs_mut().clear_body_signs();
                 }
             }
-            const_raw.signs_mut().clear_body_signs();
         }
 
         if self.flags.is_nonce_freedom() {
@@ -191,11 +191,12 @@ where
                     .raw_encode(freedom_remain, &None)
                     .expect("encode nonce for object-shell failed.");
                 exist_freedom_field_flags.freedom_nonce();
+
+                unreachable!(
+                    "nonce is not supported currently for the NamedObject::set_nonce is not exported."
+                );
+                // const_raw.set_nonce(None);
             }
-            unreachable!(
-                "nonce is not supported currently for the NamedObject::set_nonce is not exported."
-            );
-            // const_raw.set_nonce(None);
         }
 
         let freedom_attachment = if freedom_remain.len() < max_buf_size {

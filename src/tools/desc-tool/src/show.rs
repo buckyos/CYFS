@@ -5,6 +5,7 @@ use cyfs_base::{
     SingleKeyObjectDesc, StandardObject,
 };
 use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj, GroupShell};
+use itertools::Itertools;
 use std::convert::TryFrom;
 use std::path::Path;
 
@@ -218,7 +219,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
                 "immutable"
             }
         );
-        for (_, member) in group.admins() {
+        for (_, member) in group.admins().iter().sorted_by(|l, r| l.0.cmp(r.0)) {
             print!("{};", member.to_string());
         }
         println!("]");
@@ -226,7 +227,7 @@ fn show_group(group: &Group, matches: &ArgMatches) {
 
     if is_all || matches.is_present("show_members") {
         print!("members: [");
-        for (_, member) in group.members() {
+        for (_, member) in group.members().iter().sorted_by(|l, r| l.0.cmp(r.0)) {
             print!("{};", member.to_string());
         }
         println!("]");

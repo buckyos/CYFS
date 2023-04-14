@@ -176,24 +176,6 @@ impl GroupVerifier for Group {
                 .map(|m| *m),
         );
 
-        if add_admins.len() != self.admins().len() - last_admins.len() {
-            let msg = format!(
-                "Update group({}) with duplicate admins or invalid admins.",
-                group_id
-            );
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
-        }
-
-        if add_members.len() != self.members().len() - last_members.len() {
-            let msg = format!(
-                "Update group({}) with duplicate members or invalid members.",
-                group_id
-            );
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
-        }
-
         let additionals = add_admins
             .union(&add_members)
             .map(|id| *id)
