@@ -4,7 +4,9 @@ use cyfs_base::{
     InnerNode, NDNObjectInfo, NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource,
     SingleKeyObjectDesc, StandardObject,
 };
-use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj, GroupShell};
+use cyfs_core::{
+    AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj, ToGroupShell,
+};
 use itertools::Itertools;
 use std::convert::TryFrom;
 use std::path::Path;

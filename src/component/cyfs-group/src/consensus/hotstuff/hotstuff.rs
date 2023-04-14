@@ -11,8 +11,8 @@ use cyfs_base::{
     RawEncode, RsaCPUObjectSigner, SignatureSource, Signer,
 };
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal,
-    GroupProposal, GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout, GroupShell,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
+    GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout, ToGroupShell,
 };
 use cyfs_group_lib::{ExecuteResult, HotstuffBlockQCVote, HotstuffTimeoutVote};
 use cyfs_lib::NONObjectInfo;
@@ -958,6 +958,7 @@ impl HotstuffRunner {
             qc_round
         );
 
+        self.update_max_quorum_round(qc_round);
         self.advance_round(qc_round).await;
         self.update_high_qc(qc);
     }
@@ -1442,6 +1443,8 @@ impl HotstuffRunner {
         self.store.save_qc(&qc).await?;
 
         self.process_qc(&Some(qc)).await;
+
+        self.update_max_quorum_height(prev_block.height());
 
         let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
             log::warn!(
@@ -2254,8 +2257,8 @@ impl HotstuffRunner {
     async fn check_group_is_latest(&self, group_shell_id: &ObjectId) -> BuckyResult<bool> {
         let latest_group = self.committee.get_group(None).await?;
         let group_shell = latest_group.to_shell();
-        let latest_chunk_id = group_shell.shell_id();
-        Ok(&latest_chunk_id == group_shell_id)
+        let latest_shell_id = group_shell.shell_id();
+        Ok(&latest_shell_id == group_shell_id)
     }
 
     async fn make_sure_result_state(

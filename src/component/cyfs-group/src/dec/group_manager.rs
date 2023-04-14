@@ -9,6 +9,7 @@ use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
 use cyfs_group_lib::{GroupCommand, GroupCommandNewRPath};
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
+use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 
 use crate::{
     storage::GroupStorage, HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper,
@@ -34,6 +35,7 @@ struct LocalInfo {
     datagram: DatagramTunnelGuard,
     bdt_stack: StackGuard,
     global_state_mgr: GlobalStateManagerRawProcessorRef,
+    meta_client: Arc<MetaClient>,
 }
 
 #[derive(Clone)]
@@ -48,6 +50,7 @@ impl GroupManager {
     ) -> BuckyResult<Self> {
         let datagram = bdt_stack.datagram_manager().bind(NET_PROTOCOL_VPORT)?;
         let local_device_id = bdt_stack.local_device_id().object_id().clone();
+        let metaclient = MetaClient::new_target(MetaMinerTarget::default());
 
         let local_info = LocalInfo {
             signer: Arc::new(signer),
@@ -55,6 +58,7 @@ impl GroupManager {
             datagram: datagram.clone(),
             bdt_stack,
             global_state_mgr,
+            meta_client: Arc::new(metaclient),
         };
 
         let raw = GroupRPathMgrRaw {
@@ -109,6 +113,7 @@ impl GroupManager {
             let state_mgr = local_info.global_state_mgr.clone();
             let non_driver = NONDriverHelper::new(
                 local_info.non_driver.clone(),
+                local_info.meta_client.clone(),
                 dec_id.clone(),
                 local_device_id.object_id().clone(),
             );
@@ -392,6 +397,7 @@ impl GroupManager {
             let signer = local_info.signer.clone();
             let non_driver = NONDriverHelper::new(
                 local_info.non_driver.clone(),
+                local_info.meta_client.clone(),
                 dec_id.clone(),
                 local_device_id.object_id().clone(),
             );

@@ -45,11 +45,11 @@ use crate::{
  * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-7 -d=test-group/members/people-7.desc 1 0
  * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-8 -d=test-group/members/people-8.desc 1 0
  * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-9 -d=test-group/members/people-9.desc 1 0
- * 
+ *
  * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 1 0
- * 
+ *
  * .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
- * 
+ *
  * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_blob= -v=1
 */
 
@@ -1249,7 +1249,7 @@ async fn main_run() {
 
     log::info!("proposals will be prepared.");
 
-    let PROPOSAL_COUNT = 200usize;
+    let PROPOSAL_COUNT = 20000usize;
     for i in 1..PROPOSAL_COUNT {
         let (_, stack) = member_stacks.get(i % member_stacks.len()).unwrap();
         let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
@@ -1316,7 +1316,7 @@ async fn main_run() {
             );
         });
 
-        if i % 28 == 0 {
+        if i % 1 == 0 {
             async_std::task::sleep(Duration::from_millis(4000)).await;
             log::info!("will push new proposals, i: {}", i);
         }

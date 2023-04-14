@@ -11,7 +11,7 @@ use cyfs_base::{
 };
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
-    GroupConsensusBlockObject, GroupShell, HotstuffBlockQC, HotstuffTimeout,
+    GroupConsensusBlockObject, ToGroupShell, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 

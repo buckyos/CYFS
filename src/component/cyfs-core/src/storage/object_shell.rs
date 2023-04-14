@@ -247,6 +247,10 @@ where
         // update the raw object
         &mut self.raw
     }
+
+    pub fn into_object(self) -> O {
+        self.raw
+    }
 }
 
 impl<O, OT> RawEncode for ObjectShell<O, OT>

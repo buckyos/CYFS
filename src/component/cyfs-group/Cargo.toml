@@ -33,3 +33,5 @@ cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.7' }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = '../../component/cyfs-lib' }
 cyfs-group-lib = { path = '../../component/cyfs-group-lib' }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }

@@ -5,7 +5,6 @@ use cyfs_bdt::DeviceCache;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
-use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, RwLock};
 
@@ -128,97 +127,33 @@ impl DeviceInfoManagerImpl {
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
     ) -> BuckyResult<()> {
-        // TODO: 先验证所有成员签名，但这跟Group的变更策略有关，最终可能要跟链上比对才能验证，因为如果Group变更只需要部分成员签名，这将导致Group上只携带部分成员的签名
-        if object_id.obj_type_code() != ObjectTypeCode::Group {
+        // TODO: use object from `MetaChain` temporarily
+        let group = self
+            .obj_searcher
+            .search_ex(None, object_id, ObjectSearcherFlags::meta_only())
+            .await?;
+
+        let (group, _) = Group::raw_decode(group.object_raw.as_slice())?;
+        let group_id_meta = group.desc().object_id();
+        if &group_id_meta != object_id {
             let msg = format!(
-                "verify object own's body sign by owner failed for expect group, id = {}",
-                object_id
+                "group({}) from MetaChain is unmatch with needed({}).",
+                group_id_meta, object_id
             );
-            warn!("{}", msg);
+            log::warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
-
-        let group = object.as_group();
-        let sign_object_ids = HashSet::<ObjectId>::from_iter(
-            [
-                group.admins().iter().map(|m| m.1.id).collect::<Vec<_>>(),
-                group.members().iter().map(|m| m.1.id).collect::<Vec<_>>(),
-            ]
-            .concat()
-            .into_iter(),
-        );
-
-        // all singatures
-        let results = futures::future::join_all(
-            sign_object_ids
-                .into_iter()
-                .map(|id| self.verify_with_object(object_id.clone(), object.clone(), id)),
-        )
-        .await;
-
-        results
-            .into_iter()
-            .find(|r| r.is_err())
-            .map_or(Ok(()), |r| r)
-    }
-
-    async fn verify_with_object(
-        &self,
-        object_id: ObjectId,
-        object: Arc<AnyNamedObject>,
-        signer_id: ObjectId,
-    ) -> BuckyResult<()> {
-        let mut signer_obj = self
-            .obj_searcher
-            .search_ex(None, &signer_id, ObjectSearcherFlags::full())
-            .await
-            .map_err(|err| {
-                error!(
-                    "verify object(group) own's body sign find signer failed! id={}, err={:?}",
-                    object_id, err
-                );
-                err
-            })?;
-
-        let singer_obj_any = signer_obj.object.take();
-        let req = VerifyObjectInnerRequest {
-            sign_type: VerifySignType::Both,
-            object: ObjectInfo {
-                object_id: object_id.clone(),
-                object: object.clone(),
-            },
-            sign_object: VerifyObjectType::Object(NONSlimObjectInfo::new(
-                signer_id,
-                Some(signer_obj.object_raw),
-                singer_obj_any,
-            )),
-        };
-
-        match self.obj_verifier.verify_object_inner(req).await {
-            Ok(ret) => {
-                if ret.valid {
-                    info!(
-                        "verify object(group) own's body sign success! id={}",
-                        object_id,
-                    );
-                    Ok(())
-                } else {
-                    let msg = format!(
-                        "verify object(group) own's body sign unmatch! id={}",
-                        object_id,
-                    );
-                    error!("{}", msg);
-                    Err(BuckyError::new(BuckyErrorCode::InvalidSignature, msg))
-                }
-            }
-            Err(e) => {
-                error!(
-                    "verify object(group) own's body sign by owner error! id={}, {}",
-                    object_id, e
-                );
-                Err(e)
-            }
+        let body_hash_meta = group.body().as_ref().unwrap().raw_hash_value()?;
+        let body_hash = object.body_hash()?;
+        if Some(body_hash_meta) != body_hash {
+            let msg = format!(
+                "group({}) body-hash({}) from MetaChain is unmatch with needed({:?}).",
+                object_id, body_hash_meta, body_hash
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
+        Ok(())
     }
 
     async fn verfiy_owner(&self, device_id: &DeviceId, device: Option<&Device>) -> BuckyResult<()> {

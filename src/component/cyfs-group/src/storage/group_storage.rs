@@ -6,7 +6,7 @@ use cyfs_base::{
 };
 
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, GroupShell,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, ToGroupShell,
     HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::GroupRPathStatus;

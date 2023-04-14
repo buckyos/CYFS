@@ -5,7 +5,7 @@ use cyfs_base::{
     ObjectTypeCode, People, PeopleId, RawEncode, RsaCPUObjectVerifier, Signature,
     SingleKeyObjectDesc, Verifier,
 };
-use cyfs_core::{GroupShell, ObjectShell};
+use cyfs_core::ToGroupShell;
 
 async fn verify_signature(
     signs: Option<&Vec<Signature>>,

@@ -2,12 +2,14 @@ use cyfs_base::{Group, GroupType};
 
 use crate::{ObjectShell, OBJECT_SHELL_ALL_FREEDOM};
 
-pub trait GroupShell: Sized {
-    fn to_shell(&self) -> ObjectShell<Group, GroupType>;
+pub type GroupShell = ObjectShell<Group, GroupType>;
+
+pub trait ToGroupShell: Sized {
+    fn to_shell(&self) -> GroupShell;
 }
 
-impl GroupShell for Group {
-    fn to_shell(&self) -> ObjectShell<Group, GroupType> {
-        ObjectShell::<Group, GroupType>::from_object(self.clone(), OBJECT_SHELL_ALL_FREEDOM)
+impl ToGroupShell for Group {
+    fn to_shell(&self) -> GroupShell {
+        GroupShell::from_object(self.clone(), OBJECT_SHELL_ALL_FREEDOM)
     }
 }
