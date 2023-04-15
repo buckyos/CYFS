@@ -766,46 +766,11 @@ impl ExpReservedTokenTranslator for CryptoDecryptDataInputResponse {
 impl ExpReservedTokenTranslator for AclHandlerRequest {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "protocol" => ExpTokenEvalValue::from_string(&self.protocol),
-            "direction" => ExpTokenEvalValue::from_string(&self.action.direction),
-            "operation" => ExpTokenEvalValue::from_string(&self.action.operation),
-
-            "device" | "source" | "target" | "your" => {
-                ExpTokenEvalValue::from_string(&self.device_id)
-            }
-
-            "inner_path" => ExpTokenEvalValue::from_opt_glob(&self.inner_path),
+            "permissions" => ExpTokenEvalValue::from_string(&self.permissions.as_str()),
             "dec_id" => ExpTokenEvalValue::from_string(&self.dec_id),
-            "req_path" => ExpTokenEvalValue::from_opt_glob(&self.req_path),
-            "referer_object" => {
-                if let Some(referer_object) = &self.referer_object {
-                    if referer_object.len() > 0 {
-                        ExpTokenEvalValue::from_glob_list(referer_object)
-                    } else {
-                        ExpTokenEvalValue::None
-                    }
-                } else {
-                    ExpTokenEvalValue::None
-                }
-            }
-
+            "req_path" => ExpTokenEvalValue::from_glob(&self.req_path),
+            
             _ => {
-                if let Some(v) = ExpReservedTokenTranslatorHelper::trans_object_id(
-                    token,
-                    self.object.as_ref().map(|item| &item.object_id),
-                ) {
-                    return v;
-                }
-
-                let object = self
-                    .object
-                    .as_ref()
-                    .map(|item| item.object.as_deref())
-                    .flatten();
-                if let Some(v) = ExpReservedTokenTranslatorHelper::trans_object(token, object) {
-                    return v;
-                }
-
                 unreachable!("unknown router acl request reserved token: {}", token);
             }
         }
@@ -815,7 +780,7 @@ impl ExpReservedTokenTranslator for AclHandlerRequest {
 impl ExpReservedTokenTranslator for AclHandlerResponse {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "access" => ExpTokenEvalValue::from_string(&self.access),
+            "action" => ExpTokenEvalValue::from_string(&self.action.as_str()),
             _ => ExpTokenEvalValue::None,
         }
     }
@@ -1411,23 +1376,11 @@ impl RouterHandlerReservedTokenList {
     fn gen_acl_request() -> ExpReservedTokenList {
         let mut token_list = ExpReservedTokenList::new();
 
-        token_list.add_string("protocol");
-        token_list.add_string("direction");
-        token_list.add_string("operation");
-
-        // 下面四个都对应device
-        token_list.add_string("device");
-        token_list.add_string("source");
-        token_list.add_string("target");
-        token_list.add_string("your");
-
         Self::add_object_info_tokens(&mut token_list);
-        token_list.add_glob("inner_path");
-
         token_list.add_string("dec_id");
         token_list.add_glob("req_path");
 
-        token_list.add_glob("referer_object");
+        token_list.add_string("permissions");
 
         token_list
     }
@@ -1435,7 +1388,7 @@ impl RouterHandlerReservedTokenList {
     fn gen_acl_response() -> ExpReservedTokenList {
         let mut token_list = ExpReservedTokenList::new();
 
-        token_list.add_bool("access");
+        token_list.add_bool("action");
         Self::add_error_tokens(&mut token_list);
 
         token_list.translate_resp();
