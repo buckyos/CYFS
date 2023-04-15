@@ -2,18 +2,15 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use async_std::sync::RwLock;
 use cyfs_base::{
-    AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject,
+    AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, NamedObject,
     ObjectDesc, ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode, RawFrom,
     TypelessCoreObject,
 };
 
-use cyfs_base_meta::SavedMetaObject;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupQuorumCertificate,
-    GroupShell,
 };
 use cyfs_lib::NONObjectInfo;
-use cyfs_meta_lib::MetaClient;
 
 use crate::{MEMORY_CACHE_DURATION, MEMORY_CACHE_SIZE};
 
@@ -42,13 +39,11 @@ pub(crate) struct NONDriverHelper {
     dec_id: ObjectId,
     cache: NONObjectCache,
     local_device_id: ObjectId,
-    meta_client: Arc<MetaClient>,
 }
 
 impl NONDriverHelper {
     pub fn new(
         driver: Arc<Box<dyn NONDriver>>,
-        meta_client: Arc<MetaClient>,
         dec_id: ObjectId,
         local_device_id: ObjectId,
     ) -> Self {
@@ -57,7 +52,6 @@ impl NONDriverHelper {
             dec_id,
             cache: NONObjectCache::new(),
             local_device_id,
-            meta_client,
         }
     }
 
@@ -164,43 +158,6 @@ impl NONDriverHelper {
         let (block, remain) = GroupProposal::raw_decode(obj.object_raw.as_slice())?;
         assert_eq!(remain.len(), 0);
         Ok(block)
-    }
-
-    pub async fn get_group(
-        &self,
-        group_id: &ObjectId,
-        group_shell_id: Option<&ObjectId>,
-        from: Option<&ObjectId>,
-    ) -> BuckyResult<Group> {
-        match group_shell_id {
-            Some(group_shell_id) => {
-                let shell = self.get_object(group_shell_id, from).await?;
-                let (group_shell, remain) = GroupShell::raw_decode(shell.object_raw.as_slice())?;
-                assert_eq!(remain.len(), 0);
-                let group = group_shell.into_object();
-                let group_id_from_shell = group.desc().object_id();
-                if &group_id_from_shell == group_id {
-                    Ok(group)
-                } else {
-                    let msg = format!(
-                        "groupid({}) from GroupShell unmatch with the original group({})",
-                        group_id_from_shell, group_id
-                    );
-                    log::warn!("{}", msg);
-                    Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
-                }
-            }
-            None => {
-                let group = self.meta_client.get_desc(group_id).await?;
-                if let SavedMetaObject::Group(group) = group {
-                    Ok(group)
-                } else {
-                    let msg = format!("Object({}) from MetaChain is not a group", group_id);
-                    log::warn!("{}", msg);
-                    Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
-                }
-            }
-        }
     }
 
     pub async fn get_ood(&self, people_id: &PeopleId) -> BuckyResult<DeviceId> {

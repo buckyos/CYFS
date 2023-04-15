@@ -40,17 +40,29 @@ use crate::{
  * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-8.sec -t=test-group/members/people-8.desc -dba
  * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-9.sec -t=test-group/members/people-9.desc -dba
  *
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-5 -d=test-group/members/people-5.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-6 -d=test-group/members/people-6.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-7 -d=test-group/members/people-7.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-8 -d=test-group/members/people-8.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-9 -d=test-group/members/people-9.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-5 -d=test-group/admins/people-5.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-6 -d=test-group/admins/people-6.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-7 -d=test-group/admins/people-7.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-8 -d=test-group/admins/people-8.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-10 -d=test-group/members/people-10.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-11 -d=test-group/members/people-11.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-12 -d=test-group/members/people-12.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-13 -d=test-group/members/people-13.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-14 -d=test-group/members/people-14.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-15 -d=test-group/members/people-15.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-16 -d=test-group/members/people-16.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-17 -d=test-group/members/people-17.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-18 -d=test-group/members/people-18.desc 1 0
  *
  * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 1 0
  *
  * .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
  *
- * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_blob= -v=1
+ * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_admin=5r4MYfFBsQqy4r2LTccK1yyipRTtAjqvhX3GLU2qX3Lo --add_member=5r4MYfFapPzrXhfxWJNZJf4pk5Ncfrx5ax2yumWKZrZj
+ * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_ood=5aSixgNLsF6r3qjDKP3XkBwnDRSr5G5hrGRM2v2LnLoA
+ * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_shell=9cfBkPt2RPa3MofMmsAXpq8xHYn8A2xvVPuQiBT4XTp9 -v=3
+ * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=
+ *
 */
 
 mod Common {
@@ -374,12 +386,12 @@ mod Common {
 
     pub async fn init_admins() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
         let min_port = 30217_u16;
-        init_member_from_dir("./test-group/admins", "admin", 4, min_port).await
+        init_member_from_dir("./test-group/admins", "admin", 8, min_port).await
     }
 
     pub async fn init_members() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
         let min_port = 31217_u16;
-        init_member_from_dir("./test-group/members", "member", 9, min_port).await
+        init_member_from_dir("./test-group/members", "member", 18, min_port).await
     }
 
     pub async fn init_group(

@@ -9,7 +9,9 @@ use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, G
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
-use crate::{HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND};
+use crate::{
+    storage::GroupShellManager, HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND,
+};
 
 enum StatePushMessage {
     ProposalResult(GroupProposal, BuckyError),
@@ -30,11 +32,19 @@ impl StatePusher {
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
-        let mut runner =
-            StateChanggeRunner::new(local_id, network_sender, rpath, non_driver, tx.clone(), rx);
+        let mut runner = StateChanggeRunner::new(
+            local_id,
+            network_sender,
+            rpath,
+            non_driver,
+            shell_mgr,
+            tx.clone(),
+            rx,
+        );
 
         async_std::task::spawn(async move { runner.run().await });
 
@@ -99,6 +109,7 @@ struct StateChanggeRunner {
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
     non_driver: crate::network::NONDriverHelper,
+    shell_mgr: GroupShellManager,
     tx_notifier: async_std::channel::Sender<StatePushMessage>,
     rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     delay_notify_times: usize,
@@ -113,6 +124,7 @@ impl StateChanggeRunner {
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
         tx_notifier: async_std::channel::Sender<StatePushMessage>,
         rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     ) -> Self {
@@ -127,6 +139,7 @@ impl StateChanggeRunner {
             notify_progress: None,
             local_id,
             request_last_state_remotes: HashSet::new(),
+            shell_mgr,
         }
     }
 
@@ -220,7 +233,7 @@ impl StateChanggeRunner {
 
                 if block.group_shell_id() != progress.header_block.group_shell_id() {
                     let group = self
-                        .non_driver
+                        .shell_mgr
                         .get_group(block.rpath().group_id(), Some(block.group_shell_id()), None)
                         .await;
                     if group.is_err() {
@@ -242,7 +255,7 @@ impl StateChanggeRunner {
             }
             None => {
                 let group = self
-                    .non_driver
+                    .shell_mgr
                     .get_group(block.rpath().group_id(), Some(block.group_shell_id()), None)
                     .await;
                 if group.is_err() {

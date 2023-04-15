@@ -8,6 +8,10 @@
 |   |--option-->GroupOption
 |
 |--${group-id}
+|   |--${DecId("shells", ${group-id})}
+|   |   |--.shells
+|   |       |--.latest-->GroupShell // latest version
+|   |       |--${group.version}-->GroupShell // add shells for history versions of group
 |   |--${dec-id}
 |       |--.dec-state-->ObjectId // for dec；各Group的dec状态放这里
 |       |   // APP控制的实体状态，通常是个map-id
@@ -18,7 +22,6 @@
 |       |   // 且不同${r-path}之间是并列的，不能嵌套
 |       |--.link // 区块链结构，记录状态变更链条
 |           |--${r-path}
-|               |--group-shell-->ObjectShell(Group)
 |               |--users
 |               |   |--${user-id}
 |               |       |--xxx

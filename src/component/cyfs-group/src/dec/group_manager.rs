@@ -12,8 +12,9 @@ use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 
 use crate::{
-    storage::GroupStorage, HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper,
-    RPathClient, RPathEventNotifier, RPathService, NET_PROTOCOL_VPORT,
+    storage::{GroupShellManager, GroupStorage},
+    HotstuffMessage, HotstuffPackage, NONDriver, NONDriverHelper, RPathClient, RPathEventNotifier,
+    RPathService, NET_PROTOCOL_VPORT,
 };
 
 type ServiceByRPath = HashMap<String, RPathService>;
@@ -27,6 +28,7 @@ type ClientByGroup = HashMap<ObjectId, ClientByDec>;
 struct GroupRPathMgrRaw {
     service_by_group: ServiceByGroup,
     client_by_group: ClientByGroup,
+    shell_mgr: HashMap<ObjectId, GroupShellManager>,
 }
 
 struct LocalInfo {
@@ -64,6 +66,7 @@ impl GroupManager {
         let raw = GroupRPathMgrRaw {
             service_by_group: ServiceByGroup::default(),
             client_by_group: ClientByGroup::default(),
+            shell_mgr: HashMap::default(),
         };
 
         let mgr = Self(Arc::new((local_info, RwLock::new(raw))));
@@ -113,7 +116,6 @@ impl GroupManager {
             let state_mgr = local_info.global_state_mgr.clone();
             let non_driver = NONDriverHelper::new(
                 local_info.non_driver.clone(),
-                local_info.meta_client.clone(),
                 dec_id.clone(),
                 local_device_id.object_id().clone(),
             );
@@ -139,11 +141,15 @@ impl GroupManager {
                     let state_proccessor = state_mgr
                         .load_root_state(local_device_id.object_id(), Some(local_id), true)
                         .await?;
+                    let shell_mgr = self
+                        .check_group_shell_mgr(group_id, non_driver.clone(), None)
+                        .await?;
                     let client = RPathClient::load(
                         local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
                         state_proccessor.unwrap(),
                         non_driver,
+                        shell_mgr,
                         network_sender,
                     )
                     .await?;
@@ -397,7 +403,6 @@ impl GroupManager {
             let signer = local_info.signer.clone();
             let non_driver = NONDriverHelper::new(
                 local_info.non_driver.clone(),
-                local_info.meta_client.clone(),
                 dec_id.clone(),
                 local_device_id.object_id().clone(),
             );
@@ -471,6 +476,9 @@ impl GroupManager {
             match found {
                 std::collections::hash_map::Entry::Occupied(found) => Ok(found.get().clone()),
                 std::collections::hash_map::Entry::Vacant(entry) => {
+                    let shell_mgr = self
+                        .check_group_shell_mgr(group_id, non_driver.clone(), remote)
+                        .await?;
                     let service = RPathService::load(
                         local_id,
                         local_device_id.object_id().clone(),
@@ -479,6 +487,7 @@ impl GroupManager {
                         RPathEventNotifier::new(non_driver.clone()),
                         network_sender,
                         non_driver,
+                        shell_mgr,
                         store,
                     )
                     .await?;
@@ -523,5 +532,66 @@ impl GroupManager {
 
         assert!(result.is_none());
         Ok(())
+    }
+
+    async fn check_group_shell_mgr(
+        &self,
+        group_id: &ObjectId,
+        non_driver: NONDriverHelper,
+        remote: Option<&ObjectId>,
+    ) -> BuckyResult<GroupShellManager> {
+        {
+            let raw = self.read().await;
+            if let Some(shell_mgr) = raw.shell_mgr.get(group_id) {
+                return Ok(shell_mgr.clone());
+            }
+        }
+
+        let local_info = self.local_info();
+        let ret = GroupShellManager::load(
+            group_id,
+            non_driver.clone(),
+            local_info.meta_client.clone(),
+            local_info.bdt_stack.local_device_id().object_id().clone(),
+            &local_info.global_state_mgr.clone(),
+        )
+        .await;
+
+        let shell_mgr = match ret {
+            Ok(shell_mgr) => shell_mgr,
+            Err(err) => {
+                if err.code() == BuckyErrorCode::NotFound {
+                    log::debug!(
+                        "shells of group({}) not found, will create automatically.",
+                        group_id
+                    );
+                    GroupShellManager::create(
+                        group_id,
+                        non_driver.clone(),
+                        local_info.meta_client.clone(),
+                        local_info.bdt_stack.local_device_id().object_id().clone(),
+                        &local_info.global_state_mgr.clone(),
+                        remote,
+                    )
+                    .await?
+                } else {
+                    log::error!("load shells of group({}) failed, err {:?}", group_id, err);
+                    return Err(err);
+                }
+            }
+        };
+
+        {
+            let mut raw = self.write().await;
+            let shell_mgr = match raw.shell_mgr.get(group_id) {
+                Some(shell_mgr) => shell_mgr.clone(),
+                None => {
+                    raw.shell_mgr.insert(group_id.clone(), shell_mgr.clone());
+                    shell_mgr
+                }
+            };
+
+            Ok(shell_mgr)
+        }
     }
 }

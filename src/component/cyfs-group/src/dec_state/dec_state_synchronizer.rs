@@ -9,7 +9,7 @@ use futures::FutureExt;
 
 use crate::{
     network::NONDriverHelper,
-    storage::{DecStorage, DecStorageCache},
+    storage::{DecStorage, DecStorageCache, GroupShellManager},
     Committee, CHANNEL_CAPACITY,
 };
 
@@ -39,6 +39,7 @@ impl DecStateSynchronizer {
         rpath: GroupRPath,
         committee: Committee,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
         store: DecStorage,
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
@@ -52,6 +53,7 @@ impl DecStateSynchronizer {
             rx,
             store,
             non_driver,
+            shell_mgr,
             notifier.clone(),
         );
 
@@ -129,6 +131,7 @@ struct DecStateSynchronizerRunner {
     update_notifies: Option<UpdateNotifyInfo>,
 
     non_driver: NONDriverHelper,
+    shell_mgr: GroupShellManager,
     proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
 }
 
@@ -147,6 +150,7 @@ impl DecStateSynchronizerRunner {
         )>,
         store: DecStorage,
         non_driver: NONDriverHelper,
+        shell_mgr: GroupShellManager,
         proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
     ) -> Self {
         Self {
@@ -161,6 +165,7 @@ impl DecStateSynchronizerRunner {
             non_driver,
             proposal_result_notifier,
             committee,
+            shell_mgr,
         }
     }
 
@@ -278,7 +283,7 @@ impl DecStateSynchronizerRunner {
             if let Some(state_cache) = state_cache {
                 let group_shell_id = state_cache.header_block.group_shell_id().clone();
                 let group = self
-                    .non_driver
+                    .shell_mgr
                     .get_group(self.rpath.group_id(), Some(&group_shell_id), None)
                     .await;
                 if let Ok(group) = group {

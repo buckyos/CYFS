@@ -11,25 +11,32 @@ use cyfs_base::{
 };
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
-    GroupConsensusBlockObject, ToGroupShell, HotstuffBlockQC, HotstuffTimeout,
+    GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout, ToGroupShell,
 };
 use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
-use crate::network::NONDriverHelper;
+use crate::{network::NONDriverHelper, storage::GroupShellManager};
 
 #[derive(Clone)]
 pub(crate) struct Committee {
     group_id: ObjectId,
     non_driver: NONDriverHelper,
+    shell_mgr: GroupShellManager,
     local_device_id: ObjectId,
     group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_shell_id, group)
 }
 
 impl Committee {
-    pub fn new(group_id: ObjectId, non_driver: NONDriverHelper, local_device_id: ObjectId) -> Self {
+    pub fn new(
+        group_id: ObjectId,
+        non_driver: NONDriverHelper,
+        shell_mgr: GroupShellManager,
+        local_device_id: ObjectId,
+    ) -> Self {
         Committee {
             group_id,
             non_driver,
+            shell_mgr,
             group_cache: Arc::new(RwLock::new(HashMap::new())),
             local_device_id,
         }
@@ -360,7 +367,7 @@ impl Committee {
         }
 
         let group = self
-            .non_driver
+            .shell_mgr
             .get_group(&self.group_id, shell_id, from)
             .await?;
 

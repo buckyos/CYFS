@@ -10,7 +10,7 @@ use rand::Rng;
 
 use crate::{
     dec_state::{DecStateRequestor, DecStateSynchronizer},
-    storage::DecStorage,
+    storage::{DecStorage, GroupShellManager},
     Committee, HotstuffMessage, CLIENT_POLL_TIMEOUT,
 };
 
@@ -18,6 +18,7 @@ struct RPathClientRaw {
     rpath: GroupRPath,
     local_device_id: ObjectId,
     non_driver: crate::network::NONDriverHelper,
+    shell_mgr: GroupShellManager,
     network_sender: crate::network::Sender,
     state_sync: DecStateSynchronizer,
     state_requestor: DecStateRequestor,
@@ -32,12 +33,14 @@ impl RPathClient {
         rpath: GroupRPath,
         state_processor: GlobalStateRawProcessorRef,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
         network_sender: crate::network::Sender,
     ) -> BuckyResult<Self> {
         let dec_store = DecStorage::load(state_processor).await?;
         let committee = Committee::new(
             rpath.group_id().clone(),
             non_driver.clone(),
+            shell_mgr.clone(),
             local_device_id,
         );
 
@@ -46,6 +49,7 @@ impl RPathClient {
             rpath.clone(),
             committee.clone(),
             non_driver.clone(),
+            shell_mgr.clone(),
             dec_store.clone(),
         );
 
@@ -65,6 +69,7 @@ impl RPathClient {
             local_device_id,
             state_sync,
             state_requestor,
+            shell_mgr,
         };
 
         Ok(Self(Arc::new(raw)))
@@ -83,7 +88,7 @@ impl RPathClient {
         // TODO: signature
         let group = self
             .0
-            .non_driver
+            .shell_mgr
             .get_group(proposal.rpath().group_id(), None, None)
             .await?;
         let oods = group.ood_list_with_distance(&self.0.local_device_id);
@@ -148,7 +153,7 @@ impl RPathClient {
     pub async fn refresh_state(&self) -> BuckyResult<()> {
         let group = self
             .0
-            .non_driver
+            .shell_mgr
             .get_group(&self.0.rpath.group_id(), None, None)
             .await?;
 
@@ -166,7 +171,7 @@ impl RPathClient {
     pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<Option<NONObjectInfo>> {
         let group = self
             .0
-            .non_driver
+            .shell_mgr
             .get_group(self.0.rpath.group_id(), None, None)
             .await?;
 

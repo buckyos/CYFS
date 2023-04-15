@@ -8,8 +8,10 @@ use cyfs_core::{GroupProposal, GroupRPath};
 use cyfs_lib::NONObjectInfo;
 
 use crate::{
-    network::NONDriverHelper, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
-    PendingProposalHandler, PendingProposalMgr, RPathEventNotifier,
+    network::NONDriverHelper,
+    storage::{GroupShellManager, GroupStorage},
+    Committee, Hotstuff, HotstuffMessage, PendingProposalHandler, PendingProposalMgr,
+    RPathEventNotifier,
 };
 
 struct RPathServiceRaw {
@@ -33,12 +35,14 @@ impl RPathService {
         event_notifier: RPathEventNotifier,
         network_sender: crate::network::Sender,
         non_driver: NONDriverHelper,
+        shell_mgr: GroupShellManager,
         store: GroupStorage,
     ) -> BuckyResult<Self> {
         let (pending_proposal_handle, pending_proposal_consumer) = PendingProposalMgr::new();
         let committee = Committee::new(
             rpath.group_id().clone(),
             non_driver.clone(),
+            shell_mgr.clone(),
             local_device_id,
         );
         let hotstuff = Hotstuff::new(
@@ -49,6 +53,7 @@ impl RPathService {
             signer,
             network_sender.clone(),
             non_driver.clone(),
+            shell_mgr,
             pending_proposal_consumer,
             event_notifier,
             rpath.clone(),

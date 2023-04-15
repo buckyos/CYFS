@@ -1,9 +1,8 @@
-use cyfs_base::{ObjectId, ObjectIdDataBuilder};
+use cyfs_base::ObjectId;
 
 pub const STATE_PATH_SEPARATOR: &str = "/";
 pub const GROUP_STATE_PATH_DEC_STATE: &str = ".dec-state";
 pub const GROUP_STATE_PATH_LINK: &str = ".link";
-pub const GROUP_STATE_PATH_GROUP_SHELL: &str = "group-shell";
 pub const GROUP_STATE_PATH_LAST_VOTE_ROUNDS: &str = "last-vote-round";
 pub const GROUP_STATE_PATH_LAST_QC: &str = "last-qc";
 pub const GROUP_STATE_PATH_LAST_TC: &str = "last-tc";
@@ -20,17 +19,11 @@ pub const GROUP_STATE_PATH_ADDING: &str = "adding";
 pub const STATEPATH_GROUP_DEC_RPATH: &str = ".update";
 pub const STATEPATH_GROUP_DEC_LATEST_VERSION: &str = "latest-version";
 
-lazy_static::lazy_static! {
-    pub static ref STATEPATH_GROUP_DEC_ID: ObjectId = ObjectIdDataBuilder::new().data(".group".as_bytes()).build().unwrap();
-    pub static ref STATEPATH_GROUP_DEC_ID_STR: String = STATEPATH_GROUP_DEC_ID.to_string();
-}
-
 pub struct GroupStatePath {
     rpath: String,
     root: String,
     dec_state: String,
     link: String,
-    group_shell: String,
     last_vote_round: String,
     last_qc: String,
     last_tc: String,
@@ -49,12 +42,6 @@ impl GroupStatePath {
             root: Self::join(&["", rpath.as_str()]),
             dec_state: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_DEC_STATE]),
             link: Self::join(&["", rpath.as_str(), GROUP_STATE_PATH_LINK]),
-            group_shell: Self::join(&[
-                "",
-                rpath.as_str(),
-                GROUP_STATE_PATH_LINK,
-                GROUP_STATE_PATH_GROUP_SHELL,
-            ]),
             last_vote_round: Self::join(&[
                 "",
                 rpath.as_str(),
@@ -136,10 +123,6 @@ impl GroupStatePath {
 
     pub fn link(&self) -> &str {
         self.link.as_str()
-    }
-
-    pub fn group_shell(&self) -> &str {
-        self.group_shell.as_str()
     }
 
     pub fn last_vote_round(&self) -> &str {

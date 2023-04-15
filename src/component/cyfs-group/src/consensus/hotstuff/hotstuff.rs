@@ -23,6 +23,7 @@ use crate::{
     consensus::synchronizer::Synchronizer,
     dec_state::{CallReplyNotifier, CallReplyWaiter, StatePusher},
     helper::Timer,
+    storage::GroupShellManager,
     Committee, GroupObjectMapProcessor, GroupStorage, HotstuffMessage, PendingProposalConsumer,
     RPathEventNotifier, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
     GROUP_DEFAULT_CONSENSUS_INTERVAL, HOTSTUFF_TIMEOUT_DEFAULT, PROPOSAL_MAX_TIMEOUT,
@@ -58,6 +59,7 @@ impl Hotstuff {
         signer: Arc<RsaCPUObjectSigner>,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
         proposal_consumer: PendingProposalConsumer,
         event_notifier: RPathEventNotifier,
         rpath: GroupRPath,
@@ -70,6 +72,7 @@ impl Hotstuff {
             network_sender.clone(),
             rpath.clone(),
             non_driver.clone(),
+            shell_mgr,
         );
 
         let mut runner = HotstuffRunner::new(

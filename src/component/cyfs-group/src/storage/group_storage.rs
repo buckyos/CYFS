@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId, ObjectMap,
+    BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId, ObjectMap,
     ObjectMapOpEnvMemoryCache, ObjectTypeCode, RawConvertTo, RawDecode,
 };
 
 use cyfs_core::{
-    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, ToGroupShell,
-    HotstuffBlockQC, HotstuffTimeout,
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupQuorumCertificate, HotstuffBlockQC,
+    HotstuffTimeout,
 };
 use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
@@ -36,13 +36,11 @@ pub enum BlockLinkState {
 }
 
 pub struct GroupStorage {
-    group: Group,
     group_id: ObjectId,
     dec_id: ObjectId,
     rpath: String,
     local_device_id: ObjectId,
     non_driver: NONDriverHelper,
-    group_shell_id: ObjectId,
 
     cache: StorageCacheInfo,
 
@@ -59,10 +57,6 @@ impl GroupStorage {
         local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupStorage> {
-        let group = non_driver.get_group(group_id, None, None).await?;
-        let group_shell = group.to_shell();
-        let group_shell_id = group_shell.shell_id();
-
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
             .await?
@@ -72,12 +66,10 @@ impl GroupStorage {
         let object_map_processor = GroupObjectMapProcessorGroupState::new(&dec_group_state);
 
         Ok(Self {
-            group,
             group_id: group_id.clone(),
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_shell_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 GroupStatePath::new(rpath.to_string()),
@@ -100,16 +92,6 @@ impl GroupStorage {
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
-
-        let group = non_driver
-            .get_group(group_id, None, None)
-            .await
-            .map_err(|err| {
-                log::warn!("get group {} from noc failed {:?}", group_id, err);
-                err
-            })?;
-        let group_shell = group.to_shell();
-        let group_shell_id = group_shell.shell_id();
 
         let group_state = root_state_mgr
             .load_root_state(group_id, Some(group_id.clone()), true)
@@ -134,12 +116,10 @@ impl GroupStorage {
         let object_map_processor = GroupObjectMapProcessorGroupState::new(&dec_group_state);
 
         Ok(Self {
-            group,
             group_id: group_id.clone(),
             dec_id: dec_id.clone(),
             rpath: rpath.to_string(),
             non_driver,
-            group_shell_id,
             storage_engine: StorageEngineGroupState::new(
                 dec_group_state,
                 state_path,
@@ -174,14 +154,6 @@ impl GroupStorage {
 
     pub fn pre_commits(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
         &self.cache.pre_commits
-    }
-
-    pub fn group(&self) -> &Group {
-        &self.group
-    }
-
-    pub fn group_shell_id(&self) -> &ObjectId {
-        &self.group_shell_id
     }
 
     pub fn dec_state_id(&self) -> &Option<ObjectId> {
