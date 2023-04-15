@@ -174,7 +174,7 @@ impl EventListenerAsyncRoutine<RouterHandlerAclRequest, RouterHandlerAclResult> 
             action: RouterHandlerAction::Response,
             request: None,
             response: Some(Ok(AclHandlerResponse {
-                access: AclAccess::Accept,
+                action: AclAction::Accept,
             })),
         };
 
