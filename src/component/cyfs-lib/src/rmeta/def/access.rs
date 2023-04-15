@@ -92,6 +92,7 @@ impl PartialOrd for GlobalStatePathSpecifiedGroup {
 pub enum GlobalStatePathGroupAccess {
     Specified(GlobalStatePathSpecifiedGroup),
     Default(u32 /*AccessString*/),
+    Handler,
 }
 
 impl PartialOrd for GlobalStatePathGroupAccess {
@@ -99,12 +100,17 @@ impl PartialOrd for GlobalStatePathGroupAccess {
         match &self {
             Self::Specified(left) => match other {
                 Self::Specified(right) => left.partial_cmp(&right),
-                Self::Default(_) => Some(Ordering::Less),
+                _ => Some(Ordering::Less),
             },
             Self::Default(_left) => match other {
                 Self::Specified(_) => Some(Ordering::Greater),
                 Self::Default(_right) => Some(Ordering::Equal),
+                Self::Handler => Some(Ordering::Less),
             },
+            Self::Handler => match other {
+                Self::Handler => Some(Ordering::Equal),
+                _ => Some(Ordering::Greater),
+            }
         }
     }
 }
@@ -131,6 +137,9 @@ impl std::fmt::Display for GlobalStatePathGroupAccess {
                     AccessPermissions::format_u8(s.access),
                 )
             }
+            Self::Handler => {
+                write!(f, "[Handler]")
+            }
         }
     }
 }
@@ -144,6 +153,7 @@ impl GlobalStatePathGroupAccess {
                     return false;
                 }
             }
+            Self::Handler => {}
         }
 
         true

@@ -70,7 +70,12 @@ impl GlobalStatePathAccessList {
         self.list.clone()
     }
 
-    pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>, current_device_id: &DeviceId) -> BuckyResult<()> {
+    pub async fn check<'d, 'a, 'b>(
+        &self,
+        req: GlobalStateAccessRequest<'d, 'a, 'b>,
+        current_device_id: &DeviceId,
+        handler: &GlobalStatePathHandlerRef,
+    ) -> BuckyResult<()> {
         let req_path = if req.path.ends_with('/') {
             req.path.clone()
         } else {
@@ -86,8 +91,10 @@ impl GlobalStatePathAccessList {
                             info!("raccess match item: req={}, access={}", req, item);
                             return Ok(());
                         } else {
-                            let msg =
-                                format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
+                            let msg = format!(
+                                "raccess reject by item: device={}, req={}, access={}",
+                                current_device_id, req, item
+                            );
                             warn!("{}", msg);
                             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                         }
@@ -99,8 +106,10 @@ impl GlobalStatePathAccessList {
                                 info!("raccess match item: req={}, access={}", req, item);
                                 return Ok(());
                             } else {
-                                let msg =
-                                    format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
+                                let msg = format!(
+                                    "raccess reject by item: device={}, req={}, access={}",
+                                    current_device_id, req, item
+                                );
                                 warn!("{}", msg);
                                 return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                             }
@@ -109,11 +118,36 @@ impl GlobalStatePathAccessList {
                             continue;
                         }
                     }
+                    GlobalStatePathGroupAccess::Handler => {
+                        let handler_req = GlobalStatePathHandlerRequest {
+                            dec_id: req.dec.as_ref().to_owned(),
+                            req_path: req.path.as_ref().to_owned(),
+                            source: req.source.as_ref().to_owned(),
+                            permissions: req.permissions,
+                        };
+
+                        match handler.on_check(handler_req).await? {
+                            true => {
+                                return Ok(());
+                            }
+                            false => {
+                                let msg = format!(
+                                    "raccess reject by handler: device={}, req={}, access={}",
+                                    current_device_id, req, item
+                                );
+                                warn!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        let msg = format!("raccess reject by default: device={}, req={}", current_device_id, req);
+        let msg = format!(
+            "raccess reject by default: device={}, req={}",
+            current_device_id, req
+        );
         warn!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }

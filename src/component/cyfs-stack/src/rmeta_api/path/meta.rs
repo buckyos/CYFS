@@ -37,7 +37,7 @@ pub struct GlobalStatePathMetaSyncCollection {
     // current device id
     device_id: DeviceId,
 
-    meta: Arc<NOCCollectionRWSync<GlobalStatePathMeta>>,
+    meta: Arc<NOCCollectionRWAsync<GlobalStatePathMeta>>,
 
     // dump to local file for debug and review
     storage: Arc<GlobalStatePathMetaStorage>,
@@ -47,7 +47,7 @@ impl GlobalStatePathMetaSyncCollection {
     pub fn new(
         device_id: DeviceId,
         storage: Arc<GlobalStatePathMetaStorage>,
-        meta: NOCCollectionRWSync<GlobalStatePathMeta>,
+        meta: NOCCollectionRWAsync<GlobalStatePathMeta>,
     ) -> Self {
         Self {
             device_id,
@@ -60,9 +60,9 @@ impl GlobalStatePathMetaSyncCollection {
         Arc::new(Box::new(self))
     }
 
-    fn dump(&self) {
+    async fn dump(&self) {
         let data = {
-            let meta = self.meta.coll().read().unwrap();
+            let meta = self.meta.coll().read().await;
             serde_json::to_string(&meta as &GlobalStatePathMeta).unwrap()
         };
 
@@ -78,7 +78,7 @@ impl GlobalStatePathMetaSyncCollection {
         }
 
         {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             let ret = meta.access.add(item);
             if !ret {
                 return Ok(false);
@@ -88,7 +88,7 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(true)
     }
@@ -98,7 +98,7 @@ impl GlobalStatePathMetaSyncCollection {
         item: GlobalStatePathAccessItem,
     ) -> BuckyResult<Option<GlobalStatePathAccessItem>> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.access.remove(item)
         };
 
@@ -109,14 +109,14 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
     pub async fn clear_access(&self) -> BuckyResult<usize> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.access.clear()
         };
 
@@ -127,17 +127,18 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
-    pub fn check_access<'d, 'a, 'b>(
+    pub async fn check_access<'d, 'a, 'b>(
         &self,
         req: GlobalStateAccessRequest<'d, 'a, 'b>,
+        handler: &GlobalStatePathHandlerRef,
     ) -> BuckyResult<()> {
-        let meta = self.meta.coll().read().unwrap();
-        meta.access.check(req, &self.device_id)
+        let meta = self.meta.coll().read().await;
+        meta.access.check(req, &self.device_id, handler).await
     }
 
     pub async fn add_link(
@@ -146,7 +147,7 @@ impl GlobalStatePathMetaSyncCollection {
         target: impl Into<String> + AsRef<str>,
     ) -> BuckyResult<bool> {
         {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             let ret = meta.link.add(source, target)?;
             if !ret {
                 return Ok(false);
@@ -156,14 +157,14 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(true)
     }
 
     pub async fn remove_link(&self, source: &str) -> BuckyResult<Option<GlobalStatePathLinkItem>> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.link.remove(source)?
         };
 
@@ -174,14 +175,14 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
     pub async fn clear_link(&self) -> BuckyResult<usize> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.link.clear()
         };
 
@@ -192,13 +193,13 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
-    pub fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
-        let meta = self.meta.coll().read().unwrap();
+    pub async fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
+        let meta = self.meta.coll().read().await;
         meta.link.resolve(source)
     }
 
@@ -212,7 +213,7 @@ impl GlobalStatePathMetaSyncCollection {
         }
 
         {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             let ret = meta.object.add(item);
             if !ret {
                 return Ok(false);
@@ -222,7 +223,7 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(true)
     }
@@ -234,7 +235,7 @@ impl GlobalStatePathMetaSyncCollection {
         let item = ObjectMeta::new_uninit(item);
 
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.object.remove(&item)
         };
 
@@ -245,7 +246,7 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         let item = ret.unwrap();
         let ret = GlobalStateObjectMetaItem {
@@ -259,7 +260,7 @@ impl GlobalStatePathMetaSyncCollection {
 
     pub async fn clear_object_meta(&self) -> BuckyResult<usize> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.object.clear()
         };
 
@@ -270,19 +271,19 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
-    pub fn check_object_access(
+    pub async fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
         object_data: &dyn ObjectSelectorDataProvider,
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
-        let meta = self.meta.coll().read().unwrap();
+        let meta = self.meta.coll().read().await;
         meta.object.check(
             target_dec_id,
             object_data,
@@ -292,11 +293,11 @@ impl GlobalStatePathMetaSyncCollection {
         )
     }
 
-    pub fn query_object_meta(
+    pub async fn query_object_meta(
         &self,
         object_data: &dyn ObjectSelectorDataProvider,
     ) -> Option<GlobalStateObjectMetaConfigItemValue> {
-        let meta = self.meta.coll().read().unwrap();
+        let meta = self.meta.coll().read().await;
         meta.object
             .query_object_meta(object_data)
             .map(|ret| GlobalStateObjectMetaConfigItemValue {
@@ -308,7 +309,7 @@ impl GlobalStatePathMetaSyncCollection {
     // path config
     pub async fn add_path_config(&self, item: GlobalStatePathConfigItem) -> BuckyResult<bool> {
         {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             let ret = meta.config.add(item);
             if !ret {
                 return Ok(false);
@@ -318,7 +319,7 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(true)
     }
@@ -328,7 +329,7 @@ impl GlobalStatePathMetaSyncCollection {
         item: GlobalStatePathConfigItem,
     ) -> BuckyResult<Option<GlobalStatePathConfigItem>> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.config.remove(item)
         };
 
@@ -339,14 +340,14 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
     pub async fn clear_path_config(&self) -> BuckyResult<usize> {
         let ret = {
-            let mut meta = self.meta.coll().write().unwrap();
+            let mut meta = self.meta.coll().write().await;
             meta.config.clear()
         };
 
@@ -357,14 +358,14 @@ impl GlobalStatePathMetaSyncCollection {
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
-        self.dump();
+        self.dump().await;
 
         Ok(ret)
     }
 
-    pub fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
+    pub async fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
         let ret = {
-            let meta = self.meta.coll().write().unwrap();
+            let meta = self.meta.coll().write().await;
             match meta.config.query(path) {
                 Some(item) => Some(GlobalStatePathConfigItemValue {
                     storage_state: item.storage_state,
@@ -395,11 +396,12 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_access(self).await
     }
 
-    fn check_access<'d, 'a, 'b>(
+    async fn check_access<'d, 'a, 'b>(
         &self,
         req: GlobalStateAccessRequest<'d, 'a, 'b>,
+        handler: &GlobalStatePathHandlerRef,
     ) -> BuckyResult<()> {
-        Self::check_access(self, req)
+        Self::check_access(self, req, handler).await
     }
 
     // link relate methods
@@ -415,8 +417,8 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_link(self).await
     }
 
-    fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
-        Self::resolve_link(self, source)
+    async fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
+        Self::resolve_link(self, source).await
     }
 
     // object meta
@@ -435,21 +437,21 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_object_meta(self).await
     }
 
-    fn query_object_meta(
+    async fn query_object_meta(
         &self,
         object_data: &dyn ObjectSelectorDataProvider,
     ) -> Option<GlobalStateObjectMetaConfigItemValue> {
-        Self::query_object_meta(self, object_data)
+        Self::query_object_meta(self, object_data).await
     }
     
-    fn check_object_access(
+    async fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
         object_data: &dyn ObjectSelectorDataProvider,
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
-        Self::check_object_access(self, target_dec_id, object_data, source, permissions)
+        Self::check_object_access(self, target_dec_id, object_data, source, permissions).await
     }
 
     // path config
@@ -467,7 +469,7 @@ impl GlobalStateMetaRawProcessor for GlobalStatePathMetaSyncCollection {
         Self::clear_path_config(self).await
     }
 
-    fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
-        Self::query_path_config(self, path)
+    async fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
+        Self::query_path_config(self, path).await
     }
 }
