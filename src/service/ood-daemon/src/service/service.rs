@@ -147,8 +147,9 @@ impl Service {
             return;
         }
 
-        // 如果进程是我们自己拉起的，那么优先尝试使用进程对象来停止
-        if self.state.lock().unwrap().process.is_some() {
+        // If the process is launched by ourselves, then give priority to trying the process object to stop
+        let process_exists = self.state.lock().unwrap().process.is_some();
+        if process_exists {
             self.kill_process();
         }
 
@@ -565,16 +566,20 @@ impl Service {
             self.name, self.full_fid,
         );
 
-        // 拷贝文件前，确保服务已经停止
+        // Before copying the file, make sure that the service has stopped
         self.sync_state(ServiceState::Stop);
 
-        // 加载新的包文件
-        let ret = self.info.lock().unwrap().load_package_file(&file).map_err(|e| {
-            self.info.lock().unwrap().state = ServicePackageLocalState::Invalid;
-            e
-        })?;
+        // Load new package files
+        let ret = {
+            let mut info = self.info.lock().unwrap();
+            let ret = info.load_package_file(&file).map_err(|e| {
+                info.state = ServicePackageLocalState::Invalid;
+                e
+            })?;
 
-        self.info.lock().unwrap().state = ServicePackageLocalState::Ready;
+            info.state = ServicePackageLocalState::Ready;
+            ret
+        };
 
         self.sync_state(ServiceState::Stop);
 
