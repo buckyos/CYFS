@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Error};
+use std::io::{Error, ErrorKind};
 
 use cyfs_base::{BuckyResult, ChunkId};
 
@@ -12,6 +12,7 @@ use async_std::sync::Mutex;
 use async_std::sync::RwLock;
 
 use std::io::prelude::*;
+use crate::chunk_processor::set_chunk;
 
 
 #[derive(Debug)]
@@ -85,6 +86,14 @@ impl ChunkStore {
         chunk_lock.read().await;
 
         let chunk_path = self.chunk_dir.join(chunk_id.to_string());
+        let file_len = std::fs::metadata(&chunk_path)?.len();
+        let chunk_len = chunk_id.len();
+        if chunk_len as u64 != file_len {
+            error!("file {} len mismatch!, except {} actual {}", chunk_path.display(), chunk_len, file_len);
+            info!("delete chunk file {}", chunk_path.display());
+            let _ = std::fs::remove_file(chunk_path);
+            return Err(Error::from(ErrorKind::NotFound));
+        }
         let file = File::open(chunk_path.as_path()).await?;
         let reader = BufReader::new(file);
         Ok(reader)
@@ -104,16 +113,17 @@ impl ChunkStore {
 
         chunk_lock.write().await;
 
-        info!("[set_chunk], start write chunk to file");
         let chunk_path = self.chunk_dir.join(chunk_id.to_string());
 
-        info!("[set_chunk], create chunk file {}", chunk_path.display());
-        // let mut file = File::create(chunk_path.as_path()).await?;
-        let mut file = std::fs::File::create(&chunk_path)?;
-
-        info!("[set_chunk], write chunk file {}", chunk_path.display());
-        // file.write(chunk).await?;
-        file.write_all(chunk)?;
+        info!("[set_chunk], write chunk {} to {}", chunk_id, chunk_path.display());
+        if let Err(e) = std::fs::write(&chunk_path, chunk) {
+            error!("set chunk {} err {}", chunk_path.display(), e);
+            if chunk_path.exists() {
+                info!("delete chunk file {}", chunk_path.display());
+                std::fs::remove_file(&chunk_path)?;
+            }
+            return Err(e)
+        }
 
         info!("[set_chunk], end write chunk file {}", chunk_path.display());
         Ok(())
