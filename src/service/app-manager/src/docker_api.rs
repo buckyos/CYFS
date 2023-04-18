@@ -217,6 +217,9 @@ impl DockerApi {
 
         // 构造 start.sh
         let start_sh_path = dockerfile_dir.join("start.sh");
+        if start_sh_path.exists() {
+            let _ = std::fs::remove_file(&start_sh_path);
+        }
         let gateway_ip = DockerApi::get_network_gateway_ip()?;
         info!("get docker start shell 's gateway ip: {}", gateway_ip);
 
