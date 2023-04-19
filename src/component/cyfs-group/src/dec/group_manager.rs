@@ -414,6 +414,10 @@ impl GroupManager {
             );
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
 
+            let shell_mgr = self
+                .check_group_shell_mgr(group_id, non_driver.clone(), remote)
+                .await?;
+
             let store = GroupStorage::load(
                 group_id,
                 dec_id,
@@ -476,9 +480,6 @@ impl GroupManager {
             match found {
                 std::collections::hash_map::Entry::Occupied(found) => Ok(found.get().clone()),
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    let shell_mgr = self
-                        .check_group_shell_mgr(group_id, non_driver.clone(), remote)
-                        .await?;
                     let service = RPathService::load(
                         local_id,
                         local_device_id.object_id().clone(),

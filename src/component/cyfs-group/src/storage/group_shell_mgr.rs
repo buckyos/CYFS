@@ -171,14 +171,16 @@ impl GroupShellManager {
         Ok(ret)
     }
 
-    pub fn group(&self) -> Group {
+    /// get latest group in cache without query.
+    /// let (latest_group, latest_shell_id) = self.group();
+    pub fn group(&self) -> (Group, ObjectId) {
         async_std::task::block_on(async move {
             let cache = self.0.cache.read().await;
             let group = cache
                 .groups_by_shell
                 .get(&cache.latest_shell_id)
                 .expect("lastest group must be exists.");
-            group.as_ref().clone()
+            (group.as_ref().clone(), cache.latest_shell_id.clone())
         })
     }
 

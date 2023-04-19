@@ -139,6 +139,7 @@ impl ProtobufTransform<&HotstuffTimeoutSign>
 pub struct HotstuffTimeout {
     pub round: u64,
     pub votes: Vec<HotstuffTimeoutSign>,
+    pub group_shell_id: Option<ObjectId>,
 }
 
 #[derive(Clone, ProtobufTransformType)]
@@ -274,9 +275,15 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         round: u64,
         group_shell_id: ObjectId,
         qc: Option<HotstuffBlockQC>,
-        tc: Option<HotstuffTimeout>,
+        mut tc: Option<HotstuffTimeout>,
         owner: ObjectId,
     ) -> Self {
+        if let Some(tc) = tc.as_mut() {
+            if tc.group_shell_id.as_ref() == Some(&group_shell_id) {
+                tc.group_shell_id = None;
+            }
+        }
+
         let body = GroupConsensusBlockBodyContent { proposals, qc, tc };
 
         let desc = GroupConsensusBlockDescContent {

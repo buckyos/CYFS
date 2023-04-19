@@ -401,6 +401,7 @@ message HotstuffTimeout {
     }
 
     repeated VoteSignature votes = 2;
+    optional bytes group_shell_id = 3; // None if it's same as the block
 }
 
 message GroupConsensusBlockDescContent {

@@ -23,7 +23,6 @@ pub(crate) struct Committee {
     non_driver: NONDriverHelper,
     shell_mgr: GroupShellManager,
     local_device_id: ObjectId,
-    group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_shell_id, group)
 }
 
 impl Committee {
@@ -37,13 +36,8 @@ impl Committee {
             group_id,
             non_driver,
             shell_mgr,
-            group_cache: Arc::new(RwLock::new(HashMap::new())),
             local_device_id,
         }
-    }
-
-    pub async fn get_group(&self, group_shell_id: Option<&ObjectId>) -> BuckyResult<Group> {
-        self.check_group(group_shell_id, None).await
     }
 
     pub async fn quorum_threshold(
@@ -51,7 +45,10 @@ impl Committee {
         voters: &HashSet<ObjectId>,
         group_shell_id: Option<&ObjectId>,
     ) -> BuckyResult<bool> {
-        let group = self.check_group(group_shell_id, None).await?;
+        let group = self
+            .shell_mgr
+            .get_group(&self.group_id, group_shell_id, None)
+            .await?;
         let voters: Vec<&ObjectId> = voters
             .iter()
             .filter(|id| {
@@ -72,7 +69,13 @@ impl Committee {
         group_shell_id: Option<&ObjectId>,
         round: u64,
     ) -> BuckyResult<ObjectId> {
-        let group = self.check_group(group_shell_id, None).await?;
+        let group = if group_shell_id.is_none() {
+            self.shell_mgr.group().0
+        } else {
+            self.shell_mgr
+                .get_group(&self.group_id, group_shell_id, None)
+                .await?
+        };
         let i = (round % (group.ood_list().len() as u64)) as usize;
         Ok(group.ood_list()[i].object_id().clone())
     }
@@ -85,21 +88,23 @@ impl Committee {
         /* *
          * 验证block下的签名是否符合对上一个block归属group的确认
          */
+        let block_id = block.block_id();
         if !block.check() {
             log::warn!(
                 "[group committee] error block with invalid content: {}",
-                block.named_object().desc().calculate_id()
+                block_id
             )
         }
 
         log::debug!(
             "[group committee] {} verify block {} step1",
             self.local_device_id,
-            block.block_id()
+            block_id
         );
 
         let group = self
-            .check_group(Some(block.group_shell_id()), Some(&from))
+            .shell_mgr
+            .get_group(&self.group_id, Some(block.group_shell_id()), Some(&from))
             .await?;
 
         if !self.check_block_sign(&block, &group).await? {
@@ -116,11 +121,23 @@ impl Committee {
         log::debug!(
             "[group committee] {} verify block {} step2",
             self.local_device_id,
-            block.block_id()
+            block_id
         );
 
         let prev_block = if let Some(qc) = block.qc() {
-            let prev_block = self.non_driver.get_block(&qc.block_id, None).await?;
+            let prev_block = self
+                .non_driver
+                .get_block(&qc.block_id, Some(&from))
+                .await
+                .map_err(|err| {
+                    log::error!(
+                        "get the prev-block({}) for verify block({}) failed: {:?}",
+                        qc.block_id,
+                        block_id,
+                        err
+                    );
+                    err
+                })?;
             self.verify_qc(qc, &prev_block).await?;
             Some(prev_block)
         } else {
@@ -130,17 +147,17 @@ impl Committee {
         log::debug!(
             "[group committee] {} verify block {} step3",
             self.local_device_id,
-            block.block_id()
+            block_id
         );
 
         if let Some(tc) = block.tc() {
-            self.verify_tc(tc, prev_block.as_ref()).await?;
+            self.verify_tc(tc, block.group_shell_id()).await?;
         }
 
         log::debug!(
             "[group committee] {} verify block {} step4",
             self.local_device_id,
-            block.block_id()
+            block_id
         );
 
         Ok(())
@@ -167,7 +184,12 @@ impl Committee {
             ));
         }
 
-        self.check_group(Some(block_desc.content().group_shell_id()), Some(&from))
+        self.shell_mgr
+            .get_group(
+                &self.group_id,
+                Some(block_desc.content().group_shell_id()),
+                Some(&from),
+            )
             .await?;
 
         log::debug!(
@@ -237,27 +259,14 @@ impl Committee {
     pub async fn verify_tc(
         &self,
         tc: &HotstuffTimeout,
-        prev_block: Option<&GroupConsensusBlock>,
+        group_shell_id: &ObjectId,
     ) -> BuckyResult<()> {
-        let highest_round = tc
-            .votes
-            .iter()
-            .map(|v| v.high_qc_round)
-            .max()
-            .map_or(0, |round| round);
-        let prev_round = prev_block.map_or(0, |b| b.round());
-        if highest_round != prev_round {
-            log::warn!("[group committee] hightest round is not match with prev-block in tc, highest_round: {:?}, prev_round: {:?}", highest_round, prev_round);
-            return Err(BuckyError::new(
-                BuckyErrorCode::NotMatch,
-                "round not match in tc",
-            ));
-        }
+        let tc_group_shell_id = tc.group_shell_id.as_ref().unwrap_or(group_shell_id);
 
         let is_enough = self
             .quorum_threshold(
                 &tc.votes.iter().map(|v| v.voter).collect(),
-                prev_block.map(|b| b.group_shell_id()),
+                Some(tc_group_shell_id),
             )
             .await?;
 
@@ -270,7 +279,8 @@ impl Committee {
         }
 
         let verify_vote_results = futures::future::join_all(tc.votes.iter().map(|vote| async {
-            let hash = HotstuffTimeoutVote::hash_content(vote.high_qc_round, tc.round);
+            let hash =
+                HotstuffTimeoutVote::hash_content(vote.high_qc_round, tc.round, tc_group_shell_id);
             match self.non_driver.get_device(&vote.voter).await {
                 Ok(device) => {
                     let verifier = RsaCPUObjectVerifier::new(device.desc().public_key().clone());
@@ -349,50 +359,6 @@ impl Committee {
             .into_iter()
             .find(|r| r.is_err())
             .map_or(Ok(()), |e| e)
-    }
-
-    pub async fn check_group(
-        &self,
-        shell_id: Option<&ObjectId>,
-        from: Option<&ObjectId>,
-    ) -> BuckyResult<Group> {
-        {
-            // read
-            let cache = self.group_cache.read().await;
-            if let Some(shell_id) = shell_id {
-                if let Some(group) = cache.get(shell_id) {
-                    return Ok(group.clone());
-                }
-            }
-        }
-
-        let group = self
-            .shell_mgr
-            .get_group(&self.group_id, shell_id, from)
-            .await?;
-
-        let group_shell = group.to_shell();
-        let calc_id = group_shell.shell_id();
-        if let Some(id) = shell_id {
-            assert_eq!(&calc_id, id);
-        }
-
-        {
-            // write
-            let mut cache = self.group_cache.write().await;
-            match cache.entry(calc_id) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
-                    if entry.get().version() < group.version() {
-                        entry.insert(group.clone());
-                    }
-                }
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert(group.clone());
-                }
-            }
-        }
-
-        Ok(group)
     }
 
     async fn check_block_sign(

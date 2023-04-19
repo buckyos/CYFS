@@ -80,7 +80,7 @@ mod Common {
     };
     use cyfs_bdt_ext::{BdtStackParams, SNMode};
     use cyfs_chunk_lib::ChunkMeta;
-    use cyfs_core::{DecApp, DecAppId};
+    use cyfs_core::{DecApp, DecAppId, ToGroupShell};
     use cyfs_lib::{BrowserSanboxMode, NONObjectInfo, SharedCyfsStack};
     use cyfs_meta_lib::MetaMinerTarget;
     use cyfs_stack::{
@@ -386,12 +386,12 @@ mod Common {
 
     pub async fn init_admins() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
         let min_port = 30217_u16;
-        init_member_from_dir("./test-group/admins", "admin", 8, min_port).await
+        init_member_from_dir("./test-group/admins", "admin", 5, min_port).await
     }
 
     pub async fn init_members() -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
         let min_port = 31217_u16;
-        init_member_from_dir("./test-group/members", "member", 18, min_port).await
+        init_member_from_dir("./test-group/members", "member", 10, min_port).await
     }
 
     pub async fn init_group(
@@ -530,6 +530,15 @@ mod Common {
             Some(Arc::new(AnyNamedObject::Standard(StandardObject::Group(
                 group.clone(),
             )))),
+        ));
+
+        let group_shell = group.to_shell();
+        let group_shell_vec = group_shell.to_vec().unwrap();
+        let typeless = TypelessCoreObject::clone_from_slice(group_shell_vec.as_slice()).unwrap();
+        known_objects.list.push(NONObjectInfo::new(
+            group_shell.shell_id(),
+            group_shell_vec,
+            Some(Arc::new(AnyNamedObject::Core(typeless))),
         ));
 
         let dec_app_vec = dec_app.to_vec().unwrap();
@@ -1199,6 +1208,8 @@ async fn main_run() {
         ws_port += 1;
     }
 
+    log::info!("stacks for admins has opened.");
+
     for ((member, _), (device, private_key)) in members.iter() {
         let (cyfs_stack, shared_stack) = create_stack(
             member,
@@ -1223,6 +1234,8 @@ async fn main_run() {
         ws_port += 1;
     }
 
+    log::info!("stacks for members has opened.");
+
     async_std::task::sleep(Duration::from_millis(10000)).await;
 
     for i in 0..admin_stacks.len() {
@@ -1242,6 +1255,8 @@ async fn main_run() {
         admin_group_mgrs.push(group_mgr);
     }
 
+    log::info!("test dec-service for admins has opened.");
+
     for i in 0..member_stacks.len() {
         let (_, shared_stack) = member_stacks.get(i).unwrap();
         let ((member, _), _) = members.get(i).unwrap();
@@ -1254,6 +1269,8 @@ async fn main_run() {
 
         member_group_mgrs.push(group_mgr);
     }
+
+    log::info!("test dec-client for members has opened.");
 
     // async_std::task::sleep(Duration::from_millis(10000)).await;
 

@@ -14,6 +14,7 @@ message HotstuffTimeoutVote {
     uint64 round = 2;
     bytes voter = 3;
     bytes signature = 4;
+    bytes group_shell_id = 5;
 }
 
 message GroupRPathStatus {

@@ -463,7 +463,11 @@ impl GroupStorage {
         &self.cache.last_tc
     }
 
-    pub async fn save_tc(&mut self, tc: &HotstuffTimeout) -> BuckyResult<()> {
+    pub async fn save_tc(
+        &mut self,
+        tc: &HotstuffTimeout,
+        group_shell_id: ObjectId,
+    ) -> BuckyResult<()> {
         let quorum_round = tc.round;
         if quorum_round < self.cache.last_vote_round
             || quorum_round <= self.cache.last_tc.as_ref().map_or(0, |tc| tc.round)
@@ -471,7 +475,11 @@ impl GroupStorage {
             return Ok(());
         }
 
-        let tc = GroupQuorumCertificate::from(tc.clone());
+        let mut tc = tc.clone();
+        if tc.group_shell_id.is_none() {
+            tc.group_shell_id = Some(group_shell_id);
+        }
+        let tc = GroupQuorumCertificate::from(tc);
         self.non_driver.put_qc(&tc).await?;
 
         let mut writer = self.storage_engine.create_writer().await?;

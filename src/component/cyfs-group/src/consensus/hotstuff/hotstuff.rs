@@ -33,7 +33,7 @@ use crate::{
 /**
  * TODO: generate empty block when the 'Node' is synchronizing
  *
- * synchronizing: max_quorum_round - round > THRESHOLD
+ * How to distinguish synchronizing: max_quorum_round - round > THRESHOLD
 */
 
 pub(crate) struct Hotstuff {
@@ -72,7 +72,7 @@ impl Hotstuff {
             network_sender.clone(),
             rpath.clone(),
             non_driver.clone(),
-            shell_mgr,
+            shell_mgr.clone(),
         );
 
         let mut runner = HotstuffRunner::new(
@@ -83,6 +83,7 @@ impl Hotstuff {
             signer,
             network_sender,
             non_driver,
+            shell_mgr,
             tx_message.clone(),
             rx_message,
             proposal_consumer,
@@ -218,6 +219,10 @@ impl Hotstuff {
     }
 }
 
+enum HotstuffMessageInner {
+    Block(GroupConsensusBlock),
+}
+
 struct HotstuffRunner {
     local_id: ObjectId,
     local_device_id: ObjectId,
@@ -233,8 +238,11 @@ struct HotstuffRunner {
     vote_mgr: VoteMgr,
     network_sender: crate::network::Sender,
     non_driver: crate::network::NONDriverHelper,
+    shell_mgr: GroupShellManager,
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
     rx_message: Receiver<(HotstuffMessage, ObjectId)>,
+    tx_message_inner: Sender<(HotstuffMessageInner, ObjectId)>,
+    rx_message_inner: Receiver<(HotstuffMessageInner, ObjectId)>,
     tx_block_gen: Sender<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     rx_block_gen: Receiver<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     proposal_consumer: PendingProposalConsumer,
@@ -262,6 +270,7 @@ impl HotstuffRunner {
         signer: Arc<RsaCPUObjectSigner>,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NONDriverHelper,
+        shell_mgr: GroupShellManager,
         tx_message: Sender<(HotstuffMessage, ObjectId)>,
         rx_message: Receiver<(HotstuffMessage, ObjectId)>,
         proposal_consumer: PendingProposalConsumer,
@@ -310,6 +319,7 @@ impl HotstuffRunner {
         };
 
         let synchronizer = Synchronizer::new(
+            local_device_id,
             network_sender.clone(),
             rpath.clone(),
             max_height,
@@ -318,6 +328,7 @@ impl HotstuffRunner {
         );
 
         let (tx_block_gen, rx_block_gen) = async_std::channel::bounded(1);
+        let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
         Self {
             local_id,
@@ -345,6 +356,9 @@ impl HotstuffRunner {
             tx_block_gen,
             rx_block_gen,
             proposal_result_notifier,
+            tx_message_inner,
+            rx_message_inner,
+            shell_mgr,
         }
     }
 
@@ -359,7 +373,10 @@ impl HotstuffRunner {
             block.prev_block_id(), block.qc().as_ref().map_or(0, |qc| qc.round),
             block.owner(), remote);
 
-        let latest_group = self.committee.get_group(None).await?;
+        let latest_group = self
+            .shell_mgr
+            .get_group(self.rpath.group_id(), None, Some(&remote))
+            .await?;
         if !latest_group.contain_ood(&remote) {
             log::warn!(
                 "[hotstuff] local: {:?}, receive block({}) from unknown({})",
@@ -678,17 +695,31 @@ impl HotstuffRunner {
                 );
 
                 // 乱序，同步
-                if block.height() <= self.store.header_height() + 3 {
+                let fetch_height_immediate = self.store.header_height() + 3;
+                if block.height() <= fetch_height_immediate {
                     self.fetch_block(block.prev_block_id().unwrap(), remote)
                         .await;
                 }
 
-                let max_round_block = self.store.block_with_max_round();
-                self.synchronizer.push_outorder_block(
-                    block.clone(),
-                    max_round_block.map_or(1, |block| block.height() + 1),
-                    remote,
-                );
+                // let max_round_block = self.store.block_with_max_round();
+                // let max_height = max_round_block.map_or(1, |block| block.height() + 1);
+
+                if block.height() > fetch_height_immediate {
+                    log::debug!(
+                        "[hotstuff] local: {:?}, will sync blocks from height({}) to height({}). block.round={}, remote: {}",
+                        self,
+                        fetch_height_immediate,
+                        block.height(),
+                        block.round(),
+                        remote
+                    );
+
+                    self.synchronizer.push_outorder_block(
+                        block.clone(),
+                        fetch_height_immediate,
+                        remote,
+                    );
+                }
 
                 Err(Ok(()))
             }
@@ -763,17 +794,6 @@ impl HotstuffRunner {
                     block.block_id()
                 );
                 return self.process_block_qc(qc, block).await;
-            }
-            VoteThresholded::TC(tc, max_high_qc_block) => {
-                log::debug!(
-                    "[hotstuff] local: {:?}, the timeout-qc of block {:?} has received before",
-                    self,
-                    block.block_id()
-                );
-
-                return self
-                    .process_timeout_qc(tc, max_high_qc_block.as_ref())
-                    .await;
             }
             VoteThresholded::None => {}
         }
@@ -977,25 +997,17 @@ impl HotstuffRunner {
             return;
         }
 
-        match self.committee.get_group(None).await {
-            Ok(group) => {
-                log::info!(
-                    "[hotstuff] local: {:?}, update round from {} to {}",
-                    self,
-                    self.round,
-                    round + 1
-                );
+        log::info!(
+            "[hotstuff] local: {:?}, update round from {} to {}",
+            self,
+            self.round,
+            round + 1
+        );
 
-                self.timer.reset(GROUP_DEFAULT_CONSENSUS_INTERVAL);
-                self.round = round + 1;
-                self.vote_mgr.cleanup(self.round);
-                self.tc = None;
-            }
-            Err(err) => {
-                log::warn!("[hotstuff] local: {:?}, get group before update round from {} to {} failed {:?}",
-                    self, self.round, round + 1, err);
-            }
-        }
+        self.timer.reset(GROUP_DEFAULT_CONSENSUS_INTERVAL);
+        self.round = round + 1;
+        self.vote_mgr.cleanup(self.round);
+        self.tc = None;
     }
 
     fn update_high_qc(&mut self, qc: &Option<HotstuffBlockQC>) {
@@ -1516,6 +1528,18 @@ impl HotstuffRunner {
             return Ok(());
         }
 
+        match self.check_group_is_latest(&timeout.group_shell_id).await {
+            Ok(is) if is => {}
+            _ => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, handle_timeout: {:?}, ignore for is not latest group.",
+                    self,
+                    timeout.round,
+                );
+                return Ok(());
+            }
+        }
+
         let block = match timeout.high_qc.as_ref() {
             Some(qc) => match self.store.find_block_in_cache(&qc.block_id) {
                 Ok(block) => Some(block),
@@ -1528,7 +1552,6 @@ impl HotstuffRunner {
                         err
                     );
 
-                    self.vote_mgr.add_waiting_timeout(timeout.clone());
                     self.fetch_block(&qc.block_id, remote).await;
                     return Ok(());
                 }
@@ -1554,7 +1577,7 @@ impl HotstuffRunner {
 
         let tc = self
             .vote_mgr
-            .add_timeout(timeout.clone(), block.as_ref())
+            .add_timeout(timeout.clone())
             .await
             .map_err(|err| {
                 log::warn!(
@@ -1566,33 +1589,33 @@ impl HotstuffRunner {
                 err
             })?;
 
-        if let Some((tc, max_high_qc_block)) = tc {
-            self.process_timeout_qc(tc, max_high_qc_block.as_ref())
-                .await?;
+        if let Some(tc) = tc {
+            self.process_timeout_qc(tc).await?;
         }
         Ok(())
     }
 
-    async fn process_timeout_qc(
-        &mut self,
-        tc: HotstuffTimeout,
-        max_high_qc_block: Option<&GroupConsensusBlock>,
-    ) -> BuckyResult<()> {
+    async fn process_timeout_qc(&mut self, tc: HotstuffTimeout) -> BuckyResult<()> {
         log::debug!(
-            "[hotstuff] local: {:?}, process_timeout_qc: {:?}, voter: {:?}, high-qc block: {:?},",
+            "[hotstuff] local: {:?}, process_timeout_qc: {:?}, voter: {:?}.",
             self,
             tc.round,
             tc.votes
                 .iter()
                 .map(|vote| format!("{:?}/{:?}", vote.high_qc_round, vote.voter,))
                 .collect::<Vec<String>>(),
-            max_high_qc_block.as_ref().map(|qc| qc.prev_block_id())
         );
 
         let quorum_round = tc.round;
         self.update_max_quorum_round(quorum_round);
 
-        self.store.save_tc(&tc).await?;
+        self.store
+            .save_tc(
+                &tc,
+                tc.group_shell_id
+                    .expect("group-shell-id should not be None."),
+            )
+            .await?;
 
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
@@ -1617,15 +1640,7 @@ impl HotstuffRunner {
             self.generate_block(Some(tc)).await;
             Ok(())
         } else {
-            let latest_group = self.committee.get_group(None).await.map_err(|err| {
-                log::warn!(
-                    "[hotstuff] local: {:?}, process_timeout_qc: {:?}, get group failed {:?}",
-                    self,
-                    tc.round,
-                    err
-                );
-                err
-            })?;
+            let (latest_group, latest_shell_id) = self.shell_mgr.group();
 
             self.broadcast(HotstuffMessage::Timeout(tc), &latest_group)
         }
@@ -1674,37 +1689,42 @@ impl HotstuffRunner {
             return Ok(());
         }
 
-        let block = if max_high_qc.high_qc_round == 0 {
-            None
-        } else {
-            let block = match self
+        let group_shell_id = match tc.group_shell_id.as_ref() {
+            Some(group_shell_id) => group_shell_id.clone(),
+            None => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, handle_tc: {:?} ignore for group-shell-id is None.",
+                    self,
+                    tc.round
+                );
+                return Ok(());
+            }
+        };
+
+        if max_high_qc.high_qc_round > 0 {
+            if let Err(err) = self
                 .store
                 .find_block_in_cache_by_round(max_high_qc.high_qc_round)
             {
-                Ok(block) => block,
-                Err(err) => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, handle_tc: {:?} find prev-block by round {} failed {:?}",
-                        self,
-                        tc.round, max_high_qc.high_qc_round,
-                        err
-                    );
+                log::warn!(
+                    "[hotstuff] local: {:?}, handle_tc: {:?} find prev-block by round {} failed {:?}",
+                    self,
+                    tc.round, max_high_qc.high_qc_round,
+                    err
+                );
 
-                    // 同步前序block
-                    let max_round_block = self.store.block_with_max_round();
-                    self.synchronizer.sync_with_round(
-                        max_round_block.map_or(1, |block| block.height() + 1),
-                        max_high_qc.high_qc_round,
-                        remote,
-                    );
-                    return Ok(());
-                }
+                // 同步前序block
+                let max_round_block = self.store.block_with_max_round();
+                self.synchronizer.sync_with_round(
+                    max_round_block.map_or(1, |block| block.height() + 1),
+                    max_high_qc.high_qc_round,
+                    remote,
+                );
             };
-            Some(block)
-        };
+        }
 
         self.committee
-            .verify_tc(tc, block.as_ref())
+            .verify_tc(tc, &group_shell_id)
             .await
             .map_err(|err| {
                 log::warn!(
@@ -1721,7 +1741,7 @@ impl HotstuffRunner {
         let quorum_round = tc.round;
         self.update_max_quorum_round(quorum_round);
 
-        self.store.save_tc(&tc).await?;
+        self.store.save_tc(&tc, group_shell_id).await?;
 
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
@@ -1749,7 +1769,11 @@ impl HotstuffRunner {
     async fn local_timeout_round(&mut self) -> BuckyResult<()> {
         log::debug!("[hotstuff] local: {:?}, local_timeout_round", self,);
 
-        let latest_group = match self.committee.get_group(None).await {
+        let latest_group = match self
+            .shell_mgr
+            .get_group(self.rpath.group_id(), None, None)
+            .await
+        {
             Ok(group) => {
                 self.timer.reset(GROUP_DEFAULT_CONSENSUS_INTERVAL);
                 group
@@ -1766,7 +1790,10 @@ impl HotstuffRunner {
             }
         };
 
+        let latest_group_shell = latest_group.to_shell();
+        let latest_group_shell_id = latest_group_shell.shell_id();
         let timeout = HotstuffTimeoutVote::new(
+            latest_group_shell_id,
             self.high_qc.clone(),
             self.round,
             self.local_device_id,
@@ -1838,15 +1865,19 @@ impl HotstuffRunner {
             }
             None => None,
         };
-        let latest_group = self.committee.get_group(None).await.map_err(|err| {
-            log::warn!(
-                "[hotstuff] local: {:?}, generate_block get latest group failed {:?}",
-                self,
-                err
-            );
+        let latest_group = self
+            .shell_mgr
+            .get_group(self.rpath.group_id(), None, None)
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, generate_block get latest group failed {:?}",
+                    self,
+                    err
+                );
 
-            err
-        })?;
+                err
+            })?;
 
         let mut remove_proposals = vec![];
         // let mut dup_proposals = vec![];
@@ -2236,10 +2267,23 @@ impl HotstuffRunner {
     }
 
     async fn fetch_block(&mut self, block_id: &ObjectId, remote: ObjectId) -> BuckyResult<()> {
-        let block = self.non_driver.get_block(block_id, Some(&remote)).await?;
+        let block = self
+            .non_driver
+            .get_block(block_id, Some(&remote))
+            .await
+            .map_err(|err| {
+                log::error!(
+                    "[hotstuff] local: {:?}, fetch block({}) from {} failed, err: {:?}.",
+                    self,
+                    block_id,
+                    remote,
+                    err
+                );
+                err
+            })?;
 
-        self.tx_message
-            .send((HotstuffMessage::Block(block), remote))
+        self.tx_message_inner
+            .send((HotstuffMessageInner::Block(block), remote))
             .await;
         Ok(())
     }
@@ -2258,10 +2302,18 @@ impl HotstuffRunner {
     }
 
     async fn check_group_is_latest(&self, group_shell_id: &ObjectId) -> BuckyResult<bool> {
-        let latest_group = self.committee.get_group(None).await?;
-        let group_shell = latest_group.to_shell();
-        let latest_shell_id = group_shell.shell_id();
-        Ok(&latest_shell_id == group_shell_id)
+        let (_, latest_shell_id) = self.shell_mgr.group();
+        if &latest_shell_id == group_shell_id {
+            Ok(true)
+        } else {
+            let latest_group = self
+                .shell_mgr
+                .get_group(self.rpath.group_id(), None, None)
+                .await?;
+            let group_shell = latest_group.to_shell();
+            let latest_shell_id = group_shell.shell_id();
+            Ok(&latest_shell_id == group_shell_id)
+        }
     }
 
     async fn make_sure_result_state(
@@ -2381,9 +2433,16 @@ impl HotstuffRunner {
         // Also, schedule a timer in case we don't hear from the leader.
         let max_round_block = self.store.block_with_max_round();
         let group_shell_id = max_round_block.as_ref().map(|block| block.group_shell_id());
-        let last_group = self.committee.get_group(group_shell_id).await;
+        let last_group = self
+            .shell_mgr
+            .get_group(self.rpath.group_id(), group_shell_id, None)
+            .await;
         let latest_group = match group_shell_id.as_ref() {
-            Some(_) => self.committee.get_group(None).await,
+            Some(_) => {
+                self.shell_mgr
+                    .get_group(self.rpath.group_id(), None, None)
+                    .await
+            }
             None => last_group.clone(),
         };
 
@@ -2457,6 +2516,19 @@ impl HotstuffRunner {
                     Ok((HotstuffMessage::VerifiableState(_, _), _)) => panic!("should process by DecStateRequestor"),
                     Err(e) => {
                         log::warn!("[hotstuff] rx_message closed.");
+                        Ok(())
+                    },
+                },
+                message = self.rx_message_inner.recv().fuse() => match message {
+                    Ok((HotstuffMessageInner::Block(block), remote)) => {
+                        if remote == self.local_device_id {
+                            self.process_block(&block, remote, &HashMap::new()).await
+                        } else {
+                            self.handle_block(&block, remote).await
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("[hotstuff] rx_message_inner closed.");
                         Ok(())
                     },
                 },

@@ -112,6 +112,7 @@ impl From<HotstuffBlockQC> for GroupQuorumCertificate {
 
 impl From<HotstuffTimeout> for GroupQuorumCertificate {
     fn from(tc: HotstuffTimeout) -> Self {
+        assert!(tc.group_shell_id.is_some());
         let desc = GroupQuorumCertificateDescContent::TC(tc);
         GroupQuorumCertificateBuilder::new(desc, EmptyBodyContent).build()
     }

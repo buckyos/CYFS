@@ -29,6 +29,7 @@ pub(crate) struct Synchronizer {
 
 impl Synchronizer {
     pub fn new(
+        local_device_id: ObjectId,
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         height: u64,
@@ -37,6 +38,7 @@ impl Synchronizer {
     ) -> Self {
         let (tx_sync_message, rx_sync_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
         let mut runner = SynchronizerRunner::new(
+            local_device_id,
             network_sender.clone(),
             rpath.clone(),
             tx_block,
@@ -315,6 +317,7 @@ impl RequestSendInfo {
 }
 
 struct SynchronizerRunner {
+    local_device_id: ObjectId,
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
     tx_block: Sender<(HotstuffMessage, ObjectId)>,
@@ -329,6 +332,7 @@ struct SynchronizerRunner {
 
 impl SynchronizerRunner {
     fn new(
+        local_device_id: ObjectId,
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         tx_block: Sender<(HotstuffMessage, ObjectId)>,
@@ -346,6 +350,7 @@ impl SynchronizerRunner {
             sync_requests: vec![],
             out_order_blocks: vec![],
             tx_block,
+            local_device_id,
         }
     }
 
@@ -513,6 +518,9 @@ impl SynchronizerRunner {
         block: GroupConsensusBlock,
         remote: ObjectId,
     ) {
+        log::debug!("[synchronizer] local: {:?}, handle_push_block want sync blocks from height({}) to height({}). block.round={}, round={}, prev={:?}",
+            self.local_device_id, min_height, block.height(), self.round, block.round(), block.prev_block_id());
+
         if block.round() <= self.round
             || min_height <= block.height()
             || block.prev_block_id().is_none()

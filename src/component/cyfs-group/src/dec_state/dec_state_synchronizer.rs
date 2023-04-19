@@ -324,8 +324,12 @@ impl DecStateSynchronizerRunner {
                 .is_ok()
         {
             let group = self
-                .committee
-                .check_group(Some(header_block.group_shell_id()), None)
+                .shell_mgr
+                .get_group(
+                    self.rpath.group_id(),
+                    Some(header_block.group_shell_id()),
+                    None,
+                )
                 .await?;
             let group_shell_id = header_block.group_shell_id().clone();
 

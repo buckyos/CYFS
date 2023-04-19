@@ -118,10 +118,12 @@ pub struct HotstuffTimeoutVote {
     pub round: u64,
     pub voter: ObjectId,
     pub signature: Signature,
+    pub group_shell_id: ObjectId,
 }
 
 impl HotstuffTimeoutVote {
     pub async fn new(
+        group_shell_id: ObjectId,
         high_qc: Option<HotstuffBlockQC>,
         round: u64,
         local_device_id: ObjectId,
@@ -129,7 +131,12 @@ impl HotstuffTimeoutVote {
     ) -> BuckyResult<Self> {
         let signature = signer
             .sign(
-                Self::hash_content(high_qc.as_ref().map_or(0, |qc| qc.round), round).as_slice(),
+                Self::hash_content(
+                    high_qc.as_ref().map_or(0, |qc| qc.round),
+                    round,
+                    &group_shell_id,
+                )
+                .as_slice(),
                 &SignatureSource::Object(ObjectLink {
                     obj_id: local_device_id,
                     obj_owner: None,
@@ -142,17 +149,23 @@ impl HotstuffTimeoutVote {
             round,
             voter: local_device_id,
             signature,
+            group_shell_id,
         })
     }
 
     pub fn hash(&self) -> HashValue {
-        Self::hash_content(self.high_qc.as_ref().map_or(0, |qc| qc.round), self.round)
+        Self::hash_content(
+            self.high_qc.as_ref().map_or(0, |qc| qc.round),
+            self.round,
+            &self.group_shell_id,
+        )
     }
 
-    pub fn hash_content(high_qc_round: u64, round: u64) -> HashValue {
+    pub fn hash_content(high_qc_round: u64, round: u64, group_shell_id: &ObjectId) -> HashValue {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(high_qc_round.to_le_bytes());
         sha256.input(round.to_le_bytes());
+        sha256.input(group_shell_id.as_slice());
         sha256.result().into()
     }
 }
@@ -169,6 +182,7 @@ impl ProtobufTransform<super::codec::protos::HotstuffTimeoutVote> for HotstuffTi
             signature: Signature::raw_decode(value.signature.as_slice())?.0,
             round: value.round,
             high_qc,
+            group_shell_id: ObjectId::raw_decode(value.group_shell_id.as_slice())?.0,
         })
     }
 }
@@ -183,6 +197,7 @@ impl ProtobufTransform<&HotstuffTimeoutVote> for super::codec::protos::HotstuffT
             round: value.round,
             voter: value.voter.to_vec()?,
             signature: value.signature.to_vec()?,
+            group_shell_id: value.group_shell_id.to_vec()?,
         };
 
         Ok(ret)
