@@ -1,58 +1,56 @@
-use lazy_static::lazy_static;
-use async_std::sync::{Mutex};
-use rusqlite::{Connection, params};
-use std::path::{Path, PathBuf};
-use cyfs_base::{BuckyResult, AnyNamedObject, RawConvertTo, ObjectId, RawFrom};
+use std::path::{Path};
+use std::str::FromStr;
+use async_std::prelude::StreamExt;
+use log::LevelFilter;
+use sqlx::{ConnectOptions, Executor, Pool, Row, Sqlite};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use cyfs_base::{BuckyResult, ObjectId, AccessString};
+use cyfs_lib::{NONPutObjectOutputRequest, SharedCyfsStack};
 
 pub struct FileManager {
-    database: Option<PathBuf>,
+    database: Pool<Sqlite>,
 }
 
-const CREATE_TABLE: &str = r#"
-    CREATE TABLE IF NOT EXISTS "file_desc" (
-        "id"	TEXT NOT NULL UNIQUE,
-        "desc" BLOB NOT NULL,
-        PRIMARY KEY("id")
-    );
-"#;
-
-const INSERT: &str = r#"
-    INSERT OR REPLACE INTO file_desc VALUES (?1, ?2);
-"#;
-
 const SELECT: &str = r#"
-    SELECT desc from file_desc where id=?1;
+    SELECT id, desc from file_desc;
 "#;
 
 impl FileManager {
-    pub fn new() -> FileManager { FileManager { database:None }}
+    pub async fn merge(database: &Path, stack: SharedCyfsStack) -> BuckyResult<()> {
+        let mut options = SqliteConnectOptions::new().filename(database).create_if_missing(false).read_only(true);
+        options.log_statements(LevelFilter::Off);
+        let pool = SqlitePoolOptions::new().max_connections(10).connect_with(options).await?;
 
-    pub fn init(&mut self, database: &Path) -> BuckyResult<()> {
-        self.database = Some(PathBuf::from(database));
-        let conn = Connection::open(self.database.as_ref().unwrap())?;
-        conn.execute(CREATE_TABLE, [])?;
+        let mut stream = pool.fetch(SELECT);
+        while let Some(row) = stream.next().await {
+            let row = row?;
+            let id: String = row.try_get("id")?;
+            let desc: Vec<u8> = row.try_get("desc")?;
+            match ObjectId::from_str(&id) {
+                Ok(id) => {
+                    let mut request = NONPutObjectOutputRequest::new_noc(id, desc);
+                    request.access = Some(AccessString::full());
+                    match stack.non_service().put_object(request).await {
+                        Ok(resp) => {
+                            info!("insert obj {} to stack result {}", &id, resp.result.to_string());
+                        }
+                        Err(e) => {
+                            error!("insert obj {} to stack err {}, skip", &id, e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("decode object id {} err {}, skip it", &id, e);
+                }
+            }
+        }
+
+        info!("insert all object to stack complete, delete database file {}", database.display());
+
+        pool.close().await;
+
+        std::fs::remove_file(database)?;
+
         Ok(())
     }
-
-    pub async fn set(&self, id: &ObjectId, desc: &AnyNamedObject) -> BuckyResult<()> {
-        let data = desc.to_vec()?;
-        let conn = Connection::open(self.database.as_ref().unwrap())?;
-        conn.execute(INSERT, params![id.to_string(), data])?;
-        Ok(())
-    }
-
-    pub async fn get(&self, id: &ObjectId) -> BuckyResult<AnyNamedObject> {
-        let conn = Connection::open(self.database.as_ref().unwrap())?;
-        let desc_buf = conn.query_row(SELECT, params![id.to_string()], |row| -> rusqlite::Result<Vec<u8>>{
-            Ok(row.get(0)?)
-        })?;
-        let desc = AnyNamedObject::clone_from_slice(&desc_buf)?;
-        Ok(desc)
-    }
-}
-
-lazy_static! {
-    pub static ref FILE_MANAGER: Mutex<FileManager> = {
-        return Mutex::new(FileManager::new());
-    };
 }

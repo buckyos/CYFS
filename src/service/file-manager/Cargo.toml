@@ -9,11 +9,13 @@ description = "Rust file-manager package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static = "1.4"
 tide = "0.16"
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
-cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base = { path = "../../component/cyfs-base", features = ["sqlx-error"] }
+cyfs-core = {path="../../component/cyfs-core"}
 cyfs-util = { path = "../../component/cyfs-util" }
-rusqlite = { version = "0.27.0", features = ["bundled", "blob"] }
+sqlx = {version="0.6", features = ["sqlite", "runtime-async-std-rustls"]}
 log = "0.4"
 cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-lib = {path="../../component/cyfs-lib"}
+serde = "1"

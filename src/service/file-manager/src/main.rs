@@ -1,10 +1,12 @@
 #![windows_subsystem = "windows"]
 
-use crate::file_manager::FILE_MANAGER;
-use std::borrow::Cow;
+use crate::file_manager::{FileManager};
 use tide::{Request, Response, StatusCode};
-use cyfs_base::{BuckyResult, FILE_MANAGER_NAME, FILE_MANAGER_PORT, AnyNamedObject, RawFrom, ObjectId, RawConvertTo};
+use cyfs_base::{BuckyResult, FILE_MANAGER_NAME, FILE_MANAGER_PORT, AnyNamedObject, RawFrom, ObjectId, RawConvertTo, AccessString};
 use std::str::FromStr;
+use tide::prelude::*;
+use cyfs_core::get_system_dec_app;
+use cyfs_lib::{NONGetObjectRequest, NONPutObjectRequest, SharedCyfsStack};
 
 mod file_manager;
 mod gateway_helper;
@@ -12,33 +14,23 @@ mod gateway_helper;
 #[macro_use]
 extern crate log;
 
-fn find_param_from_req<'a>(req: &'a Request<()>, param: &str) -> Option<Cow<'a, str>> {
-    match req.url().query_pairs().find(|(x, _)| x == param) {
-        None => {
-            error!(
-                "can`t find param {} from query {}",
-                param,
-                req.url().query().unwrap_or("NULL")
-            );
-            None
-        }
-        Some((_, v)) => Some(v),
-    }
+#[derive(Deserialize)]
+struct GetParam {
+    fileid: String
 }
 
-async fn decode_desc_from_req(req: &mut Request<()>) -> BuckyResult<AnyNamedObject> {
+async fn decode_desc_from_req(req: &mut Request<SharedCyfsStack>) -> BuckyResult<AnyNamedObject> {
     let desc_buf = req.body_bytes().await?;
     Ok(AnyNamedObject::clone_from_slice(&desc_buf)?)
 }
 
 #[async_std::main]
-async fn main() -> Result<(), std::io::Error> {
+async fn main() -> BuckyResult<()> {
     cyfs_util::process::check_cmd_and_exec(FILE_MANAGER_NAME);
     
     cyfs_debug::CyfsLoggerBuilder::new_service(FILE_MANAGER_NAME)
-        .level("debug")
-        .console("debug")
-        .enable_bdt(Some("debug"), Some("debug"))
+        .level("info")
+        .console("info")
         .build()
         .unwrap()
         .start();
@@ -47,80 +39,57 @@ async fn main() -> Result<(), std::io::Error> {
         .build()
         .start();
 
-    
-    let mut database = cyfs_util::get_cyfs_root_path().join("data").join(FILE_MANAGER_NAME);
-    let _ = std::fs::create_dir_all(&database).map_err(|e| {
-        error!("create database dir {} failed.", database.display());
+    let stack = SharedCyfsStack::open_default(Some(get_system_dec_app().clone())).await.map_err(|e| {
+        error!("open shared stack err {}", e);
         e
     })?;
-    database.push("file.sqlite");
-
-    info!("database is:{}", database.display());
-
-    let _ = FILE_MANAGER.lock().await.init(&database).map_err(|e| {
-        error!("init file manager failed, msg:{}", e.to_string());
-        std::io::Error::from(std::io::ErrorKind::Interrupted)
-    })?;
+    
+    let database = cyfs_util::get_cyfs_root_path().join("data").join(FILE_MANAGER_NAME).join("file.sqlite");
+    if database.exists() {
+        info!("find old file-manager database {}, merge to cyfs stack", database.display());
+        if let Err(e) = FileManager::merge(&database, stack.clone()).await {
+            error!("merge old database to stack err {}, try re-merge at next startup", e);
+        }
+    }
 
     gateway_helper::register();
 
-    let mut app = tide::new();
+    let mut app = tide::with_state(stack.clone());
 
-    app.at("/get_file").get(move |req: Request<()>| async move {
-        loop {
-            let fileid_ret = find_param_from_req(&req, "fileid");
-            if fileid_ret.is_none() {
-                break;
-            }
-
-            if let Ok(file_id) = ObjectId::from_str(fileid_ret.as_ref().unwrap()) {
-                let file_manager = FILE_MANAGER.lock().await;
-
-                match file_manager.get(&file_id).await {
-                    Ok(file_desc) => {
-                        let mut resp = Response::new(StatusCode::Ok);
-                        match file_desc.to_vec() {
-                            Ok(buf) => {
-                                resp.set_body(buf);
-                                return Ok(resp);
-                            }
-                            Err(e) => {
-                                error!("encode file_desc err {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("get file {} desc error: {}", file_id, e.to_string());
-                    }
+    app.at("/get_file").get(move |req: Request<SharedCyfsStack>| async move {
+        let param = req.query::<GetParam>()?;
+        if let Ok(file_id) = ObjectId::from_str(&param.fileid) {
+            match req.state().non_service().get_object(NONGetObjectRequest::new_noc(file_id, None)).await {
+                Ok(file_desc) => {
+                    let mut resp = Response::new(StatusCode::Ok);
+                    resp.set_body(file_desc.object.object_raw);
+                    return Ok(resp);
                 }
-            } else {
-                error!("invaild fileid {}", fileid_ret.as_ref().unwrap());
+                Err(e) => {
+                    error!("get file {} desc error: {}", file_id, e.to_string());
+                }
             }
-
-            break;
+        } else {
+            error!("invaild fileid {}", param.fileid);
         }
 
         Ok(Response::new(StatusCode::BadRequest))
     });
 
     app.at("/set_file")
-        .post(move |mut req: Request<()>| async move {
-            match decode_desc_from_req(&mut req).await {
-                Ok(desc) => {
-                    let id = desc.calculate_id();
-                    let file_manager = FILE_MANAGER.lock().await;
-                    match file_manager.set(&id, &desc).await {
-                        Ok(_) => {
-                            info!("set desc {} success", &id);
-                            return Ok(Response::new(StatusCode::Ok));
-                        }
-                        Err(e) => {
-                            error!("set desc {} failed, err {}", id, e);
-                        }
-                    }
+        .post(move |mut req: Request<SharedCyfsStack>| async move {
+            let desc_buf = req.body_bytes().await?;
+            let desc = AnyNamedObject::clone_from_slice(&desc_buf)?;
+            let id = desc.calculate_id();
+            let mut request = NONPutObjectRequest::new_noc(id.clone(), desc.to_vec().unwrap());
+            request.access = Some(AccessString::full());
+            match req.state().non_service().put_object(request).await {
+                Ok(resp) => {
+                    info!("set desc {} success, resp {}", &id, resp.result.to_string());
+                    return Ok(Response::new(StatusCode::Ok));
                 }
                 Err(e) => {
-                    error!("decode filedesc error: {}", e);
+                    error!("set desc {} failed, err {}", id, e);
                 }
             }
 
