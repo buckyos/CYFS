@@ -7,8 +7,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
+use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
+use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, RefreshKind, SystemExt};
 use wait_timeout::ChildExt;
 
 const STATUS_CMD_TIME_OUT_IN_SECS: u64 = 15;
@@ -231,15 +233,14 @@ impl DApp {
         Ok(self.info.executable.clone())
     }
 
-    fn get_pid_file_path(&self) -> BuckyResult<PathBuf> {
-        let pid_file = cyfs_util::get_cyfs_root_path()
+    fn get_pid_file_path(&self) -> PathBuf {
+        cyfs_util::get_cyfs_root_path()
             .join("run")
-            .join(format!("app_manager_app_{}", self.dec_id));
-        Ok(pid_file)
+            .join(format!("app_manager_app_{}", self.dec_id))
     }
 
     fn get_pid(&self) -> BuckyResult<String> {
-        let lock_file = self.get_pid_file_path()?;
+        let lock_file = self.get_pid_file_path();
         if !lock_file.is_file() {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, "no pid file"));
         }
@@ -253,7 +254,7 @@ impl DApp {
             let id = child.id();
             *self.process.lock().unwrap() = Some(child);
             // mark pid
-            let lock_file = self.get_pid_file_path()?;
+            let lock_file = self.get_pid_file_path();
             let buf = format!("{}", id).into_bytes();
             std::fs::write(lock_file, &buf).map_err(|e| {
                 let msg = format!("app[{}]{} write lock file failed! err {}",
@@ -470,38 +471,44 @@ impl DApp {
         }
 
         let pid = pid.unwrap();
-        info!(
-            "stop app[{}] by inner cmd failed, try to force kill by pid {}",
-            &self.dec_id, pid
-        );
-        #[cfg(windows)]
-        {
-           let mut child = Command::new("taskkill")
-                .arg("/F")
-                .arg("/T")
-                .arg("/PID")
-                .arg(&pid)
-                .spawn()
-                .map_err(|e| {
-                    error!("kill app:{} failed! err {}", pid, e);
-                    BuckyError::from(BuckyErrorCode::ExecuteError)
-                })?;
-            let _ = child.wait();
-        }
-        #[cfg(not(windows))]
-        {
-            let mut child = Command::new("kill")
-                .arg("-9")
-                .arg(&pid)
-                .spawn()
-                .map_err(|e| {
-                    error!("kill app:{} failed! err {}", pid, e);
-                    BuckyError::from(BuckyErrorCode::ExecuteError)
-                })?;
-            let _ = child.wait();
+        let info = sysinfo::System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+        if let Some(process) = info.process(Pid::from_str(&pid)?) {
+            if process.cwd() == self.work_dir.as_path() {
+                info!("try to force kill app {} by pid {}", &self.dec_id, pid);
+                #[cfg(windows)]
+                {
+                    let mut child = Command::new("taskkill")
+                        .arg("/F")
+                        .arg("/T")
+                        .arg("/PID")
+                        .arg(&pid)
+                        .spawn()
+                        .map_err(|e| {
+                            error!("kill app:{} failed! err {}", pid, e);
+                            BuckyError::from(BuckyErrorCode::ExecuteError)
+                        })?;
+                    let _ = child.wait();
+                }
+                #[cfg(not(windows))]
+                {
+                    let mut child = Command::new("kill")
+                        .arg("-9")
+                        .arg(&pid)
+                        .spawn()
+                        .map_err(|e| {
+                            error!("kill app:{} failed! err {}", pid, e);
+                            BuckyError::from(BuckyErrorCode::ExecuteError)
+                        })?;
+                    let _ = child.wait();
+                }
+            } else {
+                warn!("pid {} work dir mismatch! except {}, actual {}. not kill", &pid, self.work_dir.as_path().display(), process.cwd().display())
+            }
+
         }
 
-        let lock_file = self.get_pid_file_path()?;
+
+        let lock_file = self.get_pid_file_path();
         let _ = std::fs::remove_file(lock_file);
         Ok(())
     }
