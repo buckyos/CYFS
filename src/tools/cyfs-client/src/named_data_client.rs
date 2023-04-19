@@ -3,9 +3,6 @@ use crate::meta_helper;
 use async_std::io::{copy as async_copy};
 use async_std::io::Write as AsyncWrite;
 use async_std::prelude::*;
-use cyfs_chunk_client::{ChunkClient, ChunkClientContext, ChunkSourceContext};
-use http_types::{Method, Request};
-use rand::{Rng, RngCore};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::io::{Read};
@@ -23,91 +20,16 @@ use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use std::str::FromStr;
-use std::net::Shutdown;
-use std::ops::Deref;
 use std::sync::{Arc, RwLock};
-use cyfs_bdt::stream_pool::{PooledStream, StreamPool, StreamPoolConfig};
+use cyfs_bdt::stream_pool::{PooledStream, StreamPool};
 use once_cell::sync::OnceCell;
 use cyfs_bdt::{StackGuard, DeviceCache};
-
-#[derive(Clone)]
-struct BdtDeviceCache(Arc<BdtDeviceCacheImpl>);
-
-struct BdtDeviceCacheImpl {
-    cache: RwLock<HashMap<DeviceId, Device>>,
-    meta_client: Arc<MetaClient>
-}
-
-impl BdtDeviceCache {
-    fn new(meta_client: Arc<MetaClient>) -> Self {
-        return Self(Arc::new(BdtDeviceCacheImpl{
-            cache: RwLock::new(HashMap::new()),
-            meta_client: meta_client.clone()
-        }))
-    }
-}
-
-#[async_trait]
-impl DeviceCache for BdtDeviceCache {
-    // 添加一个device并保存
-    async fn add(&self, device_id: &DeviceId, device: Device) {
-        self.0.cache.write().unwrap().insert(device_id.clone(), device);
-    }
-
-    // 直接在本地数据查询
-    async fn get(&self, device_id: &DeviceId) -> Option<Device> {
-        info!("bdt cache get id {}", device_id);
-        self.search(device_id).await.ok()
-    }
-
-    async fn flush(&self, device_id: &DeviceId) {
-        self.0.cache.write().unwrap().remove(device_id);
-    }
-
-    // 本地查询，查询不到则发起查找操作
-    async fn search(&self, device_id: &DeviceId) -> BuckyResult<Device> {
-        info!("bdt cache search id {}", device_id);
-        if let Some(device) = self.0.cache.read().unwrap().get(device_id) {
-            return Ok(device.clone())
-        }
-
-        match self.0.meta_client.get_desc(device_id.object_id()).await? {
-            SavedMetaObject::Device(device) => {
-                self.0.cache.write().unwrap().insert(device_id.clone(), device.clone());
-                Ok(device)
-            }
-            _ => {
-                Err(BuckyError::from(BuckyErrorCode::NotMatch))
-            }
-        }
-    }
-
-    // 校验device的owner签名是否有效
-    async fn verfiy_owner(&self, _device_id: &DeviceId, _device: Option<&Device>) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    // 有权对象的body签名自校验
-    async fn verfiy_own_signs(&self, _object_id: &ObjectId, _object: &Arc<AnyNamedObject>) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    fn clone_cache(&self) -> Box<dyn DeviceCache> {
-        Box::new(self.clone())
-    }
-}
+use cyfs_lib::{NDNGetDataRequest, NDNPutDataRequest, NONGetObjectRequest, NONPutObjectRequest, UniCyfsStackRef};
 
 pub struct NamedCacheClient {
-    // 需要一个BDT栈，init时初始化
-    stream_pool: OnceCell<StreamPool>,
-    //desc: Device,
-    //secret: PrivateKey,
     meta_client: Arc<MetaClient>,
-    init_ret: Mutex<bool>,
-    object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
-    device_cache: BdtDeviceCache,
-    stack: OnceCell<StackGuard>,
-    config: NamedCacheClientConfig
+    config: NamedCacheClientConfig,
+    cyfs_stack: UniCyfsStackRef
 }
 
 #[derive(PartialEq)]
@@ -146,80 +68,16 @@ impl Default for NamedCacheClientConfig {
 }
 
 impl NamedCacheClient {
-    pub fn new(config: NamedCacheClientConfig) -> NamedCacheClient {
-        let client = Arc::new(MetaClient::new_target(config.meta_target.clone()).with_timeout(std::time::Duration::from_secs(60 * 2)));
-        let device_cache = BdtDeviceCache::new(client.clone());
+    pub fn new(config: NamedCacheClientConfig, uni_stack: UniCyfsStackRef)  -> NamedCacheClient {
+        let client = Arc::new(MetaClient::new_target(config.meta_target.clone()).with_timeout(Duration::from_secs(60 * 2)));
         NamedCacheClient {
-            stream_pool: OnceCell::new(),
-            //desc,
-            //secret,
             meta_client: client,
-            init_ret: Mutex::new(false),
-            object_cache: RwLock::new(HashMap::new()),
-            device_cache,
-            stack: OnceCell::new(),
-            config
+            config,
+            cyfs_stack: uni_stack
         }
     }
 
     pub async fn init(&mut self) -> BuckyResult<()> {
-        // 避免并行init
-        let mut ret = self.init_ret.lock().await;
-        if *ret {
-            return Ok(());
-        }
-
-        let (mut desc, secret) = if let Some((desc, secret)) = self.config.desc.clone() {
-            (desc, secret)
-        } else {
-            info!("no input peerdesc, create random one.");
-            let secret = PrivateKey::generate_rsa(1024)?;
-            let public = secret.public();
-            let area = self.config.area.clone().unwrap_or(Area::default());
-            let mut uni = [0 as u8; 16];
-            rand::thread_rng().fill_bytes(&mut uni);
-            let uni_id = UniqueId::create(&uni);
-            let desc = Device::new(None, uni_id, vec![], vec![], vec![], public, area, DeviceCategory::PC).build();
-            (desc, secret)
-        };
-
-        info!("current device_id: {}", desc.desc().calculate_id());
-
-        let endpoints = desc.body_mut().as_mut().unwrap().content_mut().mut_endpoints();
-        if endpoints.len() == 0 {
-            // 取随机端口号
-            let port = rand::thread_rng().gen_range(30000, 50000) as u16;
-            for ip in cyfs_util::get_all_ips().unwrap() {
-                if ip.is_ipv4() {
-                    endpoints.push(Endpoint::from((Protocol::Udp, ip, port)));
-                }
-            }
-        }
-
-        let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
-
-        if let Some(sn_list) = &self.config.sn_list {
-            info!("named data client use param`s sn list {:?}", sn_list.iter().map(|device|{
-                device.desc().calculate_id()
-            }).collect::<Vec<ObjectId>>());
-        }
-        params.known_sn = self.config.sn_list.clone();
-        params.outer_cache = Some(Box::new(self.device_cache.clone()));
-
-        let stack = cyfs_bdt::Stack::open(desc, secret, params).await?;
-
-        let pool = StreamPool::new(stack.deref().clone(), 80, StreamPoolConfig {
-            capacity: 10,
-            backlog: 10,
-            atomic_interval: Duration::from_secs(5),
-            timeout: Duration::from_secs(60)
-        })?;
-
-        info!("bdt stack created");
-        let _ = self.stream_pool.set(pool);
-        let _ = self.stack.set(stack);
-
-        *ret = true;
         Ok(())
     }
 
@@ -278,180 +136,28 @@ impl NamedCacheClient {
         }
     }
 
-    async fn get_bdt_stream(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {
-        debug!("get bdt connection to {}:80", remote);
-        self.stream_pool.get().unwrap().connect(remote).await
-    }
-
     async fn get_chunk<W: ?Sized>(
         &self,
         chunk_id: &ChunkId,
-        owner: &DeviceId,
+        owner: &ObjectId,
         writer: &mut W,
     ) -> BuckyResult<()>
     where
         W: AsyncWrite + Unpin,
     {
-        // let peer_id = self.desc.get().unwrap().desc().device_id();
-        let peer_id = self.stack.get().unwrap().local_device_id();
-        let price = 0i64; // 本机获取，直接返回
-
         debug!("will get chunk by id {}", &chunk_id);
 
-        //1. 从chunkManager取Chunk
-        info!("try get chunk {} from local", &chunk_id);
+        let request = NDNGetDataRequest::new_router(Some(owner.clone()), chunk_id.object_id(), None);
+        let data_resp = self.cyfs_stack.ndn_service().get_data(request).await?;
 
-        let chunk_get_data_req = cyfs_chunk::ChunkGetReq::sign(
-            self.stack.get().unwrap().keystore().private_key(),
-            owner,
-            peer_id,
-            &chunk_id,
-            &price,
-            cyfs_chunk::ChunkGetReqType::Data,
-        )?;
-
-        if let Ok(chunk_resp) = ChunkClient::get_resp_from_source(
-            ChunkSourceContext::source_http_local(peer_id),
-            &chunk_get_data_req,
-        ).await {
-            debug!("get chunk {} from local success", &chunk_id);
-            async_copy(chunk_resp, writer).await?;
-            return Ok(());
-        }
-
-        //2. 用HTTP@BDT到Owner取Chunk
-        let chunk_get_data_with_meta_req = cyfs_chunk::ChunkGetReq::sign(
-            self.stack.get().unwrap().keystore().private_key(),
-            owner,
-            peer_id,
-            &chunk_id,
-            &price,
-            cyfs_chunk::ChunkGetReqType::Data,
-        )?;
-        // 由于某些场景中，会发生使用udp的bdt stream在传输一段时间后再也收不到数据的情形，这里加一个超时。如果到了超时时间还没有返回，就再建一条新连接重试一次GetChunk
-        // 这里重试3次，3次还得不到chunk就返回错误
-        let chunk_content = OnceCell::new();
-        let mut get_error = BuckyError::from(BuckyErrorCode::Ok);
-        let mut use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
-        for i in 0..self.config.retry_times {
-            info!("try get chunk {}, retry {}/{}", chunk_id, i, self.config.retry_times);
-            let mut ctx = None;
-            if use_tcp {
-                if let StandardObject::Device(device) = self.get_desc(owner.object_id(), None).await? {
-                    for endpoint in device.body_expect("").content().endpoints() {
-                        if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
-                            info!("named data client use tcp conn to {}", &endpoint.addr().ip().to_string());
-                            ctx = Some(ChunkSourceContext::new_http(peer_id, &endpoint.addr().ip().to_string(), self.config.tcp_chunk_manager_port));
-                            break;
-                        }
-                    }
-                }
-            } else {
-                let bdt_stream = self.get_bdt_stream(&owner).await?;
-                ctx = Some(ChunkSourceContext::source_http_bdt_remote(peer_id, bdt_stream))
-            };
-
-            if ctx.is_none() {
-                if self.config.conn_strategy != ConnStrategy::TcpOnly {
-                    info!("named data client use tcp, but not found any static tcp ipv4 addr. roolback to bdt");
-                    let bdt_stream = self.get_bdt_stream(&owner).await?;
-                    ctx = Some(ChunkSourceContext::source_http_bdt_remote(peer_id, bdt_stream))
-                } else {
-                    info!("named data client use tcp pnly, but not found any static tcp ipv4 addr. return failed");
-                    return Err(BuckyError::new(BuckyErrorCode::NotSupport, format!("device {} not has static tcp ipv4 addr", owner)));
-                }
-            }
-
-            match ChunkClient::get_resp_from_source(ctx.clone().unwrap(), &chunk_get_data_with_meta_req).await {
-                Ok(mut resp) => {
-                    // 这里超时后返回Timeout错误，再试一次
-                    match async_std::future::timeout(self.config.timeout, async {
-                        info!("begin read chunk {} data, len {}", chunk_id, chunk_id.len());
-                        resp.body_bytes().await
-                    }).await {
-                        Ok(buf) => {
-                            match buf {
-                                Ok(buf) => {
-                                    info!("end read chunk {} data, len {}", chunk_id, chunk_id.len());
-                                    let _ = chunk_content.set(buf);
-                                    break;
-                                }
-                                Err(e) => {
-                                    error!("receive bytes error, {}", e);
-                                    get_error = BuckyError::from(e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("recv chunk {} timeout after {} secs.", chunk_id, self.config.timeout.as_secs());
-                            get_error = BuckyError::from(e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("get chunk {} response err {}", chunk_id, e);
-                }
-            }
-
-            // 走到这里说明失败了
-            // 这里尝试看能不能让pool放弃这条连接
-            if let Some(stream) = ctx.unwrap().get_bdt_stream() {
-                if let Err(e) = stream.shutdown(Shutdown::Both) {
-                    error!("bdt stream close error! {}", e);
-                }
-            }
-
-            // 如果是tcp失败，且失败次数超过重试次数的一半，下次用bdt重试
-            if self.config.conn_strategy == ConnStrategy::TcpFirst && i+1 > (self.config.retry_times as f32 / 2f32).ceil() as u8 {
-                use_tcp = false;
-            }
-        }
-
-        if chunk_content.get().is_none() {
-            // 表示3次都没有拿到chunk数据，这里报超时
-            error!("get chunk {} final failed after retry {} times", chunk_id, self.config.retry_times);
-            return Err(get_error);
-        }
-
-        // 重新计算一次chunkid
-        let new_chunk_id = ChunkId::calculate_sync(chunk_content.get().unwrap()).unwrap();
-        if chunk_id != &new_chunk_id {
-            error!("recalc chunkid failed! except {}, actual {}", &chunk_id, &new_chunk_id);
-            return Err(BuckyError::new(BuckyErrorCode::Unmatch, "chunkid dismatch"));
-        } else {
-            debug!("verify chunk {} success", &chunk_id);
-        }
-
-        // 存入writer
-        debug!("save chunk {} to writer", &chunk_id);
-        writer.write(chunk_content.get().unwrap()).await?;
-
-        // 存入本地ChunkManager
-        if let Ok((desc, secret)) = cyfs_util::get_default_device_desc() {
-            info!("save chunk {} to local", &chunk_id);
-            let chunk_set_req = cyfs_chunk::ChunkSetReq::sign(
-                &secret,
-                &desc.desc().device_id(),
-                &chunk_id,
-                chunk_content.get().unwrap().to_owned(),
-            )?;
-
-            if let Err(e) = ChunkClient::set(
-                ChunkSourceContext::source_http_local(peer_id),
-                &chunk_set_req,
-            ).await {
-                warn!("save chunk {} to local fail. err {}", &chunk_id, e)
-            }
-        }
-
-
-        return Ok(());
+        async_copy(data_resp.data, writer).await?;
+        Ok(())
     }
 
     async fn get_chunks<W: ?Sized>(
         &self,
         chunk_id_list: &Vec<ChunkId>,
-        owner: &DeviceId,
+        owner: &ObjectId,
         writer: &mut W,
     ) -> BuckyResult<()>
     where
@@ -463,97 +169,15 @@ impl NamedCacheClient {
         Ok(())
     }
 
-    #[async_recursion::async_recursion]
-    async fn get_desc_from_file_manager(&self, id: &ObjectId, owner: &ObjectId) -> BuckyResult<StandardObject> {
-        let owner_ood = self.get_device_from_owner_id(owner).await?;
-        let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
-        if use_tcp {
-            if let StandardObject::Device(device) = self.get_desc(owner_ood.object_id(), None).await? {
-                for endpoint in device.body_expect("").content().endpoints() {
-                    if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
-                        let addr = format!("{}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port);
-                        let req = Request::new(Method::Get, format!("http://{}/get_file?fileid={}", &addr, id).as_str());
-                        info!("named data client use tcp conn to {}", &addr);
-                        let conn = async_std::net::TcpStream::connect(&addr).await?;
-                        let mut resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
-                        let buf = resp.body_bytes().await?;
-                        let obj = StandardObject::clone_from_slice(&buf)?;
-                        self.object_cache.write().unwrap().insert(id.clone(), obj.clone());
-                        return Ok(obj);
-                    }
-                }
-            }
-        }
-
-        let req = Request::new(Method::Get, format!("http://www.cyfs.com/file_manager/get_file?fileid={}", id).as_str());
-        let conn = self.get_bdt_stream(&owner_ood).await?;
-        let mut resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
-        let buf = resp.body_bytes().await?;
-        let obj = StandardObject::clone_from_slice(&buf)?;
-        self.object_cache.write().unwrap().insert(id.clone(), obj.clone());
-        return Ok(obj);
-    }
-
-    #[async_recursion::async_recursion]
     async fn get_desc(
         &self,
         fileid: &ObjectId,
         owner: Option<ObjectId>,
     ) -> BuckyResult<StandardObject> {
         info!("get desc for id {}", fileid);
-        //1. 尝试从内存cache里取
-        if let Some(obj) = self.object_cache.read().unwrap().get(fileid) {
-            return Ok(obj.clone());
-        }
-        //1. 从FileManager取desc
-        /*
-        if let Ok(desc) = FileManager::get_desc(fileid).await {
-            return Ok(desc);
-        }
-        */
-
-        //2. 如果找不到，尝试用meta chain查找desc
-        info!("try get desc {} from meta", fileid);
-        if let Ok(ret) = self.meta_client.get_desc(fileid).await {
-            let obj = match ret {
-                SavedMetaObject::File(p) => {
-                    info!("get file desc {} from meta success", fileid);
-                    Ok(StandardObject::File(p))
-                },
-                SavedMetaObject::People(p) => {
-                    info!("get people desc {} from meta success", fileid);
-                    Ok(StandardObject::People(p))
-                },
-                SavedMetaObject::Device(p) => {
-                    info!("get device desc {} from meta success", fileid);
-                    let device_id = p.desc().device_id();
-                    self.device_cache.add(&device_id, p.clone()).await;
-                    Ok(StandardObject::Device(p))
-                }
-                SavedMetaObject::Data(data) => {
-                    info!("get desc {} from meta success", &data.id);
-                    Ok(StandardObject::clone_from_slice(data.data.as_slice())?)
-                }
-                _ => {
-                    warn!("get desc {} but not file", fileid);
-                    Err(BuckyError::from(BuckyErrorCode::NotFound))
-                },
-            };
-            if let Ok(obj) = obj {
-                self.object_cache.write().unwrap().insert(fileid.clone(), obj.clone());
-                return Ok(obj);
-            }
-        }
-
-        //3. 如果再找不到，当有owner传入的情况下，用HTTP@BDT到owner去找
-        if let Some(owner) = &owner {
-            info!("try get desc from owner {}", owner);
-            let desc = self.get_desc_from_file_manager(fileid, owner).await?;
-            return Ok(desc);
-        }
-
-        warn!("cannot get file desc {}", fileid);
-        return Err(BuckyError::from(BuckyErrorCode::NotFound));
+        let resp = self.cyfs_stack.non_service().get_object(NONGetObjectRequest::new_router(owner, fileid.clone(), None)).await?;
+        let obj = StandardObject::clone_from_slice(&resp.object.object_raw)?;
+        Ok(obj)
     }
 
     pub async fn get_dir(&self, id_str: &str, owner_str: Option<&str>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<(Dir, usize)> {
@@ -737,11 +361,10 @@ impl NamedCacheClient {
         W: AsyncWrite + Unpin,
     {
         let owner = desc.desc().owner().unwrap();
-        let owner_device = self.get_device_from_owner_id(&owner).await?;
         match desc.body().as_ref().unwrap().content().chunk_list() {
             ChunkList::ChunkInList(list) => {
                 info!("now get chunks for file {}:", desc.desc().calculate_id());
-                self.get_chunks(&list, &owner_device, writer).await?;
+                self.get_chunks(&list, &owner, writer).await?;
                 Ok(())
             }
             ChunkList::ChunkInFile(_fileid) => {
@@ -750,7 +373,7 @@ impl NamedCacheClient {
             }
             ChunkList::ChunkInBundle(bundle) => {
                 info!("now get chunks for file {}:", desc.desc().calculate_id());
-                self.get_chunks(&bundle.chunk_list(), &owner_device, writer).await?;
+                self.get_chunks(&bundle.chunk_list(), &owner, writer).await?;
                 Ok(())
             }
         }
@@ -858,12 +481,10 @@ impl NamedCacheClient {
         save_to_meta: bool,
         put_obj: bool,
     ) -> BuckyResult<Duration> {
-        let owner_device = self.get_device_from_owner(owner_desc).await?;
+        let owner = file_desc.desc().owner().as_ref().unwrap();
         let start = Instant::now();
-        let mut file = std::fs::File::open(source)?;
+        let mut file = async_std::fs::File::open(source).await?;
         let file_ref = file.borrow_mut();
-        // 1. 用bdt连接file的owner
-        // 当前使用HTTP@BDT，不需要这一步
         // 2. 把chunk存进owner
         match file_desc.body().as_ref().unwrap().content().chunk_list().inner_chunk_list() {
             Some(list) => {
@@ -873,54 +494,16 @@ impl NamedCacheClient {
                     let mut data = Vec::with_capacity(len as usize);
                     reader.read_to_end(&mut data)?;
 
-                    info!("put chunk {} len {} kB to {}", &chunkid, len / 1024, file_desc.desc().owner().unwrap());
+                    info!("put chunk {} len {} kB to {}", &chunkid, len / 1024, owner);
 
-                    let chunk_set_req = cyfs_chunk::ChunkSetReq::sign(
-                        owner_secret,
-                        &owner_device,
-                        &chunkid,
-                        data
-                    )?;
-
-                    let mut ctx = None;
-                    let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
-                    if use_tcp {
-                        if let StandardObject::Device(device) = self.get_desc(owner_device.object_id(), None).await? {
-                            for endpoint in device.body_expect("").content().endpoints() {
-                                if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
-                                    info!("named data client use tcp conn to {}", &endpoint.addr().ip().to_string());
-                                    ctx = Some(ChunkSourceContext::new_http(&owner_device, &endpoint.addr().ip().to_string(), self.config.tcp_chunk_manager_port));
-                                    break;
-                                }
-                            }
-                        }
-                    } else {
-                        let bdt_stream = self.get_bdt_stream(&owner_device).await?;
-                        ctx = Some(ChunkSourceContext::source_http_bdt_remote(&owner_device, bdt_stream))
-                    };
-
-                    if ctx.is_none() {
-                        if self.config.conn_strategy != ConnStrategy::TcpOnly {
-                            info!("named data client use tcp, but not found any static tcp ipv4 addr. roolback to bdt");
-                            let bdt_stream = self.get_bdt_stream(&owner_device).await?;
-                            ctx = Some(ChunkSourceContext::source_http_bdt_remote(&owner_device, bdt_stream))
-                        } else {
-                            info!("named data client use tcp pnly, but not found any static tcp ipv4 addr. return failed");
-                            return Err(BuckyError::new(BuckyErrorCode::NotSupport, format!("device {} not has static tcp ipv4 addr", &owner_device)));
-                        }
-                    }
-
-                    let chunk_set_resp = ChunkClient::set(ctx.unwrap(), &chunk_set_req).await?;
-
-                    let public_ley = owner_desc.public_key().unwrap();
-                    if let PublicKeyRef::Single(public_key) = public_ley {
-                        if !chunk_set_resp.verify(public_key) {
-                            return Err(BuckyError::from(BuckyErrorCode::InvalidData));
-                        }
-                    }
+                    let resp = self.cyfs_stack.ndn_service().put_data(
+                        NDNPutDataRequest::new_router(Some(owner_desc.calculate_id()),
+                                                      chunkid.object_id(),
+                                                      len as u64,
+                                                      Box::new(reader))).await?;
 
 
-                    info!("put chunk {} to {} success", chunkid, file_desc.desc().owner().unwrap());
+                    info!("put chunk {} to {} success, result {}", chunkid, owner, resp.result.to_string());
                 }
             }
             None => {
@@ -932,7 +515,6 @@ impl NamedCacheClient {
             // 3. 把filedesc存入owner
             self.put_obj(&AnyNamedObject::Standard(StandardObject::File(file_desc.clone()))).await?;
         }
-
 
         if save_to_meta {
             // 4. 把filedesc存入meta
@@ -956,37 +538,12 @@ impl NamedCacheClient {
     pub async fn put_obj(&self, object: &AnyNamedObject) -> BuckyResult<()> {
         let fileid = object.calculate_id();
         let owner_id = object.owner().as_ref().unwrap();
-        let owner_device = self.get_device_from_owner_id(owner_id).await?;
-        let buf = object.to_vec()?;
-        info!("put file desc {} to {}", &fileid, owner_id);
-
-        let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
-        if use_tcp {
-            if let StandardObject::Device(device) = self.get_desc(owner_device.object_id(), Some(owner_id.clone())).await? {
-                for endpoint in device.body_expect("").content().endpoints() {
-                    if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
-                        let addr = format!("{}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port);
-                        let mut req = Request::new(Method::Post, format!("http://{}/set_file?fileid={}", &addr, &fileid).as_str());
-                        req.set_body(buf);
-                        info!("named data client use tcp conn to {}", &addr);
-                        let conn = async_std::net::TcpStream::connect(&addr).await?;
-                        cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
-                        info!(
-                            "put desc {} to {} success",
-                            &fileid, &owner_id
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-        }
-
-        let req = Request::new(Method::Post, format!("http://www.cyfs.com/file_manager/set_file?fileid={}", &fileid).as_str());
-        let conn = self.get_bdt_stream(&owner_device).await?;
-        cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
+        let mut req = NONPutObjectRequest::new_router(Some(owner_id.clone()), fileid, object.to_vec()?);
+        req.access = Some(AccessString::full());
+        let resp = self.cyfs_stack.non_service().put_object(req).await?;
         info!(
-            "put desc {} to {} success",
-            &fileid, &owner_id
+            "put desc {} to {} success, result {}",
+            &fileid, owner_id, resp.result.to_string()
         );
 
         return Ok(());
