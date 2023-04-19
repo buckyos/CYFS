@@ -5,7 +5,7 @@ use app_manager_lib::{AppManagerConfig};
 use clap::{App};
 use cyfs_base::*;
 use cyfs_core::DecAppId;
-use cyfs_lib::SharedCyfsStack;
+use cyfs_lib::{SharedCyfsStack, UtilGetDeviceStaticInfoRequest, UtilGetOODStatusRequest, ZoneRole};
 use cyfs_util::process::{
     prepare_args, set_process_cmd_funcs, ProcessAction, ProcessCmdFuncs,
 };
@@ -65,7 +65,7 @@ impl ProcessCmdFuncs for AppManagerProcessFuncs {
     }
 }
 
-async fn main_run() {
+async fn main_run() -> BuckyResult<()> {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
 
@@ -123,6 +123,12 @@ async fn main_run() {
     }
     let _ = cyfs_stack.wait_online(None).await;
 
+    let status = cyfs_stack.util().get_device_static_info(UtilGetDeviceStaticInfoRequest::new()).await?;
+    if !status.info.zone_role.is_active_ood() {
+        warn!("app manager started but not active ood! zone role {}", status.info.zone_role);
+        std::process::exit(1);
+    }
+
     let mut app_manager = AppManagerEx::new(cyfs_stack, app_config);
 
     if let Err(e) = app_manager.init().await {
@@ -133,6 +139,8 @@ async fn main_run() {
     AppManagerEx::start(Arc::new(app_manager)).await;
 
     async_std::task::block_on(async_std::future::pending::<()>());
+
+    Ok(())
 }
 
 /*fn kill_service_start_process(service_name: &str) -> bool {
@@ -159,7 +167,7 @@ async fn main_run() {
     return false;
 }*/
 
-fn main() {
+fn main() -> BuckyResult<()> {
     cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
 
     async_std::task::block_on(main_run())
