@@ -1,4 +1,5 @@
 use cyfs_util::GatewayRegister;
+use log::*;
 
 const META_STRING: &str = r#"
 {

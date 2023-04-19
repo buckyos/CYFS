@@ -9,24 +9,13 @@ description = "Rust chunk-manager package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-h1 = { package = "cyfs-async-h1", version = '2.3.3' }
 async-std = { version = "1.11", features = ["attributes"] }
-chrono = "0.4"
-cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base = { path = "../../component/cyfs-base"}
+cyfs-core = {path="../../component/cyfs-core"}
 cyfs-chunk = { path = "../../component/cyfs-chunk" }
-cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
-cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
-hex = "0.4"
 http-types = "2.12"
-lazy_static = "1.4"
 log = "0.4"
-rand = "0.8"
-rusqlite = { version = "0.27.0", features = ["chrono"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 tide = "0.16"
-timer = "0.2"
-url = "2.2"
-lru_time_cache = "0.11"
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-lib = {path="../../component/cyfs-lib"}
