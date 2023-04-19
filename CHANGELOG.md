@@ -6,21 +6,24 @@ You can use Ctrl+F to search for specific service version
 
 ## [Unreleased]
 
-## [1.0.1.44] - 2022-10-21 [HOTFIX]
-- Fix some read_to_end related bugs for error empty content
-- Fix operation can stuck due to some timeout problem
-- Fix status error caused by concurrent sync states and sync packages in ood-daemon service
-- Fix Sqlite concurrent write error in some cases
-
-## [1.0.1.42] - 2022-10-21
-### Add
-- Add encryption and decryption to the crypto module of the cyfs stack
-### Changes
-- Increase the minimum rust version to 1.63
-- Refactor the logic of dsg-services
-- Optimize the uninstall logic of DecApp
-- Optimize download logic of Service and DecApp to reduce CPU usage
-- bdt performance improve
-- Improve the stability of master-slave OOD synchronization
-### Fix
-- Fix the mount path of data directory in DecApp Service sandbox.
+## [1.1.1.82] - 2023-04-15
+### Improvements:
+Optimize bdt uptime logic when no udp endpoint is available
+Protocol stack optimization guessing mime logic
+Protocol stack optimization and DecApp related caching logic
+Issue #156: AppManager optimizes the uninstall logic of DecApp
+Issue #165, #168: Optimization of AppManager's local repo logic
+Issue #170: Optimization of AppManager's state repair logic at startup
+Issue #196: The -overwrite parameter of ood-installer can control whether to overwrite the original system-config.toml file
+Issue #201: Optimize the hash detection logic of the protocol stack chunk reader
+ 
+### Fixes:
+Issue #157: AppManager may not stop the timeout DecApp installation command correctly under Windows
+Fix the service execution problem of AppManager in docker mode.
+Fixed a status problem when AppManager reports decapp to ood-daemon.
+Fixed some problems related to NDN chunk.
+Bdt fixed multiple panic
+Issue #183, #186, #187: Fixed multiple panics in the protocol stack
+Issue #185: Use cyfs-async-h1 to replace the original async-h1 to avoid panic caused by invalid http header
+Issue #198: AppManager does not handle the timeout of install command correctly in docker mode.
+Fix: AppManager incorrectly set the App status when it received the Install command, resulting in the inability to retry the installation logic after reboot
