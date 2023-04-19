@@ -266,22 +266,27 @@ impl Service {
         );
 
         match cmd.spawn() {
-            Ok(mut child) => match child.wait() {
-                Ok(status) => {
-                    info!(
-                        "stop cmd complete, service={}, code={}, cmd={}",
-                        self.name,
-                        status.code().unwrap_or_default(),
-                        v,
-                    );
+            Ok(mut child) => {
+                let pid = child.id();
+
+                match child.wait() {
+                    Ok(status) => {
+                        info!(
+                            "stop cmd complete, service={}, code={}, cmd={}, pid={}",
+                            self.name,
+                            status.code().unwrap_or_default(),
+                            v,
+                            pid,
+                        );
+                    }
+                    Err(err) => {
+                        error!(
+                            "wait stop cmd error, service={}, err={}, cmd={}, pid={}",
+                            self.name, err, v, pid,
+                        );
+                    }
                 }
-                Err(err) => {
-                    error!(
-                        "wait stop cmd error, service={}, err={}, cmd={}",
-                        self.name, err, v
-                    );
-                }
-            },
+            }
             Err(err) => {
                 error!(
                     "exec stop cmd error! service={}, err={}, cmd={}",
@@ -323,7 +328,12 @@ impl Service {
         let mut cmd = self.gen_cmd(&v, true, ignore_output).unwrap();
         match cmd.spawn() {
             Ok(p) => {
-                info!("spawn service success, service={}, cmd={}", self.name, v);
+                info!(
+                    "spawn service success, service={}, cmd={}, pid={}",
+                    self.name,
+                    v,
+                    p.id()
+                );
 
                 // 保存process句柄
                 self.state.lock().unwrap().process = Some(p);
@@ -351,36 +361,46 @@ impl Service {
                 need_cmd_check = true;
             } else {
                 let mut process = process.unwrap();
+                let pid = process.id();
                 match process.try_wait() {
                     Ok(Some(status)) => {
                         info!(
-                            "service exited, name={}, status={}, current state={}",
-                            self.name, status, state.state
+                            "service exited, name={}, status={}, current state={}, pid={}",
+                            self.name, status, state.state, pid,
                         );
                         match process.wait() {
                             Ok(_) => {
-                                info!("wait service process complete! name={}", self.name);
+                                info!(
+                                    "wait service process complete! name={}, pid={}",
+                                    self.name, pid
+                                );
                             }
                             Err(e) => {
-                                info!("wait service process error! name={}, err={}", self.name, e);
+                                info!(
+                                    "wait service process error! name={}, pid={}, err={}",
+                                    self.name, pid, e
+                                );
                             }
                         }
                         state.state = ServiceState::Stop;
                     }
                     Ok(None) => {
-                        debug!("service still running: {}", self.name);
+                        debug!("service still running: name={}, pid={}", self.name, pid);
 
                         // 仍然在运行，需要保留进程object并继续等待
                         state.process = Some(process);
 
                         if state.state != ServiceState::Run {
-                            warn!("process object exists and still running but state is not run! service={}, current state={}", self.name, state.state);
+                            warn!("process object exists and still running but state is not run! name={}, current state={}, pid={}", self.name, state.state, pid);
                             state.state = ServiceState::Run;
                         }
                     }
                     Err(e) => {
                         // 出错的情况下，直接放弃这个进程object，并使用cmd进一步检测
-                        error!("update service state error, name={}, err={}", self.name, e);
+                        error!(
+                            "update service state error, name={}, err={}, pid={}",
+                            self.name, e, pid
+                        );
                         need_cmd_check = true;
                     }
                 }
@@ -414,22 +434,26 @@ impl Service {
         cmd.args(&["--fid", &self.fid]);
 
         match cmd.spawn() {
-            Ok(mut child) => match child.wait() {
-                Ok(status) => {
-                    exit_code = status.code().unwrap_or_default();
+            Ok(mut child) => {
+                let pid = child.id();
 
-                    debug!(
-                        "check cmd complete, name={}, code={}, cmd={}",
-                        self.name, exit_code, v
-                    );
+                match child.wait() {
+                    Ok(status) => {
+                        exit_code = status.code().unwrap_or_default();
+
+                        debug!(
+                            "check cmd complete, name={}, code={}, cmd={}, pid={}",
+                            self.name, exit_code, v, pid,
+                        );
+                    }
+                    Err(err) => {
+                        error!(
+                            "wait check cmd error, name={}, err={}, cmd={}, pid={}",
+                            self.name, err, v, pid,
+                        );
+                    }
                 }
-                Err(err) => {
-                    error!(
-                        "wait check cmd error, name={}, err={}, cmd={}",
-                        self.name, err, v
-                    );
-                }
-            },
+            }
             Err(err) => {
                 error!(
                     "exec check cmd error! name={}, err={}, cmd={}",

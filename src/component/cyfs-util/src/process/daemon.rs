@@ -103,8 +103,8 @@ pub mod daemon {
             .stderr(Stdio::null());
 
         match cmd.spawn() {
-            Ok(_) => {
-                info!("spawn as daemon success: {}", cmd_line);
+            Ok(child) => {
+                info!("spawn as daemon success: {}, pid={}", cmd_line, child.id());
 
                 Ok(())
             }
