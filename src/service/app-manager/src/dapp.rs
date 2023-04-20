@@ -187,17 +187,17 @@ impl DApp {
         })
     }
 
-    fn run(cmd: &str, dir: &Path, detach: bool, stdout: Option<File>) -> BuckyResult<Child> {
+    fn run(&self, cmd: &str, detach: bool, stdout: Option<File>, record_pid: Option<&Path>) -> BuckyResult<Child> {
         let args: Vec<&str> = ProcessUtil::parse_cmd(cmd);
         if args.len() == 0 {
             error!("parse cmd {} failed, cmd empty?", cmd);
             return Err(BuckyError::from(BuckyErrorCode::InvalidData));
         }
-        info!("run cmd {} in {}", cmd, dir.display());
-        let program = which::which(args[0]).unwrap_or_else(|_| dir.join(args[0]));
+        info!("run cmd {} in {}", cmd, self.work_dir.display());
+        let program = which::which(args[0]).unwrap_or_else(|_| self.work_dir.join(args[0]));
         info!("program full path: {}", program.display());
         let mut command = Command::new(program);
-        command.args(&args[1..]).current_dir(dir);
+        command.args(&args[1..]).current_dir(self.work_dir.as_path());
         if let Some(out) = stdout {
             command.stdout(out);
         }
@@ -212,14 +212,15 @@ impl DApp {
         }
 
         match command.spawn() {
-            Ok(p) => Ok(p),
+            Ok(p) => {
+                if let Some(path) = record_pid {
+                    info!("write process pid {} to {}", p.id(), path.display());
+                    let _ = std::fs::write(path, p.id().to_string().as_bytes());
+                }
+                Ok(p)
+            },
             Err(e) => {
-                error!(
-                    "spawn app failed! cmd {}, dir {}, err {}",
-                    cmd,
-                    dir.display(),
-                    e
-                );
+                error!("spawn app failed! cmd {}, dir {}, err {}", cmd, self.work_dir.display(), e);
                 Err(BuckyError::from(BuckyErrorCode::ExecuteError))
             }
         }
@@ -239,32 +240,19 @@ impl DApp {
             .join(format!("app_manager_app_{}", self.dec_id))
     }
 
-    fn get_pid(&self) -> BuckyResult<String> {
-        let lock_file = self.get_pid_file_path();
-        if !lock_file.is_file() {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, "no pid file"));
-        }
-        let result = std::fs::read_to_string(lock_file).unwrap();
-        Ok(result)
+    fn get_install_pid_file_path(&self) -> PathBuf {
+        cyfs_util::get_cyfs_root_path()
+            .join("run")
+            .join(format!("app_manager_app_install_{}", self.dec_id))
     }
 
     pub fn start(&self) -> BuckyResult<bool> {
         if !self.status()? {
-            let child = DApp::run(&self.info.start, &self.work_dir, true, None)?;
-            let id = child.id();
+            let child = self.run(&self.info.start, true, None, Some(self.get_pid_file_path().as_path()))?;
             *self.process.lock().unwrap() = Some(child);
-            // mark pid
-            let lock_file = self.get_pid_file_path();
-            let buf = format!("{}", id).into_bytes();
-            std::fs::write(lock_file, &buf).map_err(|e| {
-                let msg = format!("app[{}]{} write lock file failed! err {}",
-                                  self.dec_id, self.info.id, e);
-                error!("{}", &msg);
-                BuckyError::new(BuckyErrorCode::ExecuteError, msg)
-            })?;
             info!(
-                "start app:{} {} success! and write pid {:?}",
-                self.dec_id, self.info.id, id
+                "start app:{} {} success!",
+                self.dec_id, self.info.id
             );
 
             return Ok(true);
@@ -276,12 +264,12 @@ impl DApp {
     fn run_cmd(
         &self,
         cmd: &str,
-        dir: &Path,
         detach: bool,
         stdout: Option<File>,
         time_out: u64,
+        record_pid: Option<&Path>
     ) -> BuckyResult<i32> {
-        let mut process = DApp::run(cmd, dir, detach, stdout)?;
+        let mut process = self.run(cmd, detach, stdout, record_pid)?;
 
         let app_id = self.info.id.as_str();
 
@@ -347,10 +335,10 @@ impl DApp {
         // 通过命令行判定app运行状态
         let exit_code = self.run_cmd(
             &self.info.status,
-            &self.work_dir,
             false,
             None,
             STATUS_CMD_TIME_OUT_IN_SECS,
+            None,
         )?;
         Ok(exit_code != 0)
     }
@@ -436,10 +424,10 @@ impl DApp {
 
                         match self.run_cmd(
                             &self.info.stop,
-                            &self.work_dir,
                             false,
                             None,
                             STOP_CMD_TIME_OUT_IN_SECS,
+                            None,
                         ) {
                             Ok(code) => {
                                 if code != 0 {
@@ -461,56 +449,50 @@ impl DApp {
         Ok(false)
     }
 
+    fn try_stop_process_by_pid(&self, pid_path: &Path) -> BuckyResult<()> {
+        if pid_path.is_file() {
+            let pid = std::fs::read_to_string(pid_path)?;
+            let info = sysinfo::System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+            if let Some(process) = info.process(Pid::from_str(&pid)?) {
+                if process.cwd() == self.work_dir.as_path() {
+                    info!("try to force kill app {} by pid {}", &self.dec_id, pid);
+                    let cmd;
+                    #[cfg(windows)]
+                    {
+                        cmd = format!("taskkill /F /T /PID {}", &pid);
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        cmd = format!("taskkill /F /T /PID {}", &pid);
+                    }
+                    self.run_cmd(&cmd, false, None, 0, None)?;
+                } else {
+                    warn!("pid {} work dir mismatch! except {}, actual {}. not kill", &pid, self.work_dir.as_path().display(), process.cwd().display())
+                }
+            }
+        } else {
+            info!("not found or not file: pid path {}", pid_path.display());
+        }
+
+
+        if pid_path.is_dir() {
+            if let Ok(_) = std::fs::remove_dir_all(pid_path) {
+                info!("delete pid path {}?", pid_path.display());
+            }
+        } else {
+            if let Ok(_) = std::fs::remove_file(pid_path) {
+                info!("delete pid file {}", pid_path.display());
+            }
+        }
+
+        Ok(())
+    }
+
     // _force_stop
     // system kill app by pid
     // appmanager 通过start记录的pid去兜底删除应用
     fn _force_stop(&self) -> BuckyResult<()> {
-        let pid = self.get_pid();
-        if pid.is_err() {
-            return Ok(());
-        }
-
-        let pid = pid.unwrap();
-        let info = sysinfo::System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-        if let Some(process) = info.process(Pid::from_str(&pid)?) {
-            if process.cwd() == self.work_dir.as_path() {
-                info!("try to force kill app {} by pid {}", &self.dec_id, pid);
-                #[cfg(windows)]
-                {
-                    let mut child = Command::new("taskkill")
-                        .arg("/F")
-                        .arg("/T")
-                        .arg("/PID")
-                        .arg(&pid)
-                        .spawn()
-                        .map_err(|e| {
-                            error!("kill app:{} failed! err {}", pid, e);
-                            BuckyError::from(BuckyErrorCode::ExecuteError)
-                        })?;
-                    let _ = child.wait();
-                }
-                #[cfg(not(windows))]
-                {
-                    let mut child = Command::new("kill")
-                        .arg("-9")
-                        .arg(&pid)
-                        .spawn()
-                        .map_err(|e| {
-                            error!("kill app:{} failed! err {}", pid, e);
-                            BuckyError::from(BuckyErrorCode::ExecuteError)
-                        })?;
-                    let _ = child.wait();
-                }
-            } else {
-                warn!("pid {} work dir mismatch! except {}, actual {}. not kill", &pid, self.work_dir.as_path().display(), process.cwd().display())
-            }
-
-        }
-
-
-        let lock_file = self.get_pid_file_path();
-        let _ = std::fs::remove_file(lock_file);
-        Ok(())
+        self.try_stop_process_by_pid(self.get_pid_file_path().as_path())
     }
 
     // 这里做DecApp被安装后，执行前，根据配置文件需要做的预配置
@@ -539,15 +521,17 @@ impl DApp {
 
     pub fn install(&self) -> BuckyResult<bool> {
         let mut cmd_index = 0;
+        let install_pid_path = self.get_install_pid_file_path();
+        let _ = self.try_stop_process_by_pid(&install_pid_path);
         for cmd in &self.info.install {
             let log_file = self.work_dir.join(format!("install_{}.log", cmd_index));
 
             match self.run_cmd(
                 cmd,
-                &self.work_dir,
                 false,
                 File::create(log_file).ok(),
                 INSTALL_CMD_TIME_OUT_IN_SECS,
+                Some(&install_pid_path)
             ) {
                 Err(e) => {
                     error!("run app:{} install cmd {} err {}", &self.info.id, cmd, e);
