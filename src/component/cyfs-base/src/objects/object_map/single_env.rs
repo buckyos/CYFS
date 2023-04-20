@@ -134,7 +134,7 @@ impl ObjectMapSingleOpEnv {
                         "load single_op_env with inner_path but not found! root={}, inner_path={}",
                         obj_map_id, inner_path,
                     );
-                    error!("{}", msg);
+                    warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
     
@@ -171,7 +171,7 @@ impl ObjectMapSingleOpEnv {
                     "load single_op_env by path but not found! root={}, path={}, key={}",
                     root, path, key
                 );
-                error!("{}", msg);
+                warn!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
             }
 

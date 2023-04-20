@@ -444,7 +444,7 @@ impl ObjectMapPathOpEnv {
                 this.path().commit_op_list().await?;
             } else {
                 // env操作期间，root没发生改变，那么不再重新执行op_list
-                info!("will clear op list because root not changed: {}", root);
+                info!("will clear op list because root not changed during the operations: {}", root);
                 this.path().clear_op_list();
             }
 
