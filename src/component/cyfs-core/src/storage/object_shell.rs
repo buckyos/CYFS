@@ -1,263 +1,508 @@
-use std::marker::PhantomData;
-
 use cyfs_base::{
-    BodyContent, BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId,
-    ObjectType, RawDecode, RawEncode, Signature,
+    BodyContent, BuckyError, BuckyErrorCode, BuckyResult, DescContent, HashValue, NamedObjType,
+    NamedObject, NamedObjectBase, NamedObjectBaseBuilder, NamedObjectBodyContext,
+    NamedObjectBuilder, NamedObjectDesc, NamedObjectId, ObjectDesc, ObjectId, ObjectMutBody,
+    ObjectSigns, ObjectType, ProtobufDecode, ProtobufEncode, ProtobufTransform, RawConvertTo,
+    RawDecode, RawEncode, RawEncodePurpose, RawEncodeWithContext, Signature, SubDescNone,
+    OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF,
 };
+use serde::Serialize;
+use sha2::Digest;
 
-use crate::{Storage, StorageObj};
+use crate::CoreObjectType;
 
-const OBJECT_SHELL_FLAGS_FREEDOM_DESC_SIGNATURE: u8 = 0b_1;
-const OBJECT_SHELL_FLAGS_FREEDOM_BODY_SIGNATURE: u8 = 0b_10;
-const OBJECT_SHELL_FLAGS_FREEDOM_NONCE: u8 = 0b_100;
-const OBJECT_SHELL_FLAGS_EXT: u8 = 0b_10000000;
+#[derive(Debug, Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[cyfs_protobuf_type(crate::codec::protos::ObjectShellDescContent)]
+struct ObjectShellDescContent {
+    is_object_id_only: bool,
+    is_desc_sign_fix: bool,
+    is_body_sign_fix: bool,
+    is_nonce_fix: bool,
+    fix_content_hash: HashValue,
+}
+
+impl DescContent for ObjectShellDescContent {
+    fn obj_type() -> u16 {
+        CoreObjectType::ObjectShell as u16
+    }
+
+    fn format(&self) -> u8 {
+        OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF
+    }
+
+    type OwnerType = SubDescNone;
+    type AreaType = SubDescNone;
+    type AuthorType = SubDescNone;
+    type PublicKeyType = SubDescNone;
+}
+
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(crate::codec::protos::ObjectShellBodyContent)]
+struct ObjectShellBodyContent {
+    desc: Vec<u8>,
+    body: Option<Vec<u8>>,
+    desc_signatures: Option<Vec<u8>>,
+    body_signatures: Option<Vec<u8>>,
+    nonce: Option<Vec<u8>>,
+}
+
+impl BodyContent for ObjectShellBodyContent {
+    fn format(&self) -> u8 {
+        OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF
+    }
+}
+
+impl ObjectShellBodyContent {
+    fn hash(&self, flags: &ObjectShellFlags) -> HashValue {
+        let occupy = [0u8; 0];
+        let occupy = occupy.raw_encode_to_buffer().unwrap();
+
+        let mut sha256 = sha2::Sha256::new();
+        sha256.input(self.desc.as_slice());
+        sha256.input(
+            self.body
+                .as_ref()
+                .map_or(occupy.as_slice(), |v| v.as_slice()),
+        );
+
+        if flags.is_desc_sign_fix {
+            sha256.input(
+                self.desc_signatures
+                    .as_ref()
+                    .map_or(occupy.as_slice(), |v| v.as_slice()),
+            );
+        }
+        if flags.is_body_sign_fix {
+            sha256.input(
+                self.body_signatures
+                    .as_ref()
+                    .map_or(occupy.as_slice(), |v| v.as_slice()),
+            );
+        }
+        if flags.is_nonce_fix {
+            sha256.input(
+                self.nonce
+                    .as_ref()
+                    .map_or(occupy.as_slice(), |v| v.as_slice()),
+            );
+        }
+        HashValue::from(sha256.result())
+    }
+}
+
+type ObjectShellType = NamedObjType<ObjectShellDescContent, ObjectShellBodyContent>;
+type ObjectShellBuilder = NamedObjectBuilder<ObjectShellDescContent, ObjectShellBodyContent>;
+type ObjectShellDesc = NamedObjectDesc<ObjectShellDescContent>;
+
+type ObjectShellId = NamedObjectId<ObjectShellType>;
+type ObjectShellStorage = NamedObjectBase<ObjectShellType>;
+
+trait ObjectShellStorageObjectId {
+    fn shell_id(&self) -> ObjectId;
+    fn check_hash(&self) -> bool;
+    fn hash(&self) -> Option<HashValue>;
+    fn flags(&self) -> ObjectShellFlags;
+}
+impl ObjectShellStorageObjectId for ObjectShellStorage {
+    fn shell_id(&self) -> ObjectId {
+        self.desc().calculate_id()
+    }
+
+    fn check_hash(&self) -> bool {
+        self.hash().as_ref().map_or(false, |hash| {
+            &self.desc().content().fix_content_hash == hash
+        })
+    }
+
+    fn hash(&self) -> Option<HashValue> {
+        self.body()
+            .as_ref()
+            .map(|body| body.content().hash(&self.flags()))
+    }
+
+    fn flags(&self) -> ObjectShellFlags {
+        let desc = self.desc().content();
+        ObjectShellFlags {
+            is_object_id_only: desc.is_object_id_only,
+            is_desc_sign_fix: desc.is_desc_sign_fix,
+            is_body_sign_fix: desc.is_body_sign_fix,
+            is_nonce_fix: desc.is_nonce_fix,
+        }
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct ObjectShellFlags {
-    flags: u8,
+    is_object_id_only: bool,
+    is_desc_sign_fix: bool,
+    is_body_sign_fix: bool,
+    is_nonce_fix: bool,
 }
-
-pub const OBJECT_SHELL_ALL_FREEDOM: ObjectShellFlags = ObjectShellFlags {
-    flags: OBJECT_SHELL_FLAGS_FREEDOM_DESC_SIGNATURE
-        | OBJECT_SHELL_FLAGS_FREEDOM_BODY_SIGNATURE
-        | OBJECT_SHELL_FLAGS_FREEDOM_NONCE,
-};
 
 impl ObjectShellFlags {
-    fn is_desc_sign_freedom(&self) -> bool {
-        self.flags & OBJECT_SHELL_FLAGS_FREEDOM_DESC_SIGNATURE != 0
+    pub fn object_id_only(&self) -> bool {
+        self.is_object_id_only
     }
 
-    fn is_body_sign_freedom(&self) -> bool {
-        self.flags & OBJECT_SHELL_FLAGS_FREEDOM_BODY_SIGNATURE != 0
+    pub fn desc_sign_fix(&self) -> bool {
+        self.is_desc_sign_fix
     }
 
-    fn is_nonce_freedom(&self) -> bool {
-        self.flags & OBJECT_SHELL_FLAGS_FREEDOM_NONCE != 0
+    pub fn body_sign_fix(&self) -> bool {
+        self.is_body_sign_fix
+    }
+
+    pub fn nonce_fix(&self) -> bool {
+        self.is_nonce_fix
     }
 }
 
+pub const OBJECT_SHELL_ALL_FREEDOM_WITH_FULL_DESC: ObjectShellFlags = ObjectShellFlags {
+    is_object_id_only: false,
+    is_desc_sign_fix: false,
+    is_body_sign_fix: false,
+    is_nonce_fix: false,
+};
+
 pub struct ObjectShellFlagsBuilder {
-    flags: u8,
+    flags: ObjectShellFlags,
 }
 
 impl ObjectShellFlagsBuilder {
     pub fn new() -> Self {
-        Self { flags: 0 }
+        Self {
+            flags: OBJECT_SHELL_ALL_FREEDOM_WITH_FULL_DESC,
+        }
     }
 
     pub fn build(&self) -> ObjectShellFlags {
-        ObjectShellFlags { flags: self.flags }
+        self.flags
     }
 
-    pub fn freedom_desc_signature(&mut self) -> &mut Self {
-        self.flags |= OBJECT_SHELL_FLAGS_FREEDOM_DESC_SIGNATURE;
+    pub fn object_id_only(&mut self, is_only: bool) -> &mut Self {
+        self.flags.is_object_id_only = is_only;
         self
     }
 
-    pub fn freedom_body_signature(&mut self) -> &mut Self {
-        self.flags |= OBJECT_SHELL_FLAGS_FREEDOM_BODY_SIGNATURE;
+    pub fn desc_sign_fix(&mut self, is_fix: bool) -> &mut Self {
+        self.flags.is_desc_sign_fix = is_fix;
         self
     }
 
-    pub fn freedom_nonce(&mut self) -> &mut Self {
-        self.flags |= OBJECT_SHELL_FLAGS_FREEDOM_NONCE;
+    pub fn body_sign_fix(&mut self, is_fix: bool) -> &mut Self {
+        self.flags.is_body_sign_fix = is_fix;
+        self
+    }
+
+    pub fn nonce_fix(&mut self, is_fix: bool) -> &mut Self {
+        self.flags.is_nonce_fix = is_fix;
         self
     }
 }
 
-pub struct ObjectShell<O, OT> {
-    raw: O,
-    flags: ObjectShellFlags,
-    phantom: PhantomData<OT>,
+enum ShelledDesc<D: ObjectDesc + Sync + Send> {
+    ObjectId(ObjectId),
+    Desc(D),
 }
 
-impl<O, OT> ObjectShell<O, OT>
+pub struct ObjectShell<O>
 where
-    O: NamedObject<OT> + RawEncode + for<'local> RawDecode<'local> + Clone, // TODO: how to support other parameter against `O` for `NamedObject`
-    OT: ObjectType,
-    OT::ContentType: BodyContent,
+    O: ObjectType,
+    O::ContentType: BodyContent,
 {
-    pub fn from_storage(storage: &Storage) -> BuckyResult<Self> {
-        if storage.check_hash() != Some(true) {
+    desc: ShelledDesc<O::DescType>,
+    body: Option<ObjectMutBody<O::ContentType, O>>,
+    signs: ObjectSigns,
+    nonce: Option<u128>,
+    flags: ObjectShellFlags,
+}
+
+impl<O> ObjectShell<O>
+where
+    O: ObjectType,
+    O::ContentType: BodyContent + RawEncode + for<'de> RawDecode<'de> + Clone,
+    O::DescType: RawEncode + for<'de> RawDecode<'de> + Clone,
+{
+    pub fn from_object<NO>(raw: &NO, flags: ObjectShellFlags) -> Self
+    where
+        NO: NamedObject<O> + RawEncode + for<'local> RawDecode<'local> + Clone,
+    {
+        Self {
+            flags,
+            desc: ShelledDesc::Desc(raw.desc().clone()),
+            body: raw.body().clone(),
+            signs: raw.signs().clone(),
+            nonce: raw.nonce().clone(),
+        }
+    }
+
+    pub fn shell_id(&self) -> ObjectId {
+        self.to_storage().shell_id()
+    }
+
+    pub fn flags(&self) -> &ObjectShellFlags {
+        &self.flags
+    }
+
+    pub fn with_full_desc(&self) -> bool {
+        match self.desc {
+            ShelledDesc::ObjectId(_) => false,
+            ShelledDesc::Desc(_) => true,
+        }
+    }
+
+    pub fn body(&self) -> &Option<ObjectMutBody<O::ContentType, O>> {
+        &self.body
+    }
+    // update the raw object
+    pub fn body_mut(&mut self) -> &mut Option<ObjectMutBody<O::ContentType, O>> {
+        &mut self.body
+    }
+
+    pub fn signs(&self) -> &ObjectSigns {
+        &self.signs
+    }
+
+    // update the signatures
+    pub fn signs_mut(&mut self) -> &mut ObjectSigns {
+        &mut self.signs
+    }
+
+    pub fn nonce(&self) -> &Option<u128> {
+        &self.nonce
+    }
+
+    // update the nonce
+    pub fn nonce_mut(&mut self) -> &mut Option<u128> {
+        &mut self.nonce
+    }
+
+    pub fn try_into_object(
+        mut self,
+        desc: Option<&O::DescType>,
+    ) -> BuckyResult<NamedObjectBase<O>> {
+        let flags = self.flags;
+        let body = self.body.take();
+        let mut signs = ObjectSigns::default();
+        std::mem::swap(&mut signs, &mut self.signs);
+        let nonce = self.nonce.take();
+
+        let desc = match self.desc {
+            ShelledDesc::Desc(desc_inner) => {
+                let id = desc_inner.object_id();
+                if let Some(desc) = desc {
+                    let obj_id_param = desc.object_id();
+                    if obj_id_param != id {
+                        let msg = format!(
+                            "parameter desc({}) is not match with object-id({}) from desc.",
+                            obj_id_param, id
+                        );
+                        log::error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::NotMatch, msg));
+                    }
+                }
+                desc_inner
+            }
+            ShelledDesc::ObjectId(id) => match desc {
+                Some(desc) => {
+                    let obj_id_param = desc.object_id();
+                    if obj_id_param == id {
+                        desc.clone()
+                    } else {
+                        let msg = format!(
+                            "parameter desc({}) is not match with object-id({}).",
+                            obj_id_param, id
+                        );
+                        log::error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::NotMatch, msg));
+                    }
+                }
+                None => {
+                    let msg = format!(
+                        "no desc stored in the shell, you should input it from parameters. object-id is {}",
+                        id
+                    );
+                    log::error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
+        };
+
+        let builder = NamedObjectBaseBuilder::<O>::new(desc);
+        let builder = if let Some(body) = body {
+            builder.body(body)
+        } else {
+            builder
+        };
+        let builder = builder.signs(signs);
+        let obj = if let Some(nonce) = nonce {
+            builder.nonce(nonce).build()
+        } else {
+            builder.build()
+        };
+
+        Ok(obj)
+    }
+
+    fn from_storage(storage: &ObjectShellStorage) -> BuckyResult<Self> {
+        if !storage.check_hash() {
             return Err(BuckyError::new(
                 BuckyErrorCode::NotMatch,
                 "Hash does not match with raw object",
             ));
         }
 
-        let value = storage.value().as_slice();
-        if value.len() == 0 {
-            return Err(BuckyError::new(
-                BuckyErrorCode::OutOfLimit,
-                "empty for object shell",
-            ));
-        }
+        let flags = storage.flags();
 
-        let (freedom_flags, unfreedom) = value.split_at(1);
+        let storage_body = storage.body().as_ref().unwrap().content();
 
-        let freedom_flags = ObjectShellFlags {
-            flags: *freedom_flags.get(0).unwrap(),
+        let nonce = match storage_body.nonce.as_ref() {
+            Some(nonce_buf) => {
+                if nonce_buf.len() != 16 {
+                    return Err(BuckyError::new(
+                        BuckyErrorCode::OutOfLimit,
+                        "nonce should be a u128.",
+                    ));
+                }
+                let mut nonce = [0; 16];
+                nonce.clone_from_slice(nonce_buf.as_slice());
+                Some(u128::from_be_bytes(nonce))
+            }
+            None => None,
         };
 
-        let (mut raw, remain) = O::raw_decode(unfreedom)?;
-        assert_eq!(remain.len(), 0);
+        let desc = if flags.is_object_id_only {
+            let (id, remain) = ObjectId::raw_decode(storage_body.desc.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            ShelledDesc::ObjectId(id)
+        } else {
+            let (desc, remain) = O::DescType::raw_decode(storage_body.desc.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            ShelledDesc::Desc(desc)
+        };
 
-        match storage.freedom_attachment().as_ref() {
-            Some(freedom) if freedom.len() > 0 => {
-                let (exist_field_flags, freedom) = freedom.split_at(1);
-                let exist_field_flags = ObjectShellFlags {
-                    flags: *exist_field_flags.get(0).unwrap(),
-                };
-
-                let mut buf = freedom;
-
-                if freedom_flags.is_desc_sign_freedom() && exist_field_flags.is_desc_sign_freedom()
-                {
-                    let (signs, remain) = Vec::<Signature>::raw_decode(buf)?;
-                    buf = remain;
-                    for sign in signs {
-                        raw.signs_mut().push_desc_sign(sign);
-                    }
-                }
-
-                if freedom_flags.is_body_sign_freedom() && exist_field_flags.is_body_sign_freedom()
-                {
-                    let (signs, remain) = Vec::<Signature>::raw_decode(buf)?;
-                    buf = remain;
-                    for sign in signs {
-                        raw.signs_mut().push_body_sign(sign);
-                    }
-                }
-
-                if freedom_flags.is_nonce_freedom() && exist_field_flags.is_nonce_freedom() {
-                    let (nonce, remain) = u128::raw_decode(buf)?;
-                    buf = remain;
-                    unreachable!("nonce is not supported currently for the NamedObject::set_nonce is not exported.");
-                    // raw.set_nonce()
-                }
-                assert_eq!(buf.len(), 0);
+        let body = match storage_body.body.as_ref() {
+            Some(body) => {
+                let (body, remain) =
+                    ObjectMutBody::<O::ContentType, O>::raw_decode(body.as_slice())?;
+                assert_eq!(remain.len(), 0);
+                Some(body)
             }
-            _ => {}
-        }
+            None => None,
+        };
+
+        let mut signs = ObjectSigns::default();
+        if let Some(desc_signatures) = storage_body.desc_signatures.as_ref() {
+            let (desc_signatures, remain) =
+                Vec::<Signature>::raw_decode(desc_signatures.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            for sign in desc_signatures {
+                signs.push_desc_sign(sign);
+            }
+        };
+
+        if let Some(body_signatures) = storage_body.body_signatures.as_ref() {
+            let (body_signatures, remain) =
+                Vec::<Signature>::raw_decode(body_signatures.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            for sign in body_signatures {
+                signs.push_body_sign(sign);
+            }
+        };
 
         Ok(Self {
-            raw,
-            flags: freedom_flags,
-            phantom: PhantomData,
+            desc,
+            body,
+            signs,
+            nonce,
+            flags,
         })
     }
 
-    pub fn to_storage(&self) -> Storage {
-        let mut const_raw = self.raw.clone();
-        let max_buf_size = const_raw
-            .raw_measure(&None)
-            .expect("encode measure faield for object-shell");
-
-        let mut freedom_buf = vec![0; max_buf_size + 1];
-        let mut exist_freedom_field_flags = ObjectShellFlagsBuilder::new();
-        let (freedom_flag_buf, mut freedom_remain) = freedom_buf.split_at_mut(1);
-
-        if self.flags.is_desc_sign_freedom() {
-            let desc_signs = const_raw.signs_mut().desc_signs();
-            if let Some(signs) = desc_signs {
-                if signs.len() > 0 {
-                    freedom_remain = signs
-                        .raw_encode(freedom_remain, &None)
-                        .expect("encode desc signature for object-shell failed.");
-                    exist_freedom_field_flags.freedom_desc_signature();
-                    const_raw.signs_mut().clear_desc_signs();
+    fn to_storage(&self) -> ObjectShellStorage {
+        let desc = match &self.desc {
+            ShelledDesc::ObjectId(obj_id) => {
+                assert!(self.flags.is_object_id_only);
+                obj_id.to_vec().expect("encode desc as object-id failed.")
+            }
+            ShelledDesc::Desc(desc) => {
+                if self.flags.is_object_id_only {
+                    desc.object_id()
+                        .to_vec()
+                        .expect("encode desc as object-id from desc failed.")
+                } else {
+                    desc.to_vec().expect("encode desc as desc failed.")
                 }
             }
-        }
-
-        if self.flags.is_body_sign_freedom() {
-            let body_signs = const_raw.signs_mut().body_signs();
-            if let Some(signs) = body_signs {
-                if signs.len() > 0 {
-                    freedom_remain = signs
-                        .raw_encode(freedom_remain, &None)
-                        .expect("encode body signature for object-shell failed.");
-                    exist_freedom_field_flags.freedom_body_signature();
-                    const_raw.signs_mut().clear_body_signs();
-                }
-            }
-        }
-
-        if self.flags.is_nonce_freedom() {
-            let nonce = const_raw.nonce();
-            if let Some(nonce) = nonce.as_ref() {
-                freedom_remain = nonce
-                    .raw_encode(freedom_remain, &None)
-                    .expect("encode nonce for object-shell failed.");
-                exist_freedom_field_flags.freedom_nonce();
-
-                unreachable!(
-                    "nonce is not supported currently for the NamedObject::set_nonce is not exported."
-                );
-                // const_raw.set_nonce(None);
-            }
-        }
-
-        let freedom_attachment = if freedom_remain.len() < max_buf_size {
-            *freedom_flag_buf.get_mut(0).unwrap() = exist_freedom_field_flags.flags;
-            let len = max_buf_size + 1 - freedom_remain.len();
-            unsafe {
-                freedom_buf.set_len(len);
-            }
-            Some(freedom_buf)
-        } else {
-            None
         };
 
-        let mut value = vec![0; max_buf_size + 1];
-        *value.get_mut(0).unwrap() = self.flags.flags;
-        let remain = const_raw
-            .raw_encode(&mut value.as_mut_slice()[1..], &None)
-            .unwrap();
-        let len = max_buf_size + 1 - remain.len();
-        unsafe {
-            value.set_len(len);
-        }
+        let body = match self.body.as_ref() {
+            Some(body) => {
+                let mut ctx = NamedObjectBodyContext::new();
+                let size = body
+                    .raw_measure_with_context(&mut ctx, &None)
+                    .expect("measure body failed.");
+                let mut body_buf = vec![];
+                body_buf.resize(size, 0u8);
+                let remain = body
+                    .raw_encode_with_context(body_buf.as_mut(), &mut ctx, &None)
+                    .expect("encode body failed.");
+                assert_eq!(remain.len(), 0);
+                Some(body_buf)
+            }
+            None => None,
+        };
 
-        Storage::create_with_hash_and_freedom(
-            self.raw.desc().object_id().to_string().as_str(),
-            value,
-            freedom_attachment,
-        )
-    }
+        let desc_signatures = match self.signs.desc_signs().as_ref() {
+            Some(desc_signatures) => Some(
+                desc_signatures
+                    .to_vec()
+                    .expect("encode desc-signatures failed."),
+            ),
+            None => None,
+        };
 
-    pub fn shell_id(&self) -> ObjectId {
-        self.to_storage().storage_id().object_id().clone()
-    }
+        let body_signatures = match self.signs.body_signs().as_ref() {
+            Some(body_signatures) => Some(
+                body_signatures
+                    .to_vec()
+                    .expect("encode body-signatures failed."),
+            ),
+            None => None,
+        };
 
-    pub fn from_object(raw: O, flags: ObjectShellFlags) -> Self {
-        Self {
-            raw,
-            flags,
-            phantom: PhantomData,
-        }
-    }
+        let nonce = self.nonce.clone();
 
-    pub fn as_ref(&self) -> &O {
-        &self.raw
-    }
+        let storage_body = ObjectShellBodyContent {
+            desc,
+            body,
+            desc_signatures,
+            body_signatures,
+            nonce: nonce.map(|n| Vec::from(n.to_be_bytes())),
+        };
 
-    pub fn as_mut(&mut self) -> &mut O {
-        // update the raw object
-        &mut self.raw
-    }
+        let hash = storage_body.hash(&self.flags);
 
-    pub fn into_object(self) -> O {
-        self.raw
+        let storage_desc = ObjectShellDescContent {
+            is_object_id_only: self.flags.is_object_id_only,
+            is_desc_sign_fix: self.flags.is_desc_sign_fix,
+            is_body_sign_fix: self.flags.is_body_sign_fix,
+            is_nonce_fix: self.flags.is_nonce_fix,
+            fix_content_hash: hash,
+        };
+
+        let shell = ObjectShellBuilder::new(storage_desc, storage_body)
+            .no_create_time()
+            .build();
+        shell
     }
 }
 
-impl<O, OT> RawEncode for ObjectShell<O, OT>
+impl<O> RawEncode for ObjectShell<O>
 where
-    O: NamedObject<OT> + RawEncode + for<'de> RawDecode<'de> + Clone,
-    OT: ObjectType,
-    OT::ContentType: BodyContent,
+    O: ObjectType,
+    O::ContentType: BodyContent + RawEncode + for<'de> RawDecode<'de> + Clone,
+    O::DescType: RawEncode + for<'de> RawDecode<'de> + Clone,
 {
     fn raw_measure(&self, purpose: &Option<cyfs_base::RawEncodePurpose>) -> BuckyResult<usize> {
         self.to_storage().raw_measure(purpose)
@@ -272,14 +517,14 @@ where
     }
 }
 
-impl<'de, O, OT> RawDecode<'de> for ObjectShell<O, OT>
+impl<'de, O> RawDecode<'de> for ObjectShell<O>
 where
-    O: NamedObject<OT> + RawEncode + for<'local> RawDecode<'local> + Clone,
-    OT: ObjectType,
-    OT::ContentType: BodyContent,
+    O: ObjectType,
+    O::ContentType: BodyContent + RawEncode + for<'de1> RawDecode<'de1> + Clone,
+    O::DescType: RawEncode + for<'de1> RawDecode<'de1> + Clone,
 {
     fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
-        let (storage, remain) = Storage::raw_decode(buf)?;
+        let (storage, remain) = ObjectShellStorage::raw_decode(buf)?;
         Self::from_storage(&storage).map(|o| (o, remain))
     }
 }

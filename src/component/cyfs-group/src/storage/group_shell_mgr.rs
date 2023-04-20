@@ -2,8 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_std::sync::RwLock;
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId,
-    ObjectMapRootManagerRef, OpEnvPathAccess, RawConvertTo, RawDecode,
+    AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Group, GroupDesc, NamedObject,
+    ObjectDesc, ObjectId, ObjectMapRootManagerRef, OpEnvPathAccess, RawConvertTo, RawDecode,
+    RawFrom, TypelessCoreObject,
 };
 use cyfs_base_meta::SavedMetaObject;
 use cyfs_core::{DecApp, DecAppObj, GroupShell, ToGroupShell};
@@ -22,6 +23,7 @@ struct GroupShellCache {
 
 struct GroupShellManagerRaw {
     cache: RwLock<GroupShellCache>,
+    group_desc: GroupDesc,
     shell_state: ObjectMapRootManagerRef,
     state_path: GroupShellStatePath,
     meta_client: Arc<MetaClient>,
@@ -40,8 +42,16 @@ impl GroupShellManager {
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
         remote: Option<&ObjectId>,
     ) -> BuckyResult<GroupShellManager> {
-        let (group, shell_id) =
-            Self::get_group_impl(&non_driver, &meta_client, group_id, None, remote, None).await?;
+        let (group, shell_id) = Self::get_group_impl(
+            &non_driver,
+            &meta_client,
+            group_id,
+            None,
+            remote,
+            None,
+            None,
+        )
+        .await?;
 
         let shell_dec_id = Self::shell_dec_id(group_id);
 
@@ -60,12 +70,13 @@ impl GroupShellManager {
             cache: RwLock::new(GroupShellCache {
                 latest_shell_id: shell_id,
                 groups_by_shell: HashMap::from([(shell_id.clone(), group.clone())]),
-                groups_by_version: HashMap::from([(group.version(), group)]),
+                groups_by_version: HashMap::from([(group.version(), group.clone())]),
             }),
             shell_state,
             meta_client,
             non_driver,
             state_path: GroupShellStatePath::new(),
+            group_desc: group.desc().clone(),
         };
 
         let ret = Self(Arc::new(raw));
@@ -124,6 +135,7 @@ impl GroupShellManager {
             Some(&latest_shell_id),
             None,
             None,
+            None,
         )
         .await
         {
@@ -135,9 +147,16 @@ impl GroupShellManager {
                     latest_shell_id,
                     err
                 );
-                let (group, shell_id) =
-                    Self::get_group_impl(&non_driver, &meta_client, group_id, None, None, None)
-                        .await?;
+                let (group, shell_id) = Self::get_group_impl(
+                    &non_driver,
+                    &meta_client,
+                    group_id,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await?;
 
                 Self::mount_shell(
                     &shell_state,
@@ -158,12 +177,13 @@ impl GroupShellManager {
             cache: RwLock::new(GroupShellCache {
                 latest_shell_id,
                 groups_by_shell: HashMap::from([(latest_shell_id.clone(), group.clone())]),
-                groups_by_version: HashMap::from([(group.version(), group)]),
+                groups_by_version: HashMap::from([(group.version(), group.clone())]),
             }),
             shell_state,
             meta_client,
             non_driver,
             state_path: GroupShellStatePath::new(),
+            group_desc: group.desc().clone(),
         };
 
         let ret = Self(Arc::new(raw));
@@ -208,6 +228,7 @@ impl GroupShellManager {
             group_shell_id,
             from,
             Some(&latest_shell_id),
+            Some(&self.0.group_desc),
         )
         .await?;
 
@@ -285,13 +306,26 @@ impl GroupShellManager {
         group_shell_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
         latest_group_shell_id: Option<&ObjectId>,
+        group_desc: Option<&GroupDesc>,
     ) -> BuckyResult<(Group, ObjectId)> {
         match group_shell_id {
             Some(group_shell_id) => {
                 let shell = non_driver.get_object(group_shell_id, from).await?;
                 let (group_shell, remain) = GroupShell::raw_decode(shell.object_raw.as_slice())?;
                 assert_eq!(remain.len(), 0);
-                let group = group_shell.into_object();
+                let group = if !group_shell.with_full_desc() {
+                    match group_desc {
+                        Some(group_desc) => group_shell.try_into_object(Some(group_desc))?,
+                        None => {
+                            let group = non_driver.get_object(group_id, from).await?;
+                            let (group, _remain) = Group::raw_decode(group.object_raw.as_slice())?;
+                            group_shell.try_into_object(Some(group.desc()))?
+                        }
+                    }
+                } else {
+                    group_shell.try_into_object(None)?
+                };
+
                 let body_hash = group.body().as_ref().unwrap().calculate_hash()?;
                 // TODO: 用`body_hash`从链上验证其合法性
                 let group_id_from_shell = group.desc().object_id();
@@ -313,7 +347,12 @@ impl GroupShellManager {
                     let shell_id = group_shell.shell_id();
                     if latest_group_shell_id != Some(&shell_id) {
                         // put to noc
-                        let shell_obj = NONObjectInfo::new(shell_id, group_shell.to_vec()?, None);
+                        let buf = group_shell.to_vec()?;
+                        let shell_any = Arc::new(AnyNamedObject::Core(
+                            TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
+                        ));
+                        let shell_obj =
+                            NONObjectInfo::new(shell_id, group_shell.to_vec()?, Some(shell_any));
                         non_driver.put_object(shell_obj).await?;
                     }
 

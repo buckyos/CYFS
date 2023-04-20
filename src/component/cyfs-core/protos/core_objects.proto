@@ -7,8 +7,38 @@ message StorageDescContent {
 }
 
 message StorageBodyContent {
-    bytes value = 1; // match with the hash in `Desc`
-    optional bytes freedom_attachment = 2; // content without hash, you can update it with the same hash in `Desc`;
+    bytes value = 1;
+}
+
+// ObjectShellObject
+message ObjectShellDescContent {
+    // true: storage `ObjectId` in `desc` only, without `ObjectDesc`;
+    // false: encode the `ObjectDesc` in `desc`.
+    bool is_object_id_only = 1;
+
+    // true: calculate the `fix_content_hash` include `desc_sign`;
+    // false: calculate the `fix_content_hash` without `desc_sign`.
+    bool is_desc_sign_fix = 2;
+
+    // true: calculate the `fix_content_hash` include `body_sign`;
+    // false: calculate the `fix_content_hash` without `body_sign`.
+    bool is_body_sign_fix = 3;
+
+    // true: calculate the `fix_content_hash` include `nonce`;
+    // false: calculate the `fix_content_hash` without `nonce`.
+    bool is_nonce_fix = 4;
+
+    // hash of `fix_content` in `ObjectShellBodyContent`
+    bytes fix_content_hash = 5;
+}
+
+message ObjectShellBodyContent {
+    bytes desc = 1;
+    optional bytes body = 2;
+
+    optional bytes desc_signatures = 3;
+    optional bytes body_signatures = 4;
+    optional bytes nonce = 5;
 }
 
 // TextObject

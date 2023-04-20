@@ -28,7 +28,6 @@ impl DescContent for StorageDescContent {
 #[cyfs_protobuf_type(crate::codec::protos::StorageBodyContent)]
 pub struct StorageBodyContent {
     pub(crate) value: Vec<u8>,
-    freedom_attachment: Option<Vec<u8>>,
 }
 
 impl BodyContent for StorageBodyContent {
@@ -47,11 +46,6 @@ pub type Storage = NamedObjectBase<StorageType>;
 pub trait StorageObj {
     fn create(id: &str, value: Vec<u8>) -> Self;
     fn create_with_hash(id: &str, value: Vec<u8>) -> Self;
-    fn create_with_hash_and_freedom(
-        id: &str,
-        value: Vec<u8>,
-        freedom_attachment: Option<Vec<u8>>,
-    ) -> Self;
 
     fn id(&self) -> &str;
     fn hash(&self) -> &Option<HashValue>;
@@ -62,10 +56,6 @@ pub trait StorageObj {
     fn update_value(&mut self, value: Vec<u8>) -> bool;
     fn into_value(self) -> Vec<u8>;
 
-    fn freedom_attachment(&self) -> &Option<Vec<u8>>;
-    fn freedom_attachment_mut(&mut self) -> &mut Option<Vec<u8>>;
-    fn into_value_freedom(self) -> (Vec<u8>, Option<Vec<u8>>);
-
     fn storage_id(&self) -> StorageId;
 
     fn check_hash(&self) -> Option<bool>;
@@ -73,10 +63,7 @@ pub trait StorageObj {
 
 impl StorageObj for Storage {
     fn create(id: &str, value: Vec<u8>) -> Self {
-        let body = StorageBodyContent {
-            value,
-            freedom_attachment: None,
-        };
+        let body = StorageBodyContent { value };
         let desc = StorageDescContent {
             id: id.to_owned(),
             hash: None,
@@ -89,25 +76,8 @@ impl StorageObj for Storage {
             id: id.to_owned(),
             hash: Some(hash_data(&value)),
         };
-        let body = StorageBodyContent {
-            value,
-            freedom_attachment: None,
-        };
+        let body = StorageBodyContent { value };
         StorageBuilder::new(desc, body).no_create_time().build()
-    }
-
-    fn create_with_hash_and_freedom(
-        id: &str,
-        value: Vec<u8>,
-        freedom_attachment: Option<Vec<u8>>,
-    ) -> Self {
-        let mut obj = Self::create_with_hash(id, value);
-        obj.body_mut()
-            .as_mut()
-            .unwrap()
-            .content_mut()
-            .freedom_attachment = freedom_attachment;
-        obj
     }
 
     fn id(&self) -> &str {
@@ -158,28 +128,6 @@ impl StorageObj for Storage {
             .set_update_time(bucky_time_now());
 
         true
-    }
-
-    fn freedom_attachment(&self) -> &Option<Vec<u8>> {
-        &self.body().as_ref().unwrap().content().freedom_attachment
-    }
-
-    fn freedom_attachment_mut(&mut self) -> &mut Option<Vec<u8>> {
-        &mut self
-            .body_mut()
-            .as_mut()
-            .unwrap()
-            .content_mut()
-            .freedom_attachment
-    }
-
-    fn into_value_freedom(mut self) -> (Vec<u8>, Option<Vec<u8>>) {
-        let body = &mut self.body_mut().as_mut().unwrap().content_mut();
-        let mut value = vec![];
-        let mut attachment = None;
-        std::mem::swap(&mut value, &mut body.value);
-        std::mem::swap(&mut attachment, &mut body.freedom_attachment);
-        (value, attachment)
     }
 
     fn storage_id(&self) -> StorageId {
