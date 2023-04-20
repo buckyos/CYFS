@@ -5,7 +5,7 @@ use app_manager_lib::{AppManagerConfig};
 use clap::{App};
 use cyfs_base::*;
 use cyfs_core::DecAppId;
-use cyfs_lib::{SharedCyfsStack, UtilGetDeviceStaticInfoRequest, UtilGetOODStatusRequest, ZoneRole};
+use cyfs_lib::{SharedCyfsStack, UtilGetDeviceStaticInfoRequest};
 use cyfs_util::process::{
     prepare_args, set_process_cmd_funcs, ProcessAction, ProcessCmdFuncs,
 };
