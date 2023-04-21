@@ -12,6 +12,7 @@ impl JsonCodec<AclHandlerRequest> for AclHandlerRequest {
         JsonCodecHelper::encode_field(&mut obj, "source", &self.source);
 
         JsonCodecHelper::encode_string_field(&mut obj, "req_path", &self.req_path);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "req_query_string", self.req_query_string.as_ref());
 
         JsonCodecHelper::encode_string_field(&mut obj, "permissions", &self.permissions);
         
@@ -22,7 +23,9 @@ impl JsonCodec<AclHandlerRequest> for AclHandlerRequest {
         Ok(Self {
             dec_id: JsonCodecHelper::decode_string_field(obj, "dec_id")?,
             source: JsonCodecHelper::decode_field(obj, "source")?,
+
             req_path: JsonCodecHelper::decode_string_field(obj, "req_path")?,
+            req_query_string: JsonCodecHelper::decode_option_string_field(obj, "req_query_string")?,
 
             permissions: JsonCodecHelper::decode_string_field(obj, "permissions")?,
         })

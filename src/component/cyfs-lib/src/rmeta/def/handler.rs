@@ -5,9 +5,13 @@ use std::sync::Arc;
 
 pub struct GlobalStatePathHandlerRequest {
     pub dec_id: ObjectId,
-    pub req_path: String,
+
     pub source: RequestSourceInfo,
 
+    // full_req_path = {req_path}?{query_string}
+    pub req_path: String,
+    pub req_query_string: Option<String>,
+    
     // The required permissions
     pub permissions: AccessPermissions,
 }

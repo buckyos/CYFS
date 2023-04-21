@@ -140,6 +140,7 @@ impl GlobalStateMetaLocalService {
         let check_req = GlobalStateAccessRequest {
             dec: Cow::Borrowed(target_dec_id),
             path: req_path.req_path(),
+            query_string: req_path.req_query_string.as_ref().map(|v| Cow::Borrowed(v.as_str())),
             source: Cow::Borrowed(source),
             permissions,
         };

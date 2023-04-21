@@ -50,6 +50,7 @@ impl GlobalStatePathHandler for AclHandlerWrapper {
             dec_id: req.dec_id,
             source: req.source,
             req_path: req.req_path,
+            req_query_string: req.req_query_string,
             permissions: req.permissions,
         };
 

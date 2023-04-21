@@ -12,14 +12,8 @@ pub struct GlobalStateAccessorService {
 }
 
 impl GlobalStateAccessorService {
-    pub fn new(
-        root_state: GlobalStateRef,
-        noc: NamedObjectCacheRef,
-    ) -> Self {
-        Self {
-            root_state,
-            noc,
-        }
+    pub fn new(root_state: GlobalStateRef, noc: NamedObjectCacheRef) -> Self {
+        Self { root_state, noc }
     }
 
     pub fn clone_processor(&self) -> GlobalStateAccessorInputProcessorRef {
@@ -90,9 +84,7 @@ impl GlobalStateAccessorService {
 
         let object_resp = match object_id.obj_type_code() {
             ObjectTypeCode::Chunk => NONGetObjectInputResponse::new(object_id, vec![], None),
-            _ if object_id.is_data() => {
-                NONGetObjectInputResponse::new(object_id, vec![], None)
-            }
+            _ if object_id.is_data() => NONGetObjectInputResponse::new(object_id, vec![], None),
             _ => {
                 let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
                     let ret = root_cache.get_object_map(&object_id).await?;

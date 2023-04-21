@@ -121,8 +121,9 @@ impl GlobalStatePathAccessList {
                     GlobalStatePathGroupAccess::Handler => {
                         let handler_req = GlobalStatePathHandlerRequest {
                             dec_id: req.dec.as_ref().to_owned(),
-                            req_path: req.path.as_ref().to_owned(),
                             source: req.source.as_ref().to_owned(),
+                            req_path: req.path.as_ref().to_owned(),
+                            req_query_string: req.query_string.as_ref().map(|v| v.to_string()),
                             permissions: req.permissions,
                         };
 

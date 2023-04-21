@@ -239,20 +239,38 @@ impl Ord for GlobalStatePathAccessItem {
 
 pub struct GlobalStateAccessRequest<'d, 'a, 'b> {
     pub dec: Cow<'d, ObjectId>,
-    pub path: Cow<'a, str>,
     pub source: Cow<'b, RequestSourceInfo>,
+    
+    pub path: Cow<'a, str>,
+    pub query_string: Option<Cow<'a, str>>,
+    
     pub permissions: AccessPermissions,
 }
 
 impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "path={}, {}, permissions={}",
-            self.path,
-            self.source,
-            self.permissions.as_str()
-        )
+        match &self.query_string {
+            Some(query_string) => {
+                write!(
+                    f,
+                    "path={}, query={}, {}, permissions={}",
+                    self.path,
+                    query_string,
+                    self.source,
+                    self.permissions.as_str()
+                )
+            }
+            None => {
+                write!(
+                    f,
+                    "path={}, {}, permissions={}",
+                    self.path,
+                    self.source,
+                    self.permissions.as_str()
+                )
+            }
+        }
+        
     }
 }
 
