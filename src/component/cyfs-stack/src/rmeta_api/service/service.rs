@@ -22,7 +22,7 @@ pub struct GlobalStateMetaLocalService {
     root_state_meta: GlobalStatePathMetaManagerRef,
     local_cache_meta: GlobalStatePathMetaManagerRef,
 
-    acl_handler: OnceCell<GlobalStatePathHandlerRef>,
+    acl_handler: Arc<OnceCell<GlobalStatePathHandlerRef>>,
 }
 
 impl GlobalStateMetaLocalService {
@@ -61,7 +61,7 @@ impl GlobalStateMetaLocalService {
             device_id,
             root_state_meta,
             local_cache_meta,
-            acl_handler: OnceCell::new(),
+            acl_handler: Arc::new(OnceCell::new()),
         }
     }
 

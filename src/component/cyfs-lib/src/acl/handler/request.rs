@@ -2,6 +2,7 @@ use super::super::{AclAction};
 use crate::base::*;
 use cyfs_base::*;
 
+#[derive(Debug, Clone)]
 pub struct AclHandlerRequest {
     // The owner dec
     pub dec_id: ObjectId,

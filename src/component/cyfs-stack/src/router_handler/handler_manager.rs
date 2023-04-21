@@ -694,7 +694,7 @@ impl RouterHandlersManager {
         req_path: &Option<String>,
         filter: &Option<String>,
     ) -> BuckyResult<()> {
-        let req_path = if chain == RouterHandlerChain::Handler {
+        let req_path = if chain == RouterHandlerChain::Handler || chain == RouterHandlerChain::Acl {
             // Handler must specified valid req_path
             if req_path.is_none() {
                 let msg = format!(
