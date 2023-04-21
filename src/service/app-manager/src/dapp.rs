@@ -505,10 +505,10 @@ impl DApp {
                 // 就算执行不成功，也可以让开发者打包的时候就设置好，这里不成功不算错
                 let _ = self.run_cmd(
                     &cmd,
-                    &self.work_dir,
                     false,
                     None,
                     0,
+                    None
                 );
             }
         }
