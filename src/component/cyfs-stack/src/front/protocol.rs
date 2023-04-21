@@ -820,6 +820,7 @@ impl FrontProtocolHandler {
         let mut group = None;
 
         let pairs = req.request.url().query_pairs();
+        let mut user_pairs = vec![];
         for (k, v) in pairs {
             match k.as_ref() {
                 "mode" => {
@@ -863,11 +864,24 @@ impl FrontProtocolHandler {
                     group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 _ => {
-                    warn!("unknown global state access url query: {}={}", k, v);
+                    debug!("user global state access url query: {}={}", k, v);
+                    user_pairs.push(format!("{}={}", k, v));
                 }
             }
         }
 
+        let inner_path: Option<String> = if let Some(inner_path) = inner_path {
+            if user_pairs.is_empty() {
+                Some(inner_path)
+            } else {
+                let user_querys = user_pairs.join("&");
+                Some(format!("{}?{}", inner_path, user_querys))
+            }
+        } else {
+            None
+        };
+
+        
         let r_req = FrontRRequest {
             source: req.source,
 
