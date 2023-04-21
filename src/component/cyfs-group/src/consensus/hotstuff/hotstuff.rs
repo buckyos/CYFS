@@ -25,15 +25,15 @@ use crate::{
     helper::Timer,
     storage::GroupShellManager,
     Committee, GroupObjectMapProcessor, GroupStorage, HotstuffMessage, PendingProposalConsumer,
-    RPathEventNotifier, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
-    GROUP_DEFAULT_CONSENSUS_INTERVAL, HOTSTUFF_TIMEOUT_DEFAULT, PROPOSAL_MAX_TIMEOUT,
-    TIME_PRECISION,
+    RPathEventNotifier, SyncBound, VoteMgr, VoteThresholded, BLOCK_COUNT_REST_TO_SYNC,
+    CHANNEL_CAPACITY, GROUP_DEFAULT_CONSENSUS_INTERVAL, HOTSTUFF_TIMEOUT_DEFAULT,
+    PROPOSAL_MAX_TIMEOUT, TIME_PRECISION,
 };
 
 /**
  * TODO: generate empty block when the 'Node' is synchronizing
  *
- * How to distinguish synchronizing: max_quorum_round - round > THRESHOLD
+ * How to distinguish synchronizing: max_quorum_round - round > BLOCK_COUNT_REST_TO_SYNC
 */
 
 pub(crate) struct Hotstuff {
@@ -219,10 +219,6 @@ impl Hotstuff {
     }
 }
 
-enum HotstuffMessageInner {
-    Block(GroupConsensusBlock),
-}
-
 struct HotstuffRunner {
     local_id: ObjectId,
     local_device_id: ObjectId,
@@ -241,8 +237,8 @@ struct HotstuffRunner {
     shell_mgr: GroupShellManager,
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
     rx_message: Receiver<(HotstuffMessage, ObjectId)>,
-    tx_message_inner: Sender<(HotstuffMessageInner, ObjectId)>,
-    rx_message_inner: Receiver<(HotstuffMessageInner, ObjectId)>,
+    tx_message_inner: Sender<(GroupConsensusBlock, ObjectId)>,
+    rx_message_inner: Receiver<(GroupConsensusBlock, ObjectId)>,
     tx_block_gen: Sender<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     rx_block_gen: Receiver<(GroupConsensusBlock, HashMap<ObjectId, GroupProposal>)>,
     proposal_consumer: PendingProposalConsumer,
@@ -318,17 +314,17 @@ impl HotstuffRunner {
             header_height + 1
         };
 
+        let (tx_block_gen, rx_block_gen) = async_std::channel::bounded(1);
+        let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
+
         let synchronizer = Synchronizer::new(
             local_device_id,
             network_sender.clone(),
             rpath.clone(),
             max_height,
             round,
-            tx_message.clone(),
+            tx_message_inner.clone(),
         );
-
-        let (tx_block_gen, rx_block_gen) = async_std::channel::bounded(1);
-        let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
         Self {
             local_id,
@@ -372,6 +368,17 @@ impl HotstuffRunner {
             block.block_id(), block.round(), block.height(),
             block.prev_block_id(), block.qc().as_ref().map_or(0, |qc| qc.round),
             block.owner(), remote);
+
+        if block.height() <= self.store.header_height() {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_block: {:?}/{:?}/{:?} ignored for expired.",
+                self,
+                block.block_id(),
+                block.round(),
+                block.height(),
+            );
+            return Err(BuckyError::new(BuckyErrorCode::Expired, "block expired"));
+        }
 
         let latest_group = self
             .shell_mgr
@@ -694,25 +701,33 @@ impl HotstuffRunner {
                     block.height()
                 );
 
-                // 乱序，同步
                 let fetch_height_immediate = self.store.header_height() + 3;
                 if block.height() <= fetch_height_immediate {
-                    self.fetch_block(block.prev_block_id().unwrap(), remote)
-                        .await;
-                }
-
-                // let max_round_block = self.store.block_with_max_round();
-                // let max_height = max_round_block.map_or(1, |block| block.height() + 1);
-
-                if block.height() > fetch_height_immediate {
+                    // little blocks, get them from remote immediately.
+                    self.sync_to_block(block.clone(), remote).await;
+                } else {
+                    // large blocks, notify remote to push.
                     log::debug!(
                         "[hotstuff] local: {:?}, will sync blocks from height({}) to height({}). block.round={}, remote: {}",
                         self,
-                        fetch_height_immediate,
+                        self.store.max_height(),
                         block.height(),
                         block.round(),
                         remote
                     );
+
+                    if self.store.max_height() + 1 <= fetch_height_immediate - 1 {
+                        self.network_sender
+                            .post_message(
+                                HotstuffMessage::SyncRequest(
+                                    SyncBound::Height(self.store.max_height() + 1),
+                                    SyncBound::Height(fetch_height_immediate - 1),
+                                ),
+                                self.rpath.clone(),
+                                &remote,
+                            )
+                            .await;
+                    }
 
                     self.synchronizer.push_outorder_block(
                         block.clone(),
@@ -1767,7 +1782,17 @@ impl HotstuffRunner {
     }
 
     async fn local_timeout_round(&mut self) -> BuckyResult<()> {
-        log::debug!("[hotstuff] local: {:?}, local_timeout_round", self,);
+        log::debug!(
+            "[hotstuff] local: {:?}, local_timeout_round, max_quorum_height: {}, max_height: {}",
+            self,
+            self.max_quorum_height,
+            self.store.max_height()
+        );
+
+        if self.is_synchronizing() {
+            log::info!("[hotstuff] local: {:?}, local_timeout_round, is synchronizing, ignore the timeout. max_quorum_height: {}, max_height: {}", self, self.max_quorum_height, self.store.max_height());
+            return Ok(());
+        }
 
         let latest_group = match self
             .shell_mgr
@@ -1790,6 +1815,11 @@ impl HotstuffRunner {
             }
         };
 
+        log::debug!(
+            "[hotstuff] local: {:?}, local_timeout_round, latest group got.",
+            self,
+        );
+
         let latest_group_shell = latest_group.to_shell();
         let latest_group_shell_id = latest_group_shell.shell_id();
         let timeout = HotstuffTimeoutVote::new(
@@ -1809,14 +1839,31 @@ impl HotstuffRunner {
             err
         })?;
 
-        self.store.set_last_vote_round(self.round).await?;
+        log::debug!(
+            "[hotstuff] local: {:?}, local_timeout_round, vote for timeout created.",
+            self,
+        );
+
+        let ret = self.store.set_last_vote_round(self.round).await;
+        log::debug!("[hotstuff] local: {:?}, local_timeout_round, round last vote is stored. round = {}, result: {:?}", self, self.round, ret);
+        ret?;
 
         self.broadcast(HotstuffMessage::TimeoutVote(timeout.clone()), &latest_group);
+
+        log::debug!(
+            "[hotstuff] local: {:?}, local_timeout_round, broadcast.",
+            self,
+        );
+
         self.tx_message
             .send((HotstuffMessage::TimeoutVote(timeout), self.local_device_id))
             .await;
 
         Ok(())
+    }
+
+    fn is_synchronizing(&self) -> bool {
+        self.max_quorum_height > self.store.max_height() + BLOCK_COUNT_REST_TO_SYNC
     }
 
     async fn generate_block(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
@@ -2282,9 +2329,93 @@ impl HotstuffRunner {
                 err
             })?;
 
-        self.tx_message_inner
-            .send((HotstuffMessageInner::Block(block), remote))
-            .await;
+        self.tx_message_inner.send((block, remote)).await;
+        Ok(())
+    }
+
+    async fn sync_to_block(
+        &mut self,
+        latest_block: GroupConsensusBlock,
+        remote: ObjectId,
+    ) -> BuckyResult<()> {
+        // 1. fetch prev blocks in range (header_height, latest_block.height)
+        let header_height = self.store.header_height();
+        let max_height = latest_block.height();
+        if max_height <= header_height {
+            return Ok(());
+        }
+
+        let mut blocks = Vec::with_capacity((max_height - header_height) as usize);
+        let mut fetching_block_id = latest_block.prev_block_id().cloned();
+
+        blocks.push(latest_block);
+
+        for i in 0..(max_height - header_height - 1) {
+            let expected_height = max_height - i - 1;
+            match fetching_block_id.as_ref() {
+                Some(block_id) => {
+                    if self.store.find_block_in_cache(block_id).is_ok() {
+                        break;
+                    }
+
+                    let block = self
+                        .non_driver
+                        .get_block(block_id, Some(&remote))
+                        .await
+                        .map_err(|err| {
+                            log::error!(
+                                "[hotstuff] local: {:?}, sync block({}) at height({}) from {} failed, err: {:?}.",
+                                self,
+                                block_id,
+                                expected_height,
+                                remote,
+                                err
+                            );
+                            err
+                        })?;
+
+                    if block.height() != expected_height {
+                        log::error!("[hotstuff] local: {:?}, sync block({}) at height({}) from {} failed, block.height is {}.", self, block_id, expected_height, remote, block.height());
+                        return Err(BuckyError::new(
+                            BuckyErrorCode::Unmatch,
+                            "unexpected block height",
+                        ));
+                    }
+
+                    log::debug!(
+                        "[hotstuff] local: {:?}, sync block({}) at height({}) from {}, fetch success.",
+                        self,
+                        block_id,
+                        expected_height,
+                        remote
+                    );
+
+                    fetching_block_id = block.prev_block_id().cloned();
+                    blocks.push(block);
+                }
+                None => {
+                    log::error!("[hotstuff] local: {:?}, sync block at height({}) from {} failed, block id is None.", self, expected_height, remote);
+                    return Err(BuckyError::new(
+                        BuckyErrorCode::Failed,
+                        "unexpected block id",
+                    ));
+                }
+            }
+        }
+
+        // 2. handle blocks in order
+        for block in blocks.into_iter().rev() {
+            log::debug!(
+                "[hotstuff] local: {:?}, sync block({}) at height({}) from {}, will handle it.",
+                self,
+                block.block_id(),
+                block.height(),
+                remote
+            );
+
+            self.tx_message_inner.send((block, remote)).await;
+        }
+
         Ok(())
     }
 
@@ -2491,7 +2622,11 @@ impl HotstuffRunner {
     }
 
     async fn run(&mut self) -> ! {
+        log::info!("[hotstuff] {:?} start, will recover.", self);
+
         self.recover().await;
+
+        log::info!("[hotstuff] {:?} start, recovered.", self);
 
         // This is the main loop: it processes incoming blocks and votes,
         // and receive timeout notifications from our Timeout Manager.
@@ -2520,7 +2655,16 @@ impl HotstuffRunner {
                     },
                 },
                 message = self.rx_message_inner.recv().fuse() => match message {
-                    Ok((HotstuffMessageInner::Block(block), remote)) => {
+                    Ok((block, remote)) => {
+                        log::debug!(
+                            "[hotstuff] local: {:?}, receive block({}) from ({}) from rx_message_inner, height: {}, round: {}.",
+                            self,
+                            block.block_id(),
+                            remote,
+                            block.height(),
+                            block.round()
+                        );
+
                         if remote == self.local_device_id {
                             self.process_block(&block, remote, &HashMap::new()).await
                         } else {

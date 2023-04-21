@@ -54,7 +54,7 @@ use crate::{
  * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-17 -d=test-group/members/people-17.desc 1 0
  * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-18 -d=test-group/members/people-18.desc 1 0
  *
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 1 0
+ * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 0 0
  *
  * .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
  *
@@ -1240,8 +1240,15 @@ async fn main_run() {
 
     for i in 0..admin_stacks.len() {
         let (_, shared_stack) = admin_stacks.get(i).unwrap();
-        let ((admin, _), _) = admins.get(i).unwrap();
+        let ((admin, _), (admin_device, _)) = admins.get(i).unwrap();
         let local_name = admin.name().unwrap();
+
+        log::info!(
+            "will start service, admin: {}, name: {}, device: {}",
+            admin.desc().object_id(),
+            local_name,
+            admin_device.desc().object_id()
+        );
 
         let group_mgr = DecService::run(
             &shared_stack,

@@ -23,3 +23,4 @@ pub const NET_PROTOCOL_VPORT: u16 = 2048;
 pub const MEMORY_CACHE_SIZE: usize = 1024;
 pub const MEMORY_CACHE_DURATION: Duration = Duration::from_secs(300);
 pub const GROUP_DEFAULT_CONSENSUS_INTERVAL: u64 = 5000; // default 5000 ms
+pub const BLOCK_COUNT_REST_TO_SYNC: u64 = 8; // the node will stop most work, and synchronize the lost blocks.

@@ -11,7 +11,7 @@ use cyfs_core::{DecApp, DecAppObj, GroupShell, ToGroupShell};
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 use cyfs_meta_lib::MetaClient;
 
-use crate::{GroupShellStatePath, NONDriverHelper};
+use crate::{GroupShellStatePath, MetaClientTimeout, NONDriverHelper};
 
 const ACCESS: Option<OpEnvPathAccess> = None;
 

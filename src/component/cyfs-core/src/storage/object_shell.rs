@@ -97,13 +97,13 @@ type ObjectShellDesc = NamedObjectDesc<ObjectShellDescContent>;
 type ObjectShellId = NamedObjectId<ObjectShellType>;
 type ObjectShellStorage = NamedObjectBase<ObjectShellType>;
 
-trait ObjectShellStorageObjectId {
+trait ObjectShellStorageObject {
     fn shell_id(&self) -> ObjectId;
     fn check_hash(&self) -> bool;
     fn hash(&self) -> Option<HashValue>;
     fn flags(&self) -> ObjectShellFlags;
 }
-impl ObjectShellStorageObjectId for ObjectShellStorage {
+impl ObjectShellStorageObject for ObjectShellStorage {
     fn shell_id(&self) -> ObjectId {
         self.desc().calculate_id()
     }
@@ -200,15 +200,18 @@ impl ObjectShellFlagsBuilder {
     }
 }
 
-enum ShelledDesc<D: ObjectDesc + Sync + Send> {
+#[derive(Clone)]
+enum ShelledDesc<D: ObjectDesc + Sync + Send + Clone> {
     ObjectId(ObjectId),
     Desc(D),
 }
 
+#[derive(Clone)]
 pub struct ObjectShell<O>
 where
     O: ObjectType,
     O::ContentType: BodyContent,
+    O::DescType: Clone,
 {
     desc: ShelledDesc<O::DescType>,
     body: Option<ObjectMutBody<O::ContentType, O>>,
@@ -281,7 +284,6 @@ where
         mut self,
         desc: Option<&O::DescType>,
     ) -> BuckyResult<NamedObjectBase<O>> {
-        let flags = self.flags;
         let body = self.body.take();
         let mut signs = ObjectSigns::default();
         std::mem::swap(&mut signs, &mut self.signs);
@@ -526,5 +528,49 @@ where
     fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
         let (storage, remain) = ObjectShellStorage::raw_decode(buf)?;
         Self::from_storage(&storage).map(|o| (o, remain))
+    }
+}
+
+#[cfg(test)]
+mod object_shell_test {
+    use crate::{ObjectShell, Text, TextObj, OBJECT_SHELL_ALL_FREEDOM_WITH_FULL_DESC};
+
+    #[test]
+    fn test() {
+        let txt_v1 = Text::create("txt-storage", "header", "v1");
+        // shell with full-desc, desc-signatures freedom, body-signatures freedom, nonce freedom.
+        let txt_shell_v1 =
+            ObjectShell::from_object::<Text>(&txt_v1, OBJECT_SHELL_ALL_FREEDOM_WITH_FULL_DESC);
+        let txt_v1_from_shell = txt_shell_v1
+            .try_into_object(None)
+            .expect("recover text from shell failed.");
+        let shell_id_v1 = txt_shell_v1.shell_id();
+        assert_eq!(txt_v1_from_shell.id(), txt_v1.id());
+        assert_eq!(txt_v1_from_shell.header(), txt_v1.header());
+        assert_eq!(txt_v1_from_shell.value(), txt_v1.value());
+
+        // shell-id changed when the body updated.
+        let mut txt_shell_v2 = txt_shell_v1.clone();
+        *txt_shell_v2.body_mut().unwrap().content().value_mut() = "v2".to_string();
+        let txt_v2_from_shell = txt_shell_v2
+            .try_into_object(None)
+            .expect("recover text from shell failed.");
+        let shell_id_v2 = txt_shell_v2.shell_id();
+        assert_eq!(txt_v2_from_shell.id(), txt_v1.id());
+        assert_eq!(txt_v2_from_shell.header(), txt_v1.header());
+        assert_eq!(txt_v2_from_shell.value(), "v2");
+        assert_ne!(shell_id_v1, shell_id_v2);
+
+        // shell-id not changed when the nonce updated.
+        let mut txt_shell_v2_nonce = txt_shell_v2.clone();
+        *txt_shell_v2_nonce.nonce_mut() = Some(1);
+        let txt_v2_nonce_from_shell = txt_shell_v2_nonce
+            .try_into_object(None)
+            .expect("recover text from shell failed.");
+        let shell_id_v2_nonce = txt_shell_v2_nonce.shell_id();
+        assert_eq!(txt_v2_nonce_from_shell.id(), txt_v1.id());
+        assert_eq!(txt_v2_nonce_from_shell.header(), txt_v1.header());
+        assert_eq!(txt_v2_nonce_from_shell.value(), txt_v2_from_shell.value());
+        assert_ne!(shell_id_v2_nonce, shell_id_v2);
     }
 }

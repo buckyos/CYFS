@@ -28,16 +28,28 @@ message ObjectShellDescContent {
     // false: calculate the `fix_content_hash` without `nonce`.
     bool is_nonce_fix = 4;
 
-    // hash of `fix_content` in `ObjectShellBodyContent`
+    // hash of fixed fields in `ObjectShellBodyContent`.
+    // hash_buf = desc + body + [desc_signatures] + [body_signatures] + [nonce]
+    // * any field with a value of `None` should be occupied with 1 byte with a value of 0.
+    // fix_content_hash = sha256(hash_buf)
     bytes fix_content_hash = 5;
 }
 
 message ObjectShellBodyContent {
+    // if is_object_id_only is true, `desc` is the encoded buffer of `ObjectId` of the original object.
+    // otherwise, `desc` is the encoded buffer of the full `Desc` of the original object.
     bytes desc = 1;
+
+    // `body` is the encoded buffer of the `Body` of the original object.
     optional bytes body = 2;
 
+    // `desc_signatures` is the encoded buffer of the `Object.signs().desc_signs()` of the original object.
     optional bytes desc_signatures = 3;
+
+    // `body_signatures` is the encoded buffer of the `Object.signs().body_signs()` of the original object.
     optional bytes body_signatures = 4;
+
+    // `nonce` is the encoded buffer of the `nonce` of the original object.
     optional bytes nonce = 5;
 }
 

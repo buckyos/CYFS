@@ -83,6 +83,15 @@ impl GroupManager {
         rpath: &str,
         is_auto_create: bool,
     ) -> BuckyResult<RPathService> {
+        log::info!(
+            "find rpath service, group: {}, dec_id: {}, rpath: {}, is_auto_create: {}. local: {}",
+            group_id,
+            dec_id,
+            rpath,
+            is_auto_create,
+            self.local_info().bdt_stack.local_device_id()
+        );
+
         self.find_rpath_service_inner(group_id, dec_id, rpath, is_auto_create, None, None)
             .await
     }
@@ -202,11 +211,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         Some(&block),
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(Block) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::Block(block), remote)
                     .await;
@@ -218,11 +236,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(BlockVote) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::BlockVote(vote), remote)
                     .await;
@@ -234,11 +261,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(TimeoutVote) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::TimeoutVote(vote), remote)
                     .await;
@@ -250,11 +286,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(Timeout) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::Timeout(tc), remote)
                     .await;
@@ -266,11 +311,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(SyncRequest) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::SyncRequest(min_bound, max_bound), remote)
                     .await;
@@ -282,11 +336,20 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(LastStateRequest) received, and find rpath service failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 service
                     .on_message(HotstuffMessage::LastStateRequest, remote)
                     .await;
@@ -330,7 +393,7 @@ impl GroupManager {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.rpath(),
-                        false,
+                        true,
                         None,
                         Some(&remote),
                     )
@@ -342,10 +405,25 @@ impl GroupManager {
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
                             .await;
                     }
-                    _ => {
+                    Err(err) => {
+                        log::debug!(
+                            "new msg(QueryState) received, and find rpath service failed, will try query state from client, {:?}. local: {}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id()
+                        );
+
                         let client = self
                             .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
-                            .await?;
+                            .await
+                            .map_err(|err| {
+                                log::error!(
+                                    "new msg(QueryState) received, and find rpath client failed, {:?}. local: {}, err: {:?}",
+                                    rpath,
+                                    self.local_info().bdt_stack.local_device_id(),
+                                    err
+                                );
+                                err
+                            })?;
                         client
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
                             .await;
@@ -359,7 +437,16 @@ impl GroupManager {
                 );
                 let client = self
                     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.rpath())
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        log::error!(
+                            "new msg(VerifiableState) received, and find rpath client failed, {:?}. local: {}, err: {:?}",
+                            rpath,
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
+                        );
+                        err
+                    })?;
                 client
                     .on_message(
                         HotstuffMessage::VerifiableState(sub_path, result.map_err(|(err, _)| err)),
@@ -382,6 +469,12 @@ impl GroupManager {
         remote: Option<&ObjectId>,
     ) -> BuckyResult<RPathService> {
         {
+            log::debug!(
+                "try will find service({}) from exist cache, local: {}.",
+                rpath,
+                self.local_info().bdt_stack.local_device_id()
+            );
+
             // read
             let raw = self.read().await;
             let found = raw
@@ -396,6 +489,12 @@ impl GroupManager {
         }
 
         {
+            log::debug!(
+                "find service({}) from exist cache failed, will try create new, local: {}.",
+                rpath,
+                self.local_info().bdt_stack.local_device_id()
+            );
+
             // write
             let local_info = self.local_info();
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
@@ -413,10 +512,6 @@ impl GroupManager {
                 local_device_id.object_id().clone(),
             );
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
-
-            let shell_mgr = self
-                .check_group_shell_mgr(group_id, non_driver.clone(), remote)
-                .await?;
 
             let store = GroupStorage::load(
                 group_id,
@@ -452,7 +547,15 @@ impl GroupManager {
                 }
             };
 
-            let mut raw = self.write().await;
+            log::debug!(
+                "find service({}) from exist cache failed, will create new auto, local: {}.",
+                rpath,
+                self.local_info().bdt_stack.local_device_id()
+            );
+
+            let shell_mgr = self
+                .check_group_shell_mgr(group_id, non_driver.clone(), remote)
+                .await?;
 
             let store = match store {
                 Some(store) => store,
@@ -469,6 +572,8 @@ impl GroupManager {
                 }
             };
 
+            let mut raw = self.write().await;
+
             let found = raw
                 .service_by_group
                 .entry(group_id.clone())
@@ -480,7 +585,7 @@ impl GroupManager {
             match found {
                 std::collections::hash_map::Entry::Occupied(found) => Ok(found.get().clone()),
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    let service = RPathService::load(
+                    let service = RPathService::start(
                         local_id,
                         local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
@@ -490,8 +595,7 @@ impl GroupManager {
                         non_driver,
                         shell_mgr,
                         store,
-                    )
-                    .await?;
+                    );
                     entry.insert(service.clone());
                     Ok(service)
                 }

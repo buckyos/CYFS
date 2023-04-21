@@ -144,6 +144,16 @@ impl GroupStorage {
         self.cache.header_block.as_ref().map_or(0, |b| b.height())
     }
 
+    pub fn max_height(&self) -> u64 {
+        if self.cache.prepares.len() > 0 {
+            self.header_height() + 2
+        } else if self.cache.pre_commits.len() > 0 {
+            self.header_height() + 1
+        } else {
+            self.header_height()
+        }
+    }
+
     pub fn first_block(&self) -> &Option<GroupConsensusBlock> {
         &self.cache.first_block
     }

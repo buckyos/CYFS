@@ -27,7 +27,7 @@ struct RPathServiceRaw {
 pub struct RPathService(Arc<RPathServiceRaw>);
 
 impl RPathService {
-    pub(crate) async fn load(
+    pub(crate) fn start(
         local_id: ObjectId,
         local_device_id: ObjectId,
         rpath: GroupRPath,
@@ -37,7 +37,7 @@ impl RPathService {
         non_driver: NONDriverHelper,
         shell_mgr: GroupShellManager,
         store: GroupStorage,
-    ) -> BuckyResult<Self> {
+    ) -> Self {
         let (pending_proposal_handle, pending_proposal_consumer) = PendingProposalMgr::new();
         let committee = Committee::new(
             rpath.group_id().clone(),
@@ -68,7 +68,7 @@ impl RPathService {
             non_driver,
         };
 
-        Ok(Self(Arc::new(raw)))
+        Self(Arc::new(raw))
     }
 
     pub fn rpath(&self) -> &GroupRPath {

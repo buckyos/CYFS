@@ -102,6 +102,7 @@ impl NONDriverHelper {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<GroupConsensusBlock> {
+        // TODO: remove block without signatures
         let obj = self.get_object(object_id, from).await?;
         let (block, remain) = GroupConsensusBlock::raw_decode(obj.object_raw.as_slice())?;
         assert_eq!(remain.len(), 0);

@@ -34,7 +34,7 @@ impl Synchronizer {
         rpath: GroupRPath,
         height: u64,
         round: u64,
-        tx_block: Sender<(HotstuffMessage, ObjectId)>,
+        tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
     ) -> Self {
         let (tx_sync_message, rx_sync_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
         let mut runner = SynchronizerRunner::new(
@@ -320,7 +320,7 @@ struct SynchronizerRunner {
     local_device_id: ObjectId,
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
-    tx_block: Sender<(HotstuffMessage, ObjectId)>,
+    tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
     rx_message: Receiver<SynchronizerMessage>,
     timer: Timer,
     height: u64,
@@ -335,7 +335,7 @@ impl SynchronizerRunner {
         local_device_id: ObjectId,
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
-        tx_block: Sender<(HotstuffMessage, ObjectId)>,
+        tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
         rx_message: Receiver<SynchronizerMessage>,
         height: u64,
         round: u64,
@@ -652,10 +652,11 @@ impl SynchronizerRunner {
             self.sync_requests.splice(0..(remove_request_pos + 1), []);
         }
 
-        futures::future::join_all(order_blocks.into_iter().map(|(order_block, remote)| {
-            self.tx_block
-                .send((HotstuffMessage::Block(order_block), remote))
-        }))
+        futures::future::join_all(
+            order_blocks
+                .into_iter()
+                .map(|(order_block, remote)| self.tx_block.send((order_block, remote))),
+        )
         .await;
     }
 
