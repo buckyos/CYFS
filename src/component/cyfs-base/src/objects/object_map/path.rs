@@ -80,6 +80,7 @@ impl ObjectMapPath {
     /*
     /a/b/ -> /a/b
     / -> /
+    /a/b?arg=xxx -> /a/b
     */
     fn fix_path(path: &str) -> BuckyResult<&str> {
         let path = path.trim();
@@ -87,7 +88,13 @@ impl ObjectMapPath {
             return Ok(path);
         }
 
-        // 末尾的/需要去除
+        // Remove the query params
+        let path = match path.rsplit_once('?') {
+            Some((path, _)) => path,
+            None => path,
+        };
+
+        // The / at the end needs to be removed
         let path_ret = path.trim_end_matches("/");
         if !path_ret.starts_with("/") {
             let msg = format!("invalid objectmap path format! path={}", path);
@@ -103,7 +110,7 @@ impl ObjectMapPath {
         let mut current = self.get_root().await?;
 
         let path = Self::fix_path(path)?;
-        // 判断是不是root
+        // Check if is root path
         if path == "/" {
             return Ok(Some(current));
         }
