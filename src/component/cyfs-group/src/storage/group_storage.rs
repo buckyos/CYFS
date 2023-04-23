@@ -667,6 +667,10 @@ impl GroupStorage {
         Ok(is_finished)
     }
 
+    pub fn max_round(&self) -> u64 {
+        self.block_with_max_round().map_or(0, |b| b.round())
+    }
+
     pub fn block_with_max_round(&self) -> Option<GroupConsensusBlock> {
         let mut max_round = 0;
         let mut max_block = None;

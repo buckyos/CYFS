@@ -446,7 +446,7 @@ impl SynchronizerRunner {
         min_height: u64,
         max_bound: SyncBound,
     ) -> Vec<(u64, SyncBound)> {
-        // TODO: limit the lenght of per range
+        // TODO: limit the length of per range
         let mut last_range = Some((SyncBound::Height(min_height), max_bound));
         let mut requests = vec![];
         for (block, _) in self.out_order_blocks.as_slice() {
@@ -472,15 +472,15 @@ impl SynchronizerRunner {
 
     fn splite_range_with_block(
         mut range: (SyncBound, SyncBound),
-        height: u64,
-        round: u64,
+        cut_height: u64,
+        cut_round: u64,
     ) -> (
         Option<(SyncBound, SyncBound)>,
         Option<(SyncBound, SyncBound)>,
     ) {
         let min_ord = match range.0 {
-            SyncBound::Height(height) => height.cmp(&height),
-            SyncBound::Round(round) => round.cmp(&round),
+            SyncBound::Height(height) => cut_height.cmp(&height),
+            SyncBound::Round(round) => cut_round.cmp(&round),
         };
 
         match min_ord {
@@ -494,17 +494,17 @@ impl SynchronizerRunner {
             }
             std::cmp::Ordering::Greater => {
                 let ord = match range.1 {
-                    SyncBound::Height(height) => height.cmp(&height),
-                    SyncBound::Round(round) => round.cmp(&round),
+                    SyncBound::Height(height) => cut_height.cmp(&height),
+                    SyncBound::Round(round) => cut_round.cmp(&round),
                 };
 
                 match ord {
                     std::cmp::Ordering::Less => (
-                        Some((range.0, SyncBound::Height(height - 1))),
-                        Some((SyncBound::Height(height + 1), range.1)),
+                        Some((range.0, SyncBound::Height(cut_height - 1))),
+                        Some((SyncBound::Height(cut_height + 1), range.1)),
                     ),
                     std::cmp::Ordering::Equal => {
-                        (Some((range.0, SyncBound::Height(height - 1))), None)
+                        (Some((range.0, SyncBound::Height(cut_height - 1))), None)
                     }
                     std::cmp::Ordering::Greater => (Some((range.0, range.1)), None),
                 }
@@ -519,10 +519,10 @@ impl SynchronizerRunner {
         remote: ObjectId,
     ) {
         log::debug!("[synchronizer] local: {:?}, handle_push_block want sync blocks from height({}) to height({}). block.round={}, round={}, prev={:?}",
-            self.local_device_id, min_height, block.height(), self.round, block.round(), block.prev_block_id());
+            self.local_device_id, min_height, block.height(), block.round(), self.round, block.prev_block_id());
 
         if block.round() <= self.round
-            || min_height <= block.height()
+            || min_height >= block.height()
             || block.prev_block_id().is_none()
         {
             return;

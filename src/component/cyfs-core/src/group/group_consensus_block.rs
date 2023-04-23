@@ -314,12 +314,18 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         if state == BLOCK_CHECK_STATE_NONE {
             let desc = self.0.desc().content();
             let body = self.0.body().as_ref().unwrap().content();
-            if body.hash() != desc.body_hash {
-                self.1 .0.store(BLOCK_CHECK_STATE_FAIL, Ordering::SeqCst);
-                false
-            } else {
+
+            let is_result_state_match = body
+                .proposals
+                .last()
+                .map_or(true, |p| p.result_state == desc.result_state_id);
+
+            if is_result_state_match && body.hash() == desc.body_hash {
                 self.1 .0.store(BLOCK_CHECK_STATE_SUCC, Ordering::SeqCst);
                 true
+            } else {
+                self.1 .0.store(BLOCK_CHECK_STATE_FAIL, Ordering::SeqCst);
+                false
             }
         } else {
             state == BLOCK_CHECK_STATE_SUCC

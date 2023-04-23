@@ -254,6 +254,10 @@ impl GroupShellManager {
                     .groups_by_version
                     .insert(group.version(), cached_group.clone());
             }
+
+            if group_shell_id.is_none() && cache.latest_shell_id == latest_shell_id {
+                cache.latest_shell_id = shell_id;
+            }
         }
 
         Ok(group)

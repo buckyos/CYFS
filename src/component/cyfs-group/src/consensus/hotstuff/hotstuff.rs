@@ -307,7 +307,6 @@ impl HotstuffRunner {
         let init_timer_interval = GROUP_DEFAULT_CONSENSUS_INTERVAL;
         let max_quorum_round = round - 1;
         let header_height = store.header_height();
-        let max_height = header_height + 2;
         let max_quorum_height = if header_height == 0 {
             0
         } else {
@@ -321,8 +320,8 @@ impl HotstuffRunner {
             local_device_id,
             network_sender.clone(),
             rpath.clone(),
-            max_height,
-            round,
+            store.max_height(),
+            store.max_round(),
             tx_message_inner.clone(),
         );
 
@@ -514,6 +513,7 @@ impl HotstuffRunner {
         Ok(())
     }
 
+    #[async_recursion::async_recursion]
     async fn check_block_proposal_result_state_by_app(
         &self,
         block: &GroupConsensusBlock,
@@ -525,8 +525,54 @@ impl HotstuffRunner {
             Some(prev_block) => {
                 let result_state_id = prev_block.result_state_id();
                 if let Some(result_state_id) = result_state_id {
-                    self.make_sure_result_state(result_state_id, &[prev_block.owner(), remote])
-                        .await?;
+                    if let Err(err) = self
+                        .make_sure_result_state(result_state_id, &[prev_block.owner(), remote])
+                        .await
+                    {
+                        // TODO
+                        // try rebuild the result-state for prev-block, it'll unreachable usually except something broken.
+                        // if we can successfully rebuild the result-state in the future, we can remove this part.
+                        match prev_block.prev_block_id() {
+                            Some(prev_prev_block_id) => {
+                                let prev_prev_block =
+                                    self.non_driver.get_block(prev_prev_block_id, None).await.map_err(|err| {
+                                        log::warn!("[hotstuff] local: {:?}, rebuild of prev-prev-block({:?}) failed, get prev-prev-block failed {:?}."
+                                            , self, prev_prev_block_id, err);
+                                        err
+                                    })?;
+
+                                let mut prev_proposals = HashMap::new();
+                                for proposal_ex_info in prev_block.proposals() {
+                                    let proposal = self
+                                        .non_driver
+                                        .get_proposal(&proposal_ex_info.proposal, Some(remote))
+                                        .await.map_err(|err| {
+                                            log::warn!("[hotstuff] local: {:?}, rebuild of prev-prev-block({:?}) failed, get proposal({}) failed {:?}."
+                                                , self, prev_prev_block_id, proposal_ex_info.proposal, err);
+                                            err
+                                        })?;
+                                    prev_proposals.insert(proposal_ex_info.proposal, proposal);
+                                }
+
+                                self.check_block_proposal_result_state_by_app(
+                                    &prev_block,
+                                    &prev_proposals,
+                                    &Some(prev_prev_block),
+                                    remote,
+                                )
+                                .await.map_err(|err| {
+                                    log::warn!("[hotstuff] local: {:?}, rebuild of prev-prev-block({:?}) failed, {:?}."
+                                        , self, prev_prev_block_id, err);
+                                    err
+                                })?;
+                            }
+                            None => {
+                                log::warn!("[hotstuff] local: {:?}, rebuild result-state-id({:?}) of prev-block({:?}) failed, {:?}."
+                                    , self, result_state_id, prev_block.block_id(), err);
+                                return Err(err);
+                            }
+                        }
+                    }
                 }
                 result_state_id.clone()
             }
@@ -671,11 +717,19 @@ impl HotstuffRunner {
             .map_err(|err| Err(err))?
         {
             crate::storage::BlockLinkState::Expired => {
-                log::warn!("[hotstuff] local: {:?}, receive block expired.", self);
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive block({}) expired.",
+                    self,
+                    block.block_id()
+                );
                 Err(Err(BuckyError::new(BuckyErrorCode::Ignored, "expired")))
             }
             crate::storage::BlockLinkState::Duplicate => {
-                log::warn!("[hotstuff] local: {:?}, receive duplicate block.", self);
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive duplicate block({}).",
+                    self,
+                    block.block_id()
+                );
                 Err(Err(BuckyError::new(
                     BuckyErrorCode::AlreadyExists,
                     "duplicate block",
@@ -683,8 +737,9 @@ impl HotstuffRunner {
             }
             crate::storage::BlockLinkState::Link(prev_block) => {
                 log::debug!(
-                    "[hotstuff] local: {:?}, receive in-order block, height: {}.",
+                    "[hotstuff] local: {:?}, receive in-order block({}), height: {}.",
                     self,
+                    block.block_id(),
                     block.height()
                 );
 
@@ -695,8 +750,9 @@ impl HotstuffRunner {
             }
             crate::storage::BlockLinkState::Pending => {
                 log::warn!(
-                    "[hotstuff] local: {:?}, receive out-order block, expect height: {}, get height: {}.",
+                    "[hotstuff] local: {:?}, receive out-order block({}), expect height: {}, get height: {}.",
                     self,
+                    block.block_id(),
                     self.store.header_height() + 3,
                     block.height()
                 );
@@ -740,8 +796,9 @@ impl HotstuffRunner {
             }
             crate::storage::BlockLinkState::InvalidBranch => {
                 log::warn!(
-                    "[hotstuff] local: {:?}, receive block in invalid branch.",
-                    self
+                    "[hotstuff] local: {:?}, receive block({}) in invalid branch.",
+                    self,
+                    block.block_id()
                 );
                 Err(Err(BuckyError::new(
                     BuckyErrorCode::Conflict,
@@ -757,6 +814,23 @@ impl HotstuffRunner {
         remote: ObjectId,
         proposals: &HashMap<ObjectId, GroupProposal>,
     ) -> BuckyResult<()> {
+        log::debug!("[hotstuff] local: {:?}, process_block: {:?}/{:?}/{:?}, prev: {:?}/{:?}, owner: {:?}, remote: {:?},",
+            self,
+            block.block_id(), block.round(), block.height(),
+            block.prev_block_id(), block.qc().as_ref().map_or(0, |qc| qc.round),
+            block.owner(), remote);
+
+        if block.height() <= self.store.header_height() {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_block: {:?}/{:?}/{:?} ignored for expired.",
+                self,
+                block.block_id(),
+                block.round(),
+                block.height(),
+            );
+            return Err(BuckyError::new(BuckyErrorCode::Expired, "block expired"));
+        }
+
         /**
          * 验证过的块执行这个函数
          */
@@ -1105,14 +1179,16 @@ impl HotstuffRunner {
         }
 
         let mut only_rebuild_result_state = false;
-        if self.max_quorum_round >= self.round {
+        if self.max_quorum_round >= self.store.max_round() {
             if let Some(result_state_id) = block.result_state_id() {
                 if self
                     .make_sure_result_state(result_state_id, &[block.owner(), remote])
                     .await
                     .is_err()
                 {
+                    // TODO:
                     // download from remote failed, we need to calcute the result-state by the DEC.on_verify
+                    // if we can successfully rebuild the result-state in the future, we can remove this part.
                     only_rebuild_result_state = true;
                 }
             }
