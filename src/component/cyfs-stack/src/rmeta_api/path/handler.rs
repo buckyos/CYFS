@@ -46,13 +46,23 @@ impl AclHandlerWrapper {
 #[async_trait::async_trait]
 impl GlobalStatePathHandler for AclHandlerWrapper {
     async fn on_check(&self, req: GlobalStatePathHandlerRequest) -> BuckyResult<bool> {
+
+        // If the target dec_id is not match request's source dec_id, we should set target dec_id into req_path to find the correct handler
+        let req_path = if req.dec_id != req.source.dec {
+            format!("{}/{}", req.dec_id, req.req_path.trim_start_matches('/'))
+        } else {
+            req.req_path
+        };
+
         let request = AclHandlerRequest {
             dec_id: req.dec_id,
             source: req.source,
-            req_path: req.req_path,
+            req_path,
             req_query_string: req.req_query_string,
             permissions: req.permissions,
         };
+
+        // info!("will call acl handler: {:?}", request);
 
         let mut param = RouterHandlerAclRequest {
             request,

@@ -4,8 +4,10 @@ use cyfs_base::*;
 use std::sync::Arc;
 
 pub struct GlobalStatePathHandlerRequest {
+    // target_dec_id
     pub dec_id: ObjectId,
 
+    // request source
     pub source: RequestSourceInfo,
 
     // full_req_path = {req_path}?{query_string}
