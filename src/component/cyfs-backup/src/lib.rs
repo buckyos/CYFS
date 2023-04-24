@@ -10,6 +10,7 @@ mod restore;
 mod state_backup;
 mod uni_backup;
 mod service;
+mod archive_download;
 
 pub use backup::*;
 pub use crypto::*;
