@@ -1,6 +1,5 @@
-use cyfs_lib::*;
 use cyfs_base::*;
-
+use cyfs_lib::*;
 
 struct RequestUtil;
 
@@ -97,7 +96,7 @@ pub(crate) trait RequestHandlerHelper<REQ> {
     fn debug_info(&self) -> String {
         unimplemented!();
     }
-    fn req_path(&self) -> &Option<String> {
+    fn req_path(&self) -> Option<&String> {
         unimplemented!();
     }
     fn source(&self) -> &RequestSourceInfo {
@@ -115,8 +114,8 @@ impl RequestHandlerHelper<NONPutObjectInputRequest> for NONPutObjectInputRequest
         self.object.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -139,8 +138,8 @@ impl RequestHandlerHelper<NONGetObjectInputRequest> for NONGetObjectInputRequest
         self.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -163,8 +162,8 @@ impl RequestHandlerHelper<NONPostObjectInputRequest> for NONPostObjectInputReque
         self.object.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -188,8 +187,8 @@ impl RequestHandlerHelper<NONSelectObjectInputRequest> for NONSelectObjectInputR
         format!("{}", self.filter)
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -212,8 +211,8 @@ impl RequestHandlerHelper<NONDeleteObjectInputRequest> for NONDeleteObjectInputR
         self.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -234,12 +233,10 @@ where
 {
     fn update(&mut self, handler: Self) {
         match self {
-            Ok(v) => {
-                match handler {
-                    Ok(new) => v.update(new),
-                    Err(e) => *self = Err(e),
-                }
-            }
+            Ok(v) => match handler {
+                Ok(new) => v.update(new),
+                Err(e) => *self = Err(e),
+            },
             Err(_) => {
                 *self = handler;
             }

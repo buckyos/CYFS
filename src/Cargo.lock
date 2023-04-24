@@ -2426,6 +2426,7 @@ dependencies = [
  "cyfs-util",
  "futures",
  "hex",
+ "http-types",
  "log 0.4.17",
  "once_cell",
  "rand 0.8.5",

@@ -835,6 +835,13 @@ impl ExpTokenEvalValue {
         Self::Glob(ExpGlobToken::new_string_list(list))
     }
 
+    pub fn from_glob<T>(v: &T) -> Self
+    where
+        T: ToString,
+    {
+        Self::Glob(ExpGlobToken::new_string(v.to_string()))
+    }
+
     pub fn from_opt_glob<T>(v: &Option<T>) -> Self
     where
         T: ToString,

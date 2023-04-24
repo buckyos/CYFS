@@ -128,7 +128,7 @@ impl NONRouter {
 
     async fn resolve_router_info(
         &self,
-        op: AclOperation,
+        op: AclOperationCategory,
         source: &RequestSourceInfo,
         target: Option<&ObjectId>,
     ) -> BuckyResult<RouterHandlerRequestRouterInfo> {
@@ -180,7 +180,7 @@ impl NONRouter {
     // 计算下一跳的device
     fn next_forward_target(
         &self,
-        op: AclOperation,
+        op: AclOperationCategory,
         current_info: &Arc<CurrentZoneInfo>,
         target_zone_info: &TargetZoneInfo,
     ) -> BuckyResult<Option<(DeviceId, ZoneDirection)>> {
@@ -208,7 +208,7 @@ impl NONRouter {
                 )
             } else {
                 // 判断是不是需要绕过当前zone的ood设备，直接发送请求到目标ood
-                let bypass_current_ood = match op.category() {
+                let bypass_current_ood = match op {
                     AclOperationCategory::Read => self.acl.config().read_bypass_ood,
                     AclOperationCategory::Write => self.acl.config().write_bypass_ood,
                     AclOperationCategory::Both => unreachable!(),
@@ -341,7 +341,7 @@ impl NONRouter {
 
         let router_info = self
             .resolve_router_info(
-                AclOperation::PutObject,
+                AclOperationCategory::Write,
                 &req.common.source,
                 req.common.target.as_ref(),
             )
@@ -623,7 +623,7 @@ impl NONRouter {
 
         let router_info = self
             .resolve_router_info(
-                AclOperation::GetObject,
+                AclOperationCategory::Read,
                 &req.common.source,
                 req.common.target.as_ref(),
             )
@@ -640,7 +640,7 @@ impl NONRouter {
 
         let router_info = self
             .resolve_router_info(
-                AclOperation::PostObject,
+                AclOperationCategory::Write,
                 &req.common.source,
                 req.common.target.as_ref(),
             )
@@ -758,7 +758,7 @@ impl NONRouter {
 
         let router_info = self
             .resolve_router_info(
-                AclOperation::GetObject,
+                AclOperationCategory::Write,
                 &req.common.source,
                 req.common.target.as_ref(),
             )

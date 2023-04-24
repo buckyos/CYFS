@@ -261,6 +261,8 @@ impl CyfsStackImpl {
             error!("load router handlers error! {}", e);
         }
 
+        local_global_state_meta.init_acl_handler(&router_handlers);
+        
         // events
         let router_events = RouterEventsManager::new();
 

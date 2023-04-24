@@ -4,12 +4,14 @@ use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
-use crate::rmeta_api::GlobalStatePathMetaSyncCollection;
+use crate::rmeta_api::{AclHandlerWrapper, GlobalStatePathMetaSyncCollection};
 use crate::root_state_api::GlobalStateLocalService;
+use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use once_cell::sync::OnceCell;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -19,6 +21,8 @@ pub struct GlobalStateMetaLocalService {
 
     root_state_meta: GlobalStatePathMetaManagerRef,
     local_cache_meta: GlobalStatePathMetaManagerRef,
+
+    acl_handler: Arc<OnceCell<GlobalStatePathHandlerRef>>,
 }
 
 impl GlobalStateMetaLocalService {
@@ -57,6 +61,17 @@ impl GlobalStateMetaLocalService {
             device_id,
             root_state_meta,
             local_cache_meta,
+            acl_handler: Arc::new(OnceCell::new()),
+        }
+    }
+
+    pub(crate) fn init_acl_handler(&self, router_handlers: &RouterHandlersManager) {
+        // acl handler
+        let acl_handler = AclHandlerWrapper::new(&router_handlers);
+        let acl_handler = Arc::new(Box::new(acl_handler) as Box<dyn GlobalStatePathHandler>);
+
+        if let Err(_) = self.acl_handler.set(acl_handler) {
+            unreachable!();
         }
     }
 
@@ -74,9 +89,7 @@ impl GlobalStateMetaLocalService {
         }
     }
 
-    pub(crate) fn clone_raw_processor(
-        &self,
-    ) -> GlobalStateMetaManagerRawProcessorRef {
+    pub(crate) fn clone_raw_processor(&self) -> GlobalStateMetaManagerRawProcessorRef {
         Arc::new(Box::new(self.clone()))
     }
 
@@ -127,11 +140,15 @@ impl GlobalStateMetaLocalService {
         let check_req = GlobalStateAccessRequest {
             dec: Cow::Borrowed(target_dec_id),
             path: req_path.req_path(),
+            query_string: req_path.req_query_string.as_ref().map(|v| Cow::Borrowed(v.as_str())),
             source: Cow::Borrowed(source),
             permissions,
         };
 
-        if let Err(e) = dec_rmeta.check_access(check_req) {
+        if let Err(e) = dec_rmeta
+            .check_access(check_req, self.acl_handler.get().unwrap())
+            .await
+        {
             error!(
                 "global check access but been rejected! source={}, req_path={}, permissons={}",
                 source,
@@ -163,7 +180,10 @@ impl GlobalStateMetaLocalService {
         let dec_rmeta = ret.unwrap();
         let permissions = permissions.into();
 
-        match dec_rmeta.check_object_access(&target_dec_id, object_data, source, permissions) {
+        match dec_rmeta
+            .check_object_access(&target_dec_id, object_data, source, permissions)
+            .await
+        {
             Ok(ret) => Ok(ret),
             Err(e) => {
                 error!(
@@ -204,7 +224,8 @@ impl GlobalStateMetaManagerRawProcessor for GlobalStateMetaLocalService {
 
         rmeta
             .get_option_global_state_meta(dec_id, auto_create)
-            .await.map(|ret| ret.map(|ret| ret.into_processor()))
+            .await
+            .map(|ret| ret.map(|ret| ret.into_processor()))
     }
 }
 
@@ -262,9 +283,7 @@ impl GlobalStateMetaService {
         self.local_service.get_meta_manager(category)
     }
 
-    pub(crate) fn clone_manager_raw_processor(
-        &self,
-    ) -> GlobalStateMetaManagerRawProcessorRef {
+    pub(crate) fn clone_manager_raw_processor(&self) -> GlobalStateMetaManagerRawProcessorRef {
         self.local_service.clone_raw_processor()
     }
 

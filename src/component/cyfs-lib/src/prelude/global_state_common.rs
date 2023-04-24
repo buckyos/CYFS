@@ -37,6 +37,9 @@ pub struct RequestGlobalStatePath {
 
     // inernal path of global-state, without the dec-id segment
     pub req_path: Option<String>,
+
+    // extra query params in URL query parameters format, after a question mark (?)
+    pub req_query_string: Option<String>,
 }
 
 impl fmt::Display for RequestGlobalStatePath {
@@ -57,6 +60,7 @@ impl RequestGlobalStatePath {
             global_state_root: None,
             dec_id,
             req_path: req_path.map(|v| v.into()),
+            req_query_string: None,
         }
     }
 
@@ -93,6 +97,28 @@ impl RequestGlobalStatePath {
         }
     }
 
+    pub fn set_req_query_string(&mut self, query: impl Into<String>) {
+        self.req_query_string = Some(query.into());
+    }
+
+    pub fn parse_req_path_with_query_string(
+        req_path_with_query_string: &str,
+    ) -> (&str, Option<&str>) {
+        match req_path_with_query_string.rsplit_once('?') {
+            Some((req_path, query_string)) => (req_path, Some(query_string)),
+            None => (req_path_with_query_string, None),
+        }
+    }
+
+    pub fn parse_req_path_with_query_string_owned(
+        req_path_with_query_string: &str,
+    ) -> (String, Option<String>) {
+        let (req_path, query_string) =
+            Self::parse_req_path_with_query_string(req_path_with_query_string);
+
+        (req_path.to_owned(), query_string.map(|v| v.to_owned()))
+    }
+
     /*
     The first paragraph is optional root-state/local-cache, default root-state
     The second paragraph is optional current/root:{root-id}/dec-root:{dec-root-id}, default is current
@@ -100,6 +126,8 @@ impl RequestGlobalStatePath {
     Fourth paragraph optional global-state-inner-path
     */
     pub fn parse(req_path: &str) -> BuckyResult<Self> {
+        let (req_path, query_string) = Self::parse_req_path_with_query_string(req_path);
+
         let segs: Vec<&str> = req_path
             .trim_start_matches('/')
             .split('/')
@@ -163,7 +191,7 @@ impl RequestGlobalStatePath {
         };
 
         let dec_id = if index < segs.len() {
-            // 如果第一段是object_id，那么认为是dec_id
+            // If first segment is object_id，then treat as dec_id
             let seg = segs[index];
             if OBJECT_ID_BASE58_RANGE.contains(&seg.len()) {
                 let dec_id = ObjectId::from_str(seg).map_err(|e| {
@@ -192,6 +220,7 @@ impl RequestGlobalStatePath {
             global_state_root,
             dec_id,
             req_path,
+            req_query_string: query_string.map(|s| s.to_string()),
         })
     }
 
@@ -214,7 +243,14 @@ impl RequestGlobalStatePath {
             segs.push(Cow::Borrowed(path.trim_start_matches('/')));
         }
 
-        format!("/{}", segs.join("/"))
+        match &self.req_query_string {
+            Some(v) => {
+                format!("/{}?{}", segs.join("/"), v)
+            }
+            None => {
+                format!("/{}", segs.join("/"))
+            }
+        }
     }
 
     pub fn match_target(&self, target: &Self) -> bool {
@@ -253,6 +289,7 @@ mod test {
             global_state_root: None,
             dec_id: None,
             req_path: Some("/a/b/".to_owned()),
+            req_query_string: Some("token=123456".to_owned()),
         };
 
         let s = root.format_string();
@@ -260,10 +297,11 @@ mod test {
         let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
-        root.dec_id = Some(ObjectId::default());
+        let dec_id = ObjectId::from_str("9tGpLNnSzxs7kX2pbe27adjNjGQTgFzMCR9pDQ4rHRpM").unwrap();
+        root.dec_id = Some(dec_id);
         let s = root.format_string();
         println!("{}", s);
-        
+
         root.global_state_category = Some(GlobalStateCategory::RootState);
         let s = root.format_string();
         println!("{}", s);
@@ -299,6 +337,7 @@ mod test {
             global_state_root: None,
             dec_id: None,
             req_path: None,
+            req_query_string: None,
         };
 
         let s = root.format_string();

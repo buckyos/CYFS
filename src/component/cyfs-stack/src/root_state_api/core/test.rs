@@ -1,8 +1,8 @@
 use super::state_manager::*;
 use crate::config::StackGlobalConfig;
-use crate::stack::{CyfsStackParams};
-use cyfs_bdt_ext::*;
+use crate::stack::CyfsStackParams;
 use cyfs_base::*;
+use cyfs_bdt_ext::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 
@@ -156,7 +156,7 @@ impl NamedObjectCache for MemoryNOC {
         &self,
         req: &NamedObjectCacheSelectObjectRequest,
     ) -> BuckyResult<NamedObjectCacheSelectObjectResponse> {
-        unreachable!();  
+        unreachable!();
     }
 
     fn bind_object_meta_access_provider(
@@ -197,29 +197,33 @@ async fn create_global_state_manager() -> GlobalStateManager {
         known_device: vec![],
         known_passive_pn: vec![],
         udp_sn_only: None,
-        sn_mode: SNMode::Default,
+        sn_mode: SNMode::Normal,
         ping_interval: None,
     };
     let config = StackGlobalConfig::new(params, bdt_params);
 
-    let state_manager = GlobalStateManager::load(
-        GlobalStateCategory::RootState,
-        &device_id,
-        Some(owner),
-        noc.clone(),
-        config.clone(),
-    )
-    .await
-    .unwrap();
+    let state_manager = GlobalStateManager::new(noc.clone(), config.clone());
+    state_manager.load().await.unwrap();
     config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Write);
     state_manager
 }
 
-async fn test1(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root = global_state_manager
+async fn get_root_manager(
+    global_state_manager: &GlobalStateManager,
+    dec_id: &ObjectId,
+) -> ObjectMapRootManagerRef {
+    let device_id = DeviceId::from_str("5aSixgPXvhR4puWzFCHqvUXrjFWjxbq4y3thJVgZg6ty").unwrap();
+    global_state_manager
+        .get_root_state(device_id.object_id())
+        .await
+        .unwrap()
         .get_dec_root_manager(&dec_id, true)
         .await
-        .unwrap();
+        .unwrap()
+}
+
+async fn test1(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 这里使用非托管模式env
     let op_env = root.create_op_env(None).unwrap();
@@ -247,24 +251,21 @@ async fn test1(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     // 提交
     let dec_root = op_env.commit().await.unwrap();
     info!("dec root changed to {}", dec_root);
-    info!(
-        "global root changed to {}",
-        global_state_manager.get_current_root().0
-    );
+    info!("global root changed to {}", root.get_current_root());
 
     // single op env, test load_with_inner_path
     let op_env = root.create_single_op_env(None).unwrap();
-    op_env.load_with_inner_path(&dec_root, Some("/a/b".to_owned())).await.unwrap();
+    op_env
+        .load_with_inner_path(&dec_root, Some("/a/b".to_owned()))
+        .await
+        .unwrap();
 
     let b_value = op_env.get_by_key("test1").await.unwrap().unwrap();
     assert_eq!(b_value, x1_value2);
 }
 
 async fn test2(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
@@ -314,10 +315,7 @@ async fn test2(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
 }
 
 async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root_manager = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root_manager = get_root_manager(global_state_manager, dec_id).await;
 
     // 这里使用非托管模式env
     let op_env = root_manager.create_op_env(None).unwrap();
@@ -382,17 +380,11 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
     let current_value = op_env3.get_by_key(path, "test1").await.unwrap();
     assert_eq!(current_value, Some(x2_value));
 
-    info!(
-        "global root changed to {}",
-        global_state_manager.get_current_root().0
-    );
+    info!("global root changed to {}", root_manager.get_current_root());
 }
 
 async fn test_single_env(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
@@ -440,10 +432,7 @@ async fn test_single_env(global_state_manager: &GlobalStateManager, dec_id: &Obj
         .unwrap();
     let new_root = op_env.commit().await.unwrap();
     info!("dec root changed to {}", new_root);
-    info!(
-        "global root changed to {}",
-        global_state_manager.get_current_root().0
-    );
+    info!("global root changed to {}", root.get_current_root());
 
     // 使用一个新的path_op_env， 校验/a/b/test1的值
     let op_env = root.create_op_env(None).unwrap();
@@ -454,11 +443,8 @@ async fn test_single_env(global_state_manager: &GlobalStateManager, dec_id: &Obj
 }
 
 async fn test_isolate_path_env(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root_manager = global_state_manager
-            .get_dec_root_manager(&dec_id, true)
-            .await
-            .unwrap();
-    
+    let root_manager = get_root_manager(global_state_manager, dec_id).await;
+
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
 
@@ -466,12 +452,21 @@ async fn test_isolate_path_env(global_state_manager: &GlobalStateManager, dec_id
     let path_env = root_manager.create_isolate_path_op_env(None).unwrap();
     path_env.get_by_path("/a/b").await.unwrap_err();
 
-    path_env.create_new(ObjectMapSimpleContentType::Map).await.unwrap();
+    path_env
+        .create_new(ObjectMapSimpleContentType::Map, None, None)
+        .await
+        .unwrap();
 
     path_env.insert_with_path("/a/b", &x1_value).await.unwrap();
-    let ret = path_env.set_with_path("/a/b", &x1_value, &None, false).await.unwrap();
+    let ret = path_env
+        .set_with_path("/a/b", &x1_value, &None, false)
+        .await
+        .unwrap();
     assert_eq!(ret, Some(x1_value));
-    let ret = path_env.set_with_path("/a/b", &x1_value2, &Some(x1_value), false).await.unwrap();
+    let ret = path_env
+        .set_with_path("/a/b", &x1_value2, &Some(x1_value), false)
+        .await
+        .unwrap();
     assert_eq!(ret, Some(x1_value));
     let ret = path_env.get_by_path("/a/b").await.unwrap();
     assert_eq!(ret, Some(x1_value2));
@@ -480,7 +475,10 @@ async fn test_isolate_path_env(global_state_manager: &GlobalStateManager, dec_id
 
     path_env.insert_with_path("/a/c", &x1_value).await.unwrap();
 
-    path_env.create_new_with_path("/s", ObjectMapSimpleContentType::Set).await.unwrap();
+    path_env
+        .create_new_with_path("/s", ObjectMapSimpleContentType::Set)
+        .await
+        .unwrap();
     path_env.insert("/s", &x1_value).await.unwrap();
     path_env.insert("/s", &x1_value2).await.unwrap();
 
@@ -521,10 +519,7 @@ async fn test_isolate_path_env(global_state_manager: &GlobalStateManager, dec_id
 async fn test_managed(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     info!("will test managed op_env for dec={}", dec_id);
 
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
@@ -582,10 +577,7 @@ async fn test_managed(global_state_manager: &GlobalStateManager, dec_id: &Object
 async fn test_conflict(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     info!("will test conflict op_env for dec={}", dec_id);
 
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
@@ -642,10 +634,7 @@ async fn test_conflict(global_state_manager: &GlobalStateManager, dec_id: &Objec
 async fn test_merge(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     info!("will test merge op_env for dec={}", dec_id);
 
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
@@ -700,10 +689,7 @@ async fn test_merge(global_state_manager: &GlobalStateManager, dec_id: &ObjectId
 async fn test_path_lock(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     info!("will test path lock op_env for dec={}", dec_id);
 
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
@@ -769,10 +755,7 @@ async fn test_path_lock(global_state_manager: &GlobalStateManager, dec_id: &Obje
 }
 
 async fn test_remove_panic(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
-    let root = global_state_manager
-        .get_dec_root_manager(&dec_id, true)
-        .await
-        .unwrap();
+    let root = get_root_manager(global_state_manager, dec_id).await;
 
     let env = root.create_op_env(None).unwrap();
 

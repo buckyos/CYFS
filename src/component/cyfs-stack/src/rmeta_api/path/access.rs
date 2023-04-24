@@ -70,7 +70,12 @@ impl GlobalStatePathAccessList {
         self.list.clone()
     }
 
-    pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>, current_device_id: &DeviceId) -> BuckyResult<()> {
+    pub async fn check<'d, 'a, 'b>(
+        &self,
+        req: GlobalStateAccessRequest<'d, 'a, 'b>,
+        current_device_id: &DeviceId,
+        handler: &GlobalStatePathHandlerRef,
+    ) -> BuckyResult<()> {
         let req_path = if req.path.ends_with('/') {
             req.path.clone()
         } else {
@@ -86,8 +91,10 @@ impl GlobalStatePathAccessList {
                             info!("raccess match item: req={}, access={}", req, item);
                             return Ok(());
                         } else {
-                            let msg =
-                                format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
+                            let msg = format!(
+                                "raccess reject by item: device={}, req={}, access={}",
+                                current_device_id, req, item
+                            );
                             warn!("{}", msg);
                             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                         }
@@ -99,8 +106,10 @@ impl GlobalStatePathAccessList {
                                 info!("raccess match item: req={}, access={}", req, item);
                                 return Ok(());
                             } else {
-                                let msg =
-                                    format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
+                                let msg = format!(
+                                    "raccess reject by item: device={}, req={}, access={}",
+                                    current_device_id, req, item
+                                );
                                 warn!("{}", msg);
                                 return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                             }
@@ -109,11 +118,37 @@ impl GlobalStatePathAccessList {
                             continue;
                         }
                     }
+                    GlobalStatePathGroupAccess::Handler => {
+                        let handler_req = GlobalStatePathHandlerRequest {
+                            dec_id: req.dec.as_ref().to_owned(),
+                            source: req.source.as_ref().to_owned(),
+                            req_path: req.path.as_ref().to_owned(),
+                            req_query_string: req.query_string.as_ref().map(|v| v.to_string()),
+                            permissions: req.permissions,
+                        };
+
+                        match handler.on_check(handler_req).await? {
+                            true => {
+                                return Ok(());
+                            }
+                            false => {
+                                let msg = format!(
+                                    "raccess reject by handler: device={}, req={}, access={}",
+                                    current_device_id, req, item
+                                );
+                                warn!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        let msg = format!("raccess reject by default: device={}, req={}", current_device_id, req);
+        let msg = format!(
+            "raccess reject by default: device={}, req={}",
+            current_device_id, req
+        );
         warn!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }
@@ -124,6 +159,8 @@ mod test_path_access {
     use super::*;
     use cyfs_core::*;
 
+    use std::sync::Arc;
+
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
         let dec_id = DecApp::generate_id(owner_id.into(), name);
@@ -133,9 +170,24 @@ mod test_path_access {
         dec_id
     }
 
+    struct DummyHandler {}
+
+    #[async_trait::async_trait]
+    impl GlobalStatePathHandler for DummyHandler {
+        async fn on_check(&self, req: GlobalStatePathHandlerRequest) -> BuckyResult<bool> {
+            unreachable!();
+        }
+    }
+
     #[test]
     fn test() {
+        async_std::task::block_on(test_run());
+    }
+
+    async fn test_run() {
         cyfs_base::init_simple_log("test_path_access", None);
+
+        let handler = Arc::new(Box::new(DummyHandler {}) as Box<dyn GlobalStatePathHandler>);
 
         let current_device_id = DeviceId::default();
         let owner_dec = new_dec("owner");
@@ -191,12 +243,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap();
+        list.check(ret, &current_device_id, &handler).await.unwrap();
 
         // same zone, diff dec
         let source = RequestSourceInfo {
@@ -212,12 +265,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::ReadOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap();
+        list.check(ret, &current_device_id, &handler).await.unwrap();
 
         // same zone, diff dec, write
         let source = RequestSourceInfo {
@@ -233,12 +287,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap_err();
+        list.check(ret, &current_device_id, &handler).await.unwrap_err();
 
         // test remove
         let device = DeviceId::default();

@@ -116,9 +116,9 @@ impl TryFrom<u8> for AccessPermissions {
     }
 }
 
-impl TryFrom<&str> for AccessPermissions {
-    type Error = BuckyError;
-    fn try_from(value: &str) -> BuckyResult<Self> {
+impl FromStr for AccessPermissions {
+    type Err = BuckyError;
+    fn from_str(value: &str) -> BuckyResult<Self> {
         match value {
             "---" => Ok(AccessPermissions::None),
             "--x" => Ok(AccessPermissions::CallOnly),
@@ -157,7 +157,7 @@ impl<'de> Visitor<'de> for AccessPermissionsVisitor {
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: Error {
-        AccessPermissions::try_from(v).map_err(Error::custom)
+        AccessPermissions::from_str(v).map_err(Error::custom)
     }
 }
 
@@ -384,7 +384,7 @@ impl FromStr for AccessString {
     fn from_str(value: &str) -> BuckyResult<Self> {
         let mut access = AccessString::new(0);
         for (mut chunk, group) in value.chars().filter(|c|c != &'_' && c != &' ').chunks(3).into_iter().zip(ACCESS_GROUP_LIST) {
-            access.set_group_permissions(*group, AccessPermissions::try_from(chunk.join("").as_str())?);
+            access.set_group_permissions(*group, AccessPermissions::from_str(chunk.join("").as_str())?);
         }
 
         Ok(access)
@@ -435,7 +435,7 @@ impl<'de> Visitor<'de> for AccessStringVisitor {
         let mut ret = AccessString::default();
         while let Some(value) = seq.next_element::<AccessGroupStruct>()? {
             ret.set_group_permissions(AccessGroup::try_from(value.group.as_str()).map_err(Error::custom)?,
-                                      AccessPermissions::try_from(value.access.as_str()).map_err(Error::custom)?);
+                                      AccessPermissions::from_str(value.access.as_str()).map_err(Error::custom)?);
         }
 
         Ok(ret)

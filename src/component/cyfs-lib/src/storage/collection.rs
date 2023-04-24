@@ -96,7 +96,12 @@ impl NOCStorageWrapper {
     ) -> Self {
         Self {
             storage: Box::new(NOCGlobalStateStorage::new(
-                global_state, dec_id, path, target, id, noc,
+                global_state,
+                dec_id,
+                path,
+                target,
+                id,
+                noc,
             )),
         }
     }
@@ -352,9 +357,7 @@ where
         id: &str,
         noc: NamedObjectCacheRef,
     ) -> Self {
-        let storage = NOCGlobalStateStorage::new(
-            global_state, dec_id, path, target, id, noc,
-        );
+        let storage = NOCGlobalStateStorage::new(global_state, dec_id, path, target, id, noc);
 
         Self {
             coll: Arc::new(Mutex::new(T::default())),
@@ -492,11 +495,18 @@ where
     }
 }
 
-pub struct NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
-    coll: Arc<RwLock<T>>,
+
+#[async_trait::async_trait]
+pub trait NOCCollectionStorageColl: Send + Sync {
+    async fn encode(&self) -> BuckyResult<Vec<u8>>;
+}
+
+pub type NOCCollectionStorageCollRef = Arc<Box<dyn NOCCollectionStorageColl>>;
+
+#[derive(Clone)]
+pub struct NOCCollectionStorage {
+    coll: NOCCollectionStorageCollRef,
+
     storage: Arc<Box<dyn NOCStorage>>,
 
     dirty: Arc<AtomicBool>,
@@ -504,29 +514,11 @@ where
     auto_save: Arc<AtomicBool>,
 }
 
-
-impl<T> Clone for NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            coll: self.coll.clone(),
-            storage: self.storage.clone(),
-            dirty: self.dirty.clone(),
-            auto_save: self.auto_save.clone(),
-        }
-    }
-}
-
-impl<T> NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
-    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
+impl NOCCollectionStorage {
+    pub fn new(id: &str, coll: NOCCollectionStorageCollRef, noc: NamedObjectCacheRef) -> Self {
         let noc = NOCRawStorage::new(id, noc);
         Self {
-            coll: Arc::new(RwLock::new(T::default())),
+            coll,
             storage: Arc::new(Box::new(noc)),
             dirty: Arc::new(AtomicBool::new(false)),
             auto_save: Arc::new(AtomicBool::new(false)),
@@ -539,14 +531,13 @@ where
         path: String,
         target: Option<ObjectId>,
         id: &str,
+        coll: NOCCollectionStorageCollRef,
         noc: NamedObjectCacheRef,
     ) -> Self {
-        let storage = NOCGlobalStateStorage::new(
-            global_state, dec_id, path, target, id, noc,
-        );
+        let storage = NOCGlobalStateStorage::new(global_state, dec_id, path, target, id, noc);
 
         Self {
-            coll: Arc::new(RwLock::new(T::default())),
+            coll,
             storage: Arc::new(Box::new(storage)),
             dirty: Arc::new(AtomicBool::new(false)),
             auto_save: Arc::new(AtomicBool::new(false)),
@@ -561,26 +552,11 @@ where
         self.dirty.store(dirty, Ordering::SeqCst);
     }
 
-    pub fn coll(&self) -> &Arc<RwLock<T>> {
-        &self.coll
-    }
-
     pub fn id(&self) -> &str {
         self.storage.id()
     }
 
-    pub fn swap(&self, mut value: T) -> T {
-        {
-            let mut cur = self.coll.write().unwrap();
-            std::mem::swap(&mut *cur, &mut value);
-        }
-
-        self.set_dirty(true);
-
-        value
-    }
-
-    pub async fn load(&self) -> BuckyResult<()> {
+    pub async fn load<T: CollectionCodec<T>>(&self) -> BuckyResult<Option<T>> {
         match self.storage.load().await? {
             Some(buf) => {
                 let coll = T::decode(&buf).map_err(|e| {
@@ -592,10 +568,9 @@ where
                     e
                 })?;
 
-                *self.coll.write().unwrap() = coll;
-                Ok(())
+                Ok(Some(coll))
             }
-            None => Ok(()),
+            None => Ok(None),
         }
     }
 
@@ -613,34 +588,23 @@ where
     }
 
     pub async fn save_impl(&self) -> BuckyResult<()> {
-        let buf = {
-            let coll = self.coll.read().unwrap();
-            coll.encode().map_err(|e| {
-                error!(
-                    "convert collection to buf failed! id={}, {}",
-                    self.storage.id(),
-                    e
-                );
-                e
-            })?
-        };
-
+        let buf = self.coll.encode().await?;
         self.storage.save(buf).await
     }
 
-    pub async fn delete(&mut self) -> BuckyResult<()> {
+    pub async fn delete(&self) -> BuckyResult<()> {
         self.storage.delete().await?;
 
-        // 删除后需要停止自动保存
+        // After deleting, we should to stop automatic saving
         self.stop_save();
 
-        // FIXME 删除后是否要置空?
+        // FIXME Whether to set it empty after deleting?
         // self.coll = T::default();
 
         Ok(())
     }
 
-    // 开始定时保存操作
+    // Start to save the operation periodically
     pub fn start_save(&self, dur: std::time::Duration) {
         use async_std::prelude::*;
 
@@ -673,5 +637,287 @@ where
         {
             info!("will stop storage auto save! id={}", self.id());
         }
+    }
+}
+
+// Collection with std::sync::RWLock
+struct RWSyncCollHolder<T> {
+    coll: Arc<std::sync::RwLock<T>>,
+}
+
+impl<T> Clone for RWSyncCollHolder<T> {
+    fn clone(&self) -> Self {
+        Self {
+            coll: self.coll.clone(),
+        }
+    }
+}
+
+impl<T> RWSyncCollHolder<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    pub fn new() -> Self {
+        let coll = Arc::new(std::sync::RwLock::new(T::default()));
+
+        Self { coll }
+    }
+
+    pub fn into_coll_ref(self) -> NOCCollectionStorageCollRef {
+        Arc::new(Box::new(self))
+    }
+}
+
+#[async_trait::async_trait]
+impl<T> NOCCollectionStorageColl for RWSyncCollHolder<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    async fn encode(&self) -> BuckyResult<Vec<u8>> {
+        let coll = self.coll.read().unwrap();
+        coll.encode().map_err(|e| {
+            error!("convert collection to buf failed! {}", e);
+            e
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct NOCCollectionRWSync<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    coll: RWSyncCollHolder<T>,
+    storage: NOCCollectionStorage,
+}
+
+impl<T> NOCCollectionRWSync<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
+        let coll = RWSyncCollHolder::new();
+        let c = coll.clone();
+        Self {
+            coll: c,
+            storage: NOCCollectionStorage::new(id, coll.into_coll_ref(), noc),
+        }
+    }
+
+    pub fn new_global_state(
+        global_state: GlobalStateOutputProcessorRef,
+        dec_id: Option<ObjectId>,
+        path: String,
+        target: Option<ObjectId>,
+        id: &str,
+        noc: NamedObjectCacheRef,
+    ) -> Self {
+        let coll = RWSyncCollHolder::new();
+
+        Self {
+            coll: coll.clone(),
+            storage: NOCCollectionStorage::new_global_state(
+                global_state,
+                dec_id,
+                path,
+                target,
+                id,
+                coll.into_coll_ref(),
+                noc,
+            ),
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.storage.is_dirty()
+    }
+
+    pub fn set_dirty(&self, dirty: bool) {
+        self.storage.set_dirty(dirty)
+    }
+
+    pub fn coll(&self) -> &Arc<std::sync::RwLock<T>> {
+        &self.coll.coll
+    }
+
+    pub fn id(&self) -> &str {
+        self.storage.id()
+    }
+
+    pub async fn swap(&self, mut value: T) -> T {
+        {
+            let mut cur = self.coll.coll.write().unwrap();
+            std::mem::swap(&mut *cur, &mut value);
+        }
+
+        self.set_dirty(true);
+
+        value
+    }
+
+    pub async fn load(&self) -> BuckyResult<()> {
+        if let Some(coll) = self.storage.load().await? {
+            *self.coll.coll.write().unwrap() = coll;
+        }
+
+        Ok(())
+    }
+
+    pub async fn save(&self) -> BuckyResult<()> {
+        self.storage.save().await
+    }
+
+    pub async fn delete(&self) -> BuckyResult<()> {
+        self.storage.delete().await
+    }
+
+    // Start to save the operation periodically
+    pub fn start_save(&self, dur: std::time::Duration) {
+        self.storage.start_save(dur)
+    }
+
+    pub fn stop_save(&self) {
+        self.storage.stop_save()
+    }
+}
+
+// Collection with async_std::sync::RWLock
+struct RWAsyncCollHolder<T> {
+    coll: Arc<async_std::sync::RwLock<T>>,
+}
+
+impl<T> Clone for RWAsyncCollHolder<T> {
+    fn clone(&self) -> Self {
+        Self {
+            coll: self.coll.clone(),
+        }
+    }
+}
+
+impl<T> RWAsyncCollHolder<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    pub fn new() -> Self {
+        let coll = Arc::new(async_std::sync::RwLock::new(T::default()));
+
+        Self { coll }
+    }
+
+    pub fn into_coll_ref(self) -> NOCCollectionStorageCollRef {
+        Arc::new(Box::new(self))
+    }
+}
+
+#[async_trait::async_trait]
+impl<T> NOCCollectionStorageColl for RWAsyncCollHolder<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    async fn encode(&self) -> BuckyResult<Vec<u8>> {
+        let coll = self.coll.read().await;
+        coll.encode().map_err(|e| {
+            error!("convert collection to buf failed! {}", e);
+            e
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct NOCCollectionRWAsync<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    coll: RWAsyncCollHolder<T>,
+    storage: NOCCollectionStorage,
+}
+
+impl<T> NOCCollectionRWAsync<T>
+where
+    T: Default + CollectionCodec<T> + Send + Sync + 'static,
+{
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
+        let coll = RWAsyncCollHolder::new();
+        let c = coll.clone();
+        Self {
+            coll: c,
+            storage: NOCCollectionStorage::new(id, coll.into_coll_ref(), noc),
+        }
+    }
+
+    pub fn new_global_state(
+        global_state: GlobalStateOutputProcessorRef,
+        dec_id: Option<ObjectId>,
+        path: String,
+        target: Option<ObjectId>,
+        id: &str,
+        noc: NamedObjectCacheRef,
+    ) -> Self {
+        let coll = RWAsyncCollHolder::new();
+
+        Self {
+            coll: coll.clone(),
+            storage: NOCCollectionStorage::new_global_state(
+                global_state,
+                dec_id,
+                path,
+                target,
+                id,
+                coll.into_coll_ref(),
+                noc,
+            ),
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.storage.is_dirty()
+    }
+
+    pub fn set_dirty(&self, dirty: bool) {
+        self.storage.set_dirty(dirty)
+    }
+
+    pub fn coll(&self) -> &Arc<async_std::sync::RwLock<T>> {
+        &self.coll.coll
+    }
+
+    pub fn id(&self) -> &str {
+        self.storage.id()
+    }
+
+    pub async fn swap(&self, mut value: T) -> T {
+        {
+            let mut cur = self.coll.coll.write().await;
+            std::mem::swap(&mut *cur, &mut value);
+        }
+
+        self.set_dirty(true);
+
+        value
+    }
+
+    pub async fn load(&self) -> BuckyResult<()> {
+        if let Some(coll) = self.storage.load().await? {
+            *self.coll.coll.write().await = coll;
+        }
+
+        Ok(())
+    }
+
+    pub async fn save(&self) -> BuckyResult<()> {
+        self.storage.save().await
+    }
+
+    pub async fn delete(&self) -> BuckyResult<()> {
+        self.storage.delete().await
+    }
+
+    // Start to save the operation periodically
+    pub fn start_save(&self, dur: std::time::Duration) {
+        self.storage.start_save(dur)
+    }
+
+    pub fn stop_save(&self) {
+        self.storage.stop_save()
     }
 }

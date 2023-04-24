@@ -10,9 +10,9 @@ use cyfs_debug::*;
 
 async fn main_run() {
     CyfsLoggerBuilder::new_app("cyfs-stack-test")
-        .level("warn")
-        .console("warn")
-        .enable_bdt(Some("info"), Some("error"))
+        .level("info")
+        .console("info")
+        .enable_bdt(Some("info"), Some("warn"))
         .disable_file_config(true)
         .file(true)
         .build()

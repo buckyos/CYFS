@@ -35,3 +35,4 @@ async-recursion = "1.0"
 once_cell = "1.12"
 serde = { version = '1.0', features = ['derive'] }
 chrono = '0.4'
+http-types = "2.12"

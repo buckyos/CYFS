@@ -39,11 +39,14 @@ impl GlobalStateAccessorAclInputProcessor {
             }
         }
 
+        let (req_path, req_query_string) = RequestGlobalStatePath::parse_req_path_with_query_string_owned(path);
+
         let global_state = RequestGlobalStatePath {
             global_state_category: None,
             global_state_root: None,
             dec_id: Some(dec_id.to_owned()),
-            req_path: Some(path.to_owned()),
+            req_path: Some(req_path),
+            req_query_string,
         };
 
         self.acl

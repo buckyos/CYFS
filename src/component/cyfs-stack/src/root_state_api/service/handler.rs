@@ -5,6 +5,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use http_types::StatusCode;
+use std::borrow::Cow;
 use std::str::FromStr;
 use tide::Response;
 
@@ -995,6 +996,7 @@ impl GlobalStateAccessorRequestHandler {
         let mut action = GlobalStateAccessorAction::GetObjectByPath;
 
         let pairs = req.request.url().query_pairs();
+        let mut user_pairs = vec![];
         for (k, v) in pairs {
             match k.as_ref() {
                 "action" => {
@@ -1017,13 +1019,20 @@ impl GlobalStateAccessorRequestHandler {
                     page_size = Some(v);
                 }
                 _ => {
-                    warn!("unknown global state accessor url query: {}={}", k, v);
+                    user_pairs.push(format!("{}={}", k, v));
                 }
             }
         }
 
         let inner_path = req.request.param("inner_path").unwrap_or("/");
-        let inner_path = RequestorHelper::decode_utf8("inner_path", inner_path)?;
+        let inner_path = if user_pairs.is_empty() {
+            Cow::Borrowed(inner_path)
+        } else {
+            let user_querys = user_pairs.join("&");
+            Cow::Owned(format!("{}?{}", inner_path, user_querys))
+        };
+
+        let inner_path = RequestorHelper::decode_utf8("inner_path", &inner_path)?;
 
         let inner_path: String = if inner_path.starts_with("/") {
             inner_path.to_string()
