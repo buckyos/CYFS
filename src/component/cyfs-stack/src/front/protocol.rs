@@ -1089,3 +1089,19 @@ impl FrontProtocolHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_o_query_string() {
+        let url = "http://www.cyfs.com/a/b?req_path=/a/b%3Ftoken=xxx%26id=xxx&dec_id=xxx";
+        let url = http_types::Url::parse(url).unwrap();
+        let value: String = RequestorHelper::value_from_querys_with_utf8_decoding("dec_id", &url).unwrap().unwrap();
+        assert_eq!(value, "xxx");
+
+        let value: String = RequestorHelper::value_from_querys_with_utf8_decoding("req_path", &url).unwrap().unwrap();
+        assert_eq!(value, "/a/b?token=xxx&id=xxx");
+    }
+}
