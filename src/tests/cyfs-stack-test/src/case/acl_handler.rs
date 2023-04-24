@@ -12,9 +12,9 @@ struct OnDynamicAcl;
 pub async fn test() {
     test_handler().await;
     
-    async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
-
     info!("test all acl handler case success!");
+
+    async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 }
 
 #[async_trait::async_trait]
@@ -63,13 +63,14 @@ async fn test_handler() {
 
     const TEST_REQ_PATH: &str = "/test/dynamic/call";
 
-    // First set handler access for {req_path}
+    // First set handler access for {req_path} for clean test environment
     device1
         .root_state_meta_stub(None, None)
         .clear_access()
         .await
         .unwrap();
 
+    // Add rmeta 'Handler' access for specific req path 
     let item = GlobalStatePathAccessItem {
         path: TEST_REQ_PATH.to_owned(),
         access: GlobalStatePathGroupAccess::Handler,

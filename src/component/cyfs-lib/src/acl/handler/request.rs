@@ -4,11 +4,13 @@ use cyfs_base::*;
 
 #[derive(Debug, Clone)]
 pub struct AclHandlerRequest {
-    // The owner dec
+    // The request's target dec
     pub dec_id: ObjectId,
 
+    // request source
     pub source: RequestSourceInfo,
 
+    // full req_path = {req_path}?{query_string}
     pub req_path: String,
     pub req_query_string: Option<String>,
 
