@@ -159,6 +159,8 @@ mod test_path_access {
     use super::*;
     use cyfs_core::*;
 
+    use std::sync::Arc;
+
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
         let dec_id = DecApp::generate_id(owner_id.into(), name);
@@ -168,9 +170,24 @@ mod test_path_access {
         dec_id
     }
 
+    struct DummyHandler {}
+
+    #[async_trait::async_trait]
+    impl GlobalStatePathHandler for DummyHandler {
+        async fn on_check(&self, req: GlobalStatePathHandlerRequest) -> BuckyResult<bool> {
+            unreachable!();
+        }
+    }
+
     #[test]
     fn test() {
+        async_std::task::block_on(test_run());
+    }
+
+    async fn test_run() {
         cyfs_base::init_simple_log("test_path_access", None);
+
+        let handler = Arc::new(Box::new(DummyHandler {}) as Box<dyn GlobalStatePathHandler>);
 
         let current_device_id = DeviceId::default();
         let owner_dec = new_dec("owner");
@@ -226,12 +243,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap();
+        list.check(ret, &current_device_id, &handler).await.unwrap();
 
         // same zone, diff dec
         let source = RequestSourceInfo {
@@ -247,12 +265,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::ReadOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap();
+        list.check(ret, &current_device_id, &handler).await.unwrap();
 
         // same zone, diff dec, write
         let source = RequestSourceInfo {
@@ -268,12 +287,13 @@ mod test_path_access {
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
+            query_string: None,
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret, &current_device_id).unwrap_err();
+        list.check(ret, &current_device_id, &handler).await.unwrap_err();
 
         // test remove
         let device = DeviceId::default();
