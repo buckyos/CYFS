@@ -338,65 +338,28 @@ impl AppManager {
                 let fix_status = match status_code {
                     AppLocalStatusCode::Stopping => {
                         info!("find app {} status {} on startup, try stop again", app_id, status_code);
-                        if let Err(e) = self.cmd_executor.as_ref().unwrap().execute_stop(
-                            status_a.clone(),
-                            &AppCmd::stop(self.owner.clone(), app_id.clone()),
-                            0).await {
-                            warn!("stop app {} on startup failed, err {}", &app_id, e);
-                            Some(AppLocalStatusCode::StopFailed)
-                        } else {
-                            None
-                        }
+                        self.push_front_cmd(&vec![(AppCmd::stop(self.owner.clone(), app_id.clone()), 0)]);
+                        None
                     },
                     AppLocalStatusCode::Starting => {
                         info!("find app {} status {} on startup, try start again", app_id, status_code);
-                        match self.cmd_executor.as_ref().unwrap().execute_start(
-                            status_a.clone(),
-                            &AppCmd::start(self.owner.clone(), app_id.clone()),
-                            0).await {
-                            Ok(_) => {
-                                None
-                            }
-                            Err(e) => {
-                                error!("start app {} on startup err {}", app_id, e);
-                                Some(AppLocalStatusCode::StartFailed)
-                            }
-                        }
+                        self.push_front_cmd(&vec![(AppCmd::start(self.owner.clone(), app_id.clone()), 0)]);
+                        None
                     },
                     AppLocalStatusCode::Installing => {
                         info!("find app {} status {} on startup, try install again", app_id, status_code);
                         let version = status_a.lock().unwrap().version().map(|s|s.to_owned());
                         if let Some(version) = version {
-                            match self.cmd_executor.as_ref().unwrap().execute_install(
-                                status_a.clone(),
-                                &AppCmd::install(self.owner.clone(), app_id.clone(), &version, true),
-                                0).await {
-                                Ok(_) => {
-                                    None
-                                }
-                                Err(e) => {
-                                    error!("install app {} on startup err {}", app_id, e);
-                                    Some(AppLocalStatusCode::InstallFailed)
-                                }
-                            }
+                            self.push_front_cmd(&vec![(AppCmd::install(self.owner.clone(), app_id.clone(), &version, true), 0)]);
+                            None
                         } else {
                             Some(AppLocalStatusCode::InstallFailed)
                         }
                     },
                     AppLocalStatusCode::Uninstalling => {
                         info!("find app {} status {} on startup, try uninstall again", app_id, status_code);
-                        match self.cmd_executor.as_ref().unwrap().execute_uninstall(
-                            status_a.clone(),
-                            &AppCmd::uninstall(self.owner.clone(), app_id.clone()),
-                            0).await {
-                            Ok(_) => {
-                                None
-                            }
-                            Err(e) => {
-                                error!("uninstall app {} on startup err {}", app_id, e);
-                                Some(AppLocalStatusCode::UninstallFailed)
-                            }
-                        }
+                        self.push_front_cmd(&vec![(AppCmd::uninstall(self.owner.clone(), app_id.clone()), 0)]);
+                        None
                     },
                     _ => None,
                 };
