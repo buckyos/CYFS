@@ -1,5 +1,5 @@
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
-use cyfs_util::{get_app_dir, ProcessUtil};
+use cyfs_util::{get_app_dir};
 use log::*;
 use serde::Deserialize;
 use serde_json::Value;
@@ -10,8 +10,8 @@ use std::process::{Child, Command, ExitStatus};
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
-use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, RefreshKind, SystemExt};
 use wait_timeout::ChildExt;
+use crate::process_util::{run, try_stop_process_by_pid};
 
 const STATUS_CMD_TIME_OUT_IN_SECS: u64 = 15;
 const STOP_CMD_TIME_OUT_IN_SECS: u64 = 60;
@@ -187,45 +187,6 @@ impl DApp {
         })
     }
 
-    fn run(&self, cmd: &str, detach: bool, stdout: Option<File>, record_pid: Option<&Path>) -> BuckyResult<Child> {
-        let args: Vec<&str> = ProcessUtil::parse_cmd(cmd);
-        if args.len() == 0 {
-            error!("parse cmd {} failed, cmd empty?", cmd);
-            return Err(BuckyError::from(BuckyErrorCode::InvalidData));
-        }
-        info!("run cmd {} in {}", cmd, self.work_dir.display());
-        let program = which::which(args[0]).unwrap_or_else(|_| self.work_dir.join(args[0]));
-        info!("program full path: {}", program.display());
-        let mut command = Command::new(program);
-        command.args(&args[1..]).current_dir(self.work_dir.as_path());
-        if let Some(out) = stdout {
-            command.stdout(out);
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
-
-        if detach {
-            ProcessUtil::detach(&mut command);
-        }
-
-        match command.spawn() {
-            Ok(p) => {
-                if let Some(path) = record_pid {
-                    info!("write process pid {} to {}", p.id(), path.display());
-                    let _ = std::fs::write(path, p.id().to_string().as_bytes());
-                }
-                Ok(p)
-            },
-            Err(e) => {
-                error!("spawn app failed! cmd {}, dir {}, err {}", cmd, self.work_dir.display(), e);
-                Err(BuckyError::from(BuckyErrorCode::ExecuteError))
-            }
-        }
-    }
-
     pub fn get_start_cmd(&self) -> String {
         self.info.start.clone()
     }
@@ -240,15 +201,9 @@ impl DApp {
             .join(format!("app_manager_app_{}", self.dec_id))
     }
 
-    fn get_install_pid_file_path(&self) -> PathBuf {
-        cyfs_util::get_cyfs_root_path()
-            .join("run")
-            .join(format!("app_manager_app_install_{}", self.dec_id))
-    }
-
     pub fn start(&self) -> BuckyResult<bool> {
         if !self.status()? {
-            let child = self.run(&self.info.start, true, None, Some(self.get_pid_file_path().as_path()))?;
+            let child = run(&self.info.start, &self.work_dir, true, None, Some(self.get_pid_file_path().as_path()))?;
             *self.process.lock().unwrap() = Some(child);
             info!(
                 "start app:{} {} success!",
@@ -269,7 +224,7 @@ impl DApp {
         time_out: u64,
         record_pid: Option<&Path>
     ) -> BuckyResult<i32> {
-        let mut process = self.run(cmd, detach, stdout, record_pid)?;
+        let mut process = run(cmd, &self.work_dir, detach, stdout, record_pid)?;
 
         let app_id = self.info.id.as_str();
 
@@ -449,50 +404,11 @@ impl DApp {
         Ok(false)
     }
 
-    fn try_stop_process_by_pid(&self, pid_path: &Path) -> BuckyResult<()> {
-        if pid_path.is_file() {
-            let pid = std::fs::read_to_string(pid_path)?;
-            let info = sysinfo::System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-            if let Some(process) = info.process(Pid::from_str(&pid)?) {
-                if process.cwd() == self.work_dir.as_path() {
-                    info!("try to force kill app {} by pid {}", &self.dec_id, pid);
-                    let cmd;
-                    #[cfg(windows)]
-                    {
-                        cmd = format!("taskkill /F /T /PID {}", &pid);
-                    }
-                    #[cfg(not(windows))]
-                    {
-                        cmd = format!("taskkill /F /T /PID {}", &pid);
-                    }
-                    self.run_cmd(&cmd, false, None, 0, None)?;
-                } else {
-                    warn!("pid {} work dir mismatch! except {}, actual {}. not kill", &pid, self.work_dir.as_path().display(), process.cwd().display())
-                }
-            }
-        } else {
-            info!("not found or not file: pid path {}", pid_path.display());
-        }
-
-
-        if pid_path.is_dir() {
-            if let Ok(_) = std::fs::remove_dir_all(pid_path) {
-                info!("delete pid path {}?", pid_path.display());
-            }
-        } else {
-            if let Ok(_) = std::fs::remove_file(pid_path) {
-                info!("delete pid file {}", pid_path.display());
-            }
-        }
-
-        Ok(())
-    }
-
     // _force_stop
     // system kill app by pid
     // appmanager 通过start记录的pid去兜底删除应用
     fn _force_stop(&self) -> BuckyResult<()> {
-        self.try_stop_process_by_pid(self.get_pid_file_path().as_path())
+        try_stop_process_by_pid(self.get_pid_file_path().as_path(), Some(self.work_dir.as_path()))
     }
 
     // 这里做DecApp被安装后，执行前，根据配置文件需要做的预配置
@@ -519,10 +435,8 @@ impl DApp {
         self.info.install.clone()
     }
 
-    pub fn install(&self) -> BuckyResult<bool> {
+    pub fn install(&self, pid_path: Option<&Path>) -> BuckyResult<bool> {
         let mut cmd_index = 0;
-        let install_pid_path = self.get_install_pid_file_path();
-        let _ = self.try_stop_process_by_pid(&install_pid_path);
         for cmd in &self.info.install {
             let log_file = self.work_dir.join(format!("install_{}.log", cmd_index));
 
@@ -531,7 +445,7 @@ impl DApp {
                 false,
                 File::create(log_file).ok(),
                 INSTALL_CMD_TIME_OUT_IN_SECS,
-                Some(&install_pid_path)
+                pid_path
             ) {
                 Err(e) => {
                     error!("run app:{} install cmd {} err {}", &self.info.id, cmd, e);

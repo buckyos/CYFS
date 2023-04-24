@@ -99,7 +99,7 @@ fn is_docker_running(name: &str) -> BuckyResult<bool> {
     }
 }
 
-fn stop_docker(name: &str) -> BuckyResult<()> {
+pub(crate) fn stop_docker(name: &str) -> BuckyResult<()> {
     info!("try to stop container[{}]", name);
     if !(is_docker_running(name)?) {
         info!("container {} not running", name);
@@ -251,8 +251,9 @@ impl DockerApi {
 
         // 构造 start.sh
         let start_sh_path = dockerfile_dir.join("start.sh");
-        if start_sh_path.exists() {
-            let _ = std::fs::remove_file(&start_sh_path);
+        if start_sh_path.is_dir() {
+            warn!("remove wrong sh path dir {}", start_sh_path.display());
+            let _ = std::fs::remove_dir_all(&start_sh_path);
         }
         let gateway_ip = DockerApi::get_network_gateway_ip()?;
         info!("get docker start shell 's gateway ip: {}", gateway_ip);
@@ -262,6 +263,7 @@ impl DockerApi {
             .replace("{gateway_ip}", &gateway_ip);
         info!("docker start shell content: {}", &shell);
         std::fs::write(&start_sh_path, shell)?;
+        info!("write start shell file {}", start_sh_path.display());
         Ok(())
     }
 
@@ -275,7 +277,6 @@ impl DockerApi {
         for cmd in install_cmd {
             info!("start app {} install cmd {} in docker", id, cmd);
             let container_name = format!("decapp-{}-install", id.to_lowercase());
-            stop_docker(&container_name)?;
             let mut create_args = vec![
                 "run".to_string(),
                 "--name".to_string(), container_name.clone(),
@@ -303,6 +304,7 @@ impl DockerApi {
                 None => {
                     let msg = format!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
                     error!("{}", &msg);
+                    stop_docker(&container_name)?;
                     let _ = child.kill();
                     let _ = child.wait();
                     return Err(BuckyError::new(BuckyErrorCode::Timeout, msg));

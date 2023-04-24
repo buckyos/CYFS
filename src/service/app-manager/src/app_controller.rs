@@ -17,6 +17,7 @@ use std::time::Duration;
 use async_std::prelude::StreamExt;
 use once_cell::sync::OnceCell;
 use app_manager_lib::AppManagerConfig;
+use crate::process_util::{get_install_pid_file_path, try_stop_process_by_pid};
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -144,6 +145,17 @@ impl AppController {
             error!("get app {} owner id failed", &app_id);
             SubErrorCode::LoadFailed
         })?;
+        // stop prev install pid
+        let use_docker = self.config.app_use_docker(app_id);
+        info!("app {} use docker install: {}", app_id, use_docker);
+        if use_docker {
+            let container_name = format!("decapp-{}-install", app_id.to_string().to_lowercase());
+            let _ = stop_docker(&container_name);
+        } else {
+            let install_pid_path = get_install_pid_file_path(app_id);
+            let work_dir = get_app_dir(&app_id.to_string());
+            let _ = try_stop_process_by_pid(&install_pid_path, Some(&work_dir));
+        }
         let web_dir_id = AppPackage::install(&app_id, version,
                                              &source_id, &owner_id,
                                              self.named_cache_client.get().unwrap(),
@@ -170,8 +182,7 @@ impl AppController {
             })?;
 
             //run docker install -> build image
-            let use_docker = self.config.app_use_docker(app_id);
-            info!("app {} use docker install: {}", app_id, use_docker);
+
             if use_docker {
                 info!("run docker install!");
                 let id = app_id.to_string();
@@ -184,7 +195,8 @@ impl AppController {
                         SubErrorCode::DockerFailed
                     })?;
             } else {
-                let ret = dapp.install();
+                let install_pid_path = get_install_pid_file_path(app_id);
+                let ret = dapp.install(Some(&install_pid_path));
                 if ret.is_err() || !ret.unwrap() {
                     warn!("exec install command failed. app:{}", app_id);
                     return Err(SubErrorCode::CommondFailed);

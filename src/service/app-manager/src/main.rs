@@ -25,6 +25,7 @@ mod docker_network_manager;
 mod event_handler;
 mod non_helper;
 mod package;
+mod process_util;
 
 struct AppManagerProcessFuncs {
     config: AppManagerConfig,
