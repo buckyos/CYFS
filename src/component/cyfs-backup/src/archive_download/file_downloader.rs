@@ -58,6 +58,21 @@ impl ArchiveDownloader {
             content_length
         );
 
+        // Make sure the dir exists
+        if let Some(dir) = self.file.parent() {
+            if !dir.is_dir() {
+                async_std::fs::create_dir_all(&dir).await.map_err(|e| {
+                    let msg = format!(
+                        "create local archive dir failed! dir={}, {}",
+                        dir.display(),
+                        e
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
+                })?;
+            }
+        }
+
         // Create file and writer instance
         let mut file = File::create(&self.file).await.map_err(|e| {
             let msg = format!(
