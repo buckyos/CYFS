@@ -5,6 +5,7 @@ use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,13 +26,33 @@ pub struct RemoteRestoreParams {
 pub struct RemoteRestoreTask {
     id: String,
 
+    archive_dir: PathBuf,
+    archive_file: PathBuf,
+
     status: RemoteRestoreStatusManager,
 }
 
 impl RemoteRestoreTask {
     pub fn new(id: impl Into<String>) -> Self {
+        let id = id.into();
+
+        let tmp_dir = cyfs_util::get_temp_path().join("restore");
+        let archive_dir = tmp_dir.join(&id);
+        if archive_dir.is_dir() {
+            warn!(
+                "local archive dir exists already! {}",
+                archive_dir.display()
+            );
+        }
+
+        let archive_file = archive_dir.join("archive");
+
         Self {
             id: id.into(),
+
+            archive_dir,
+            archive_file,
+
             status: RemoteRestoreStatusManager::new(),
         }
     }
@@ -50,22 +71,18 @@ impl RemoteRestoreTask {
         let ret = self.run_inner(params).await;
         self.status.complete(ret.clone());
 
+        // FIXME should we clean the archive file and archive dir?
+        self.clean_temp_data().await;
+
         ret
     }
 
     async fn run_inner(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
-        let tmp_dir = cyfs_util::get_temp_path().join("restore");
-        let archive_dir = tmp_dir.join(&self.id);
-        if archive_dir.is_dir() {
-            warn!(
-                "local archive dir exists already! {}",
-                archive_dir.display()
-            );
-        } else {
-            if let Err(e) = async_std::fs::create_dir_all(&archive_dir).await {
+        if !self.archive_dir.is_dir() {
+            if let Err(e) = async_std::fs::create_dir_all(&self.archive_dir).await {
                 let msg = format!(
                     "create local archive dir failed! {}, {}",
-                    archive_dir.display(),
+                    self.archive_dir.display(),
                     e
                 );
                 error!("{}", msg);
@@ -76,7 +93,6 @@ impl RemoteRestoreTask {
         match params.remote_archive {
             RemoteArchiveInfo::ZipFile(file_url) => {
                 let url = file_url.parse_url()?;
-                let local_file = archive_dir.join("archive");
 
                 // First download archive to local file
                 let progress = ArchiveProgressHolder::new();
@@ -85,10 +101,10 @@ impl RemoteRestoreTask {
                 info!(
                     "will download archive to local file: {} -> {}",
                     url,
-                    local_file.display()
+                    self.archive_file.display()
                 );
 
-                let downloader = ArchiveFileDownloader::new(url, local_file.clone());
+                let downloader = ArchiveFileDownloader::new(url, self.archive_file.clone());
                 downloader.download(&progress).await?;
 
                 // Then unpack the archive to target dir
@@ -97,12 +113,14 @@ impl RemoteRestoreTask {
 
                 info!(
                     "will extract archive to local dir: {} -> {}",
-                    local_file.display(),
-                    archive_dir.display()
+                    self.archive_file.display(),
+                    self.archive_dir.display()
                 );
 
-                let unzip = ArchiveUnzip::new(local_file, archive_dir.clone());
-                unzip.unzip(&progress).await?;
+                let unzip = ArchiveUnzip::new(self.archive_file.clone(), self.archive_dir.clone());
+                let ret = unzip.unzip(&progress).await;
+
+                ret?;
             }
             RemoteArchiveInfo::Folder(folder_url) => {
                 let progress = ArchiveProgressHolder::new();
@@ -111,10 +129,10 @@ impl RemoteRestoreTask {
                 info!(
                     "will download archive to local dir: {} -> {}",
                     folder_url.base_url,
-                    archive_dir.display()
+                    self.archive_dir.display()
                 );
 
-                let downloader = ArchiveFolderDownloader::new(folder_url, archive_dir.clone());
+                let downloader = ArchiveFolderDownloader::new(folder_url, self.archive_dir.clone());
                 downloader.download(&progress).await?;
             }
         }
@@ -134,7 +152,7 @@ impl RemoteRestoreTask {
             id: params.id,
             cyfs_root,
             isolate,
-            archive: archive_dir,
+            archive: self.archive_dir.clone(),
             password: params.password,
         };
 
@@ -144,5 +162,38 @@ impl RemoteRestoreTask {
         restore_manager.run_uni_restore(restore_params).await?;
 
         Ok(())
+    }
+
+    async fn clean_temp_data(&self) {
+        // Remove the local file after we unpack
+        if self.archive_file.is_file() {
+            if let Err(e) = async_std::fs::remove_file(&self.archive_file).await {
+                error!(
+                    "remove temp archive file failed! {}, {}",
+                    self.archive_file.display(),
+                    e
+                );
+            } else {
+                info!(
+                    "remove temp archive file success! {}",
+                    self.archive_file.display()
+                );
+            }
+        }
+
+        if self.archive_dir.is_dir() {
+            if let Err(e) = async_std::fs::remove_dir_all(&self.archive_dir).await {
+                error!(
+                    "remove temp archive dir failed! {}, {}",
+                    self.archive_dir.display(),
+                    e
+                );
+            } else {
+                info!(
+                    "remove temp archive dir success! {}",
+                    self.archive_dir.display()
+                );
+            }
+        }
     }
 }
