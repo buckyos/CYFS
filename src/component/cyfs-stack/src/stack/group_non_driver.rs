@@ -38,7 +38,8 @@ impl GroupNONDriver {
             from
         );
 
-        self.non_service
+        let resp = self
+            .non_service
             .get_object(NONGetObjectInputRequest {
                 common: NONInputRequestCommon {
                     req_path: None,
@@ -61,8 +62,11 @@ impl GroupNONDriver {
                 object_id: object_id.clone(),
                 inner_path: None,
             })
-            .await
-            .map(|resp| resp.object)
+            .await?;
+
+        // TODO: only set the permissions
+        self.put_object_impl(dec_id, resp.object.clone()).await;
+        Ok(resp.object)
     }
 
     async fn put_object_impl(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {

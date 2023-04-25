@@ -20,7 +20,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 
 use crate::{
-    consensus::synchronizer::Synchronizer,
+    consensus::{proposal, synchronizer::Synchronizer},
     dec_state::{CallReplyNotifier, CallReplyWaiter, StatePusher},
     helper::Timer,
     storage::GroupShellManager,
@@ -410,7 +410,7 @@ impl HotstuffRunner {
         {
             // check leader
             let leader_owner = self
-                .get_leader_owner(Some(block.group_shell_id()), block.round())
+                .get_leader_owner(Some(block.group_shell_id()), block.round(), Some(&remote))
                 .await?;
 
             if &leader_owner != block.owner() {
@@ -457,6 +457,42 @@ impl HotstuffRunner {
             self,
             block.block_id()
         );
+
+        {
+            // 1. verify the results for proposals by DecApp
+            // 2. rebuild the result-state in on_verify by DecApp
+            // TODO:
+            // We can accept the block only for signatures enough without verify from `DecApp`.
+            // The `QC` is valuable for confirm the previous block.
+            // But we should not make a vote to the block not verified by `DecApp`.
+            // So we should only verify the block from `DecApp` before it will be voted, not here.
+            // But I cannot download the result-state with downloading from remote,
+            // so I need to verify it here to generate the result-state one by one in the `DecApp.on_verify`.
+            // If we can download the result-state tree to rebuild it, we can remove the code in this scope.
+            let mut proposals = HashMap::default();
+            self
+                .non_driver
+                .load_all_proposals_for_block(block, &mut proposals)
+                .await.map_err(|err| {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for load proposals failed {:?}",
+                        self,
+                        block.block_id(),
+                        err
+                    );
+                    err
+                })?;
+
+            self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block, &remote)
+                .await
+                .map_err(|err| {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, make vote to block {} ignore for app verify failed {:?}",
+                        self,
+                        block.block_id(),
+                        err);
+                    err
+                })?;
+        }
 
         self.synchronizer.pop_link_from(block);
 
@@ -531,7 +567,7 @@ impl HotstuffRunner {
                     {
                         // TODO
                         // try rebuild the result-state for prev-block, it'll unreachable usually except something broken.
-                        // if we can successfully rebuild the result-state in the future, we can remove this part.
+                        // if we can successfully rebuild the result-state in the future, we can remove the code in this part.
                         match prev_block.prev_block_id() {
                             Some(prev_prev_block_id) => {
                                 let prev_prev_block =
@@ -543,12 +579,13 @@ impl HotstuffRunner {
 
                                 let mut prev_proposals = HashMap::new();
                                 for proposal_ex_info in prev_block.proposals() {
+                                    // TODO: Need a method to allow access in `Group`, Now only get from the owner(AccessString::full())
                                     let proposal = self
                                         .non_driver
-                                        .get_proposal(&proposal_ex_info.proposal, Some(remote))
+                                        .get_proposal(&proposal_ex_info.proposal, Some(prev_block.owner()))
                                         .await.map_err(|err| {
-                                            log::warn!("[hotstuff] local: {:?}, rebuild of prev-prev-block({:?}) failed, get proposal({}) failed {:?}."
-                                                , self, prev_prev_block_id, proposal_ex_info.proposal, err);
+                                            log::warn!("[hotstuff] local: {:?}, rebuild of prev-prev-block({:?}) failed, get proposal({}) from {} failed {:?}."
+                                                , self, prev_prev_block_id, proposal_ex_info.proposal, remote, err);
                                             err
                                         })?;
                                     prev_proposals.insert(proposal_ex_info.proposal, proposal);
@@ -656,10 +693,11 @@ impl HotstuffRunner {
         &self,
         group_shell_id: Option<&ObjectId>,
         round: u64,
+        remote: Option<&ObjectId>,
     ) -> BuckyResult<ObjectId> {
         let leader = self
             .committee
-            .get_leader(group_shell_id, round)
+            .get_leader(group_shell_id, round, remote)
             .await.map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
@@ -757,40 +795,7 @@ impl HotstuffRunner {
                     block.height()
                 );
 
-                let fetch_height_immediate = self.store.header_height() + 3;
-                if block.height() <= fetch_height_immediate {
-                    // little blocks, get them from remote immediately.
-                    self.sync_to_block(block.clone(), remote).await;
-                } else {
-                    // large blocks, notify remote to push.
-                    log::debug!(
-                        "[hotstuff] local: {:?}, will sync blocks from height({}) to height({}). block.round={}, remote: {}",
-                        self,
-                        self.store.max_height(),
-                        block.height(),
-                        block.round(),
-                        remote
-                    );
-
-                    if self.store.max_height() + 1 <= fetch_height_immediate - 1 {
-                        self.network_sender
-                            .post_message(
-                                HotstuffMessage::SyncRequest(
-                                    SyncBound::Height(self.store.max_height() + 1),
-                                    SyncBound::Height(fetch_height_immediate - 1),
-                                ),
-                                self.rpath.clone(),
-                                &remote,
-                            )
-                            .await;
-                    }
-
-                    self.synchronizer.push_outorder_block(
-                        block.clone(),
-                        fetch_height_immediate,
-                        remote,
-                    );
-                }
+                self.sync_to_block(block, remote).await;
 
                 Err(Ok(()))
             }
@@ -828,6 +833,7 @@ impl HotstuffRunner {
                 block.round(),
                 block.height(),
             );
+
             return Err(BuckyError::new(BuckyErrorCode::Expired, "block expired"));
         }
 
@@ -845,6 +851,7 @@ impl HotstuffRunner {
                     block.height(),
                     block.round()
                 );
+
                 return Err(err);
             }
         }
@@ -882,7 +889,7 @@ impl HotstuffRunner {
                     self,
                     block.block_id()
                 );
-                return self.process_block_qc(qc, block).await;
+                return self.process_block_qc(qc, block, &remote).await;
             }
             VoteThresholded::None => {}
         }
@@ -914,7 +921,7 @@ impl HotstuffRunner {
 
             let next_leader = self
                 .committee
-                .get_leader(None, self.round + 1)
+                .get_leader(None, self.round + 1, None)
                 .await
                 .map_err(|err| {
                     log::warn!(
@@ -973,7 +980,7 @@ impl HotstuffRunner {
         self.cleanup_proposal(new_header_block).await;
 
         log::debug!(
-            "[hotstuff] local: {:?}, process_block-step1 {:?}",
+            "[hotstuff] local: {:?}, on_new_block_commit-step1 {:?}",
             self,
             qc_qc_block.block_id()
         );
@@ -989,7 +996,7 @@ impl HotstuffRunner {
             .await;
 
         log::debug!(
-            "[hotstuff] local: {:?}, process_block-step2 {:?}",
+            "[hotstuff] local: {:?}, on_new_block_commit-step2 {:?}",
             self,
             qc_qc_block.block_id()
         );
@@ -1020,7 +1027,7 @@ impl HotstuffRunner {
         }
 
         log::debug!(
-            "[hotstuff] local: {:?}, process_block-step3 {:?}",
+            "[hotstuff] local: {:?}, on_new_block_commit-step3 {:?}",
             self,
             qc_qc_block.block_id()
         );
@@ -1179,16 +1186,15 @@ impl HotstuffRunner {
         }
 
         let mut only_rebuild_result_state = false;
-        if self.max_quorum_round >= self.store.max_round() {
+        if self.max_quorum_height >= self.store.max_height() {
             if let Some(result_state_id) = block.result_state_id() {
+                // `make_sure_result_state` will rebuild result-state by downloading from remote.
                 if self
                     .make_sure_result_state(result_state_id, &[block.owner(), remote])
                     .await
                     .is_err()
                 {
-                    // TODO:
                     // download from remote failed, we need to calcute the result-state by the DEC.on_verify
-                    // if we can successfully rebuild the result-state in the future, we can remove this part.
                     only_rebuild_result_state = true;
                 }
             }
@@ -1201,8 +1207,48 @@ impl HotstuffRunner {
             }
         }
 
-        // round只能逐个递增
+        let prev_block = match block.prev_block_id() {
+            Some(prev_block_id) => match self.store.find_block_in_cache(prev_block_id) {
+                Ok(block) => Some(block),
+                Err(_) => {
+                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for prev-block {:?} is invalid",
+                        self,
+                        block.block_id(),
+                        block.prev_block_id()
+                    );
+
+                    return None;
+                }
+            },
+            None => None,
+        };
+
+        // select the highest branch to vote.
+        if block.height() != self.store.max_height() {
+            log::warn!(
+                "[hotstuff] local: {:?}, make vote to block {} ignore for higher({}!={}) branch.",
+                self,
+                block.block_id(),
+                block.height(),
+                self.store.max_height(),
+            );
+
+            return None;
+        }
+
+        // `round` must be increased one by one
         let qc_round = block.qc().as_ref().map_or(0, |qc| qc.round);
+        if qc_round != prev_block.as_ref().map_or(0, |p| p.round()) {
+            log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for qc-round({}) is unmatch with prev-block({}/{:?})",
+                self,
+                block.block_id(),
+                qc_round,
+                prev_block.as_ref().map_or(0, |p| p.round()),
+                block.prev_block_id()
+            );
+            return None;
+        }
+
         let is_valid_round = if block.round() == qc_round + 1 {
             true
         } else if let Some(tc) = block.tc() {
@@ -1226,22 +1272,6 @@ impl HotstuffRunner {
 
             return None;
         }
-
-        let prev_block = match block.prev_block_id() {
-            Some(prev_block_id) => match self.store.find_block_in_cache(prev_block_id) {
-                Ok(block) => Some(block),
-                Err(_) => {
-                    log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for prev-block {:?} is invalid",
-                        self,
-                        block.block_id(),
-                        block.prev_block_id()
-                    );
-
-                    return None;
-                }
-            },
-            None => None,
-        };
 
         log::debug!(
             "[hotstuff] local: {:?} make vote {} step 1",
@@ -1332,6 +1362,8 @@ impl HotstuffRunner {
             block.block_id()
         );
 
+        // 1. verify the results for proposals by DecApp
+        // 2. rebuild the result-state in on_verify by DecApp
         if let Err(err) = self
             .check_block_proposal_result_state_by_app(block, &proposals, &prev_block, remote)
             .await
@@ -1345,18 +1377,18 @@ impl HotstuffRunner {
             return None;
         }
 
+        if only_rebuild_result_state {
+            log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{} rebuild only.",
+                self, block.block_id(), block.round(), self.max_quorum_round, self.round);
+            return None;
+        }
+
         log::debug!(
             "[hotstuff] local: {:?}, make-vote before sign {}, round: {}",
             self,
             block.block_id(),
             block.round()
         );
-
-        if only_rebuild_result_state {
-            log::debug!("[hotstuff] local: {:?}, make vote ignore for the block {}/{} has enough votes {}/{} rebuild only.",
-                self, block.block_id(), block.round(), self.max_quorum_round, self.round);
-            return None;
-        }
 
         let vote = match HotstuffBlockQCVote::new(block, self.local_device_id, &self.signer).await {
             Ok(vote) => {
@@ -1528,7 +1560,7 @@ impl HotstuffRunner {
                 if is_prev_none { "None" } else { "Some" }
             );
 
-            self.process_block_qc(qc, &block).await?;
+            self.process_block_qc(qc, &block, &remote).await?;
         } else if vote.round > self.round && is_prev_none {
             self.fetch_block(&vote.block_id, remote).await?;
         }
@@ -1539,6 +1571,7 @@ impl HotstuffRunner {
         &mut self,
         qc: HotstuffBlockQC,
         prev_block: &GroupConsensusBlock,
+        remote: &ObjectId,
     ) -> BuckyResult<()> {
         let qc_block_id = qc.block_id;
         let qc_round = qc.round;
@@ -1552,7 +1585,7 @@ impl HotstuffRunner {
 
         self.update_max_quorum_height(prev_block.height());
 
-        let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
+        let new_leader = self.committee.get_leader(None, self.round, Some(remote)).await.map_err(|err| {
             log::warn!(
                 "[hotstuff] local: {:?}, get leader for vote-qc({}/{}/{:?}) with round {} failed {:?}",
                 self,
@@ -1681,12 +1714,16 @@ impl HotstuffRunner {
             })?;
 
         if let Some(tc) = tc {
-            self.process_timeout_qc(tc).await?;
+            self.process_timeout_qc(tc, &remote).await?;
         }
         Ok(())
     }
 
-    async fn process_timeout_qc(&mut self, tc: HotstuffTimeout) -> BuckyResult<()> {
+    async fn process_timeout_qc(
+        &mut self,
+        tc: HotstuffTimeout,
+        remote: &ObjectId,
+    ) -> BuckyResult<()> {
         log::debug!(
             "[hotstuff] local: {:?}, process_timeout_qc: {:?}, voter: {:?}.",
             self,
@@ -1715,7 +1752,7 @@ impl HotstuffRunner {
 
         let new_leader = self
             .committee
-            .get_leader(None, self.round)
+            .get_leader(None, self.round, Some(remote))
             .await
             .map_err(|err| {
                 log::warn!(
@@ -1839,7 +1876,7 @@ impl HotstuffRunner {
 
         let new_leader = self
             .committee
-            .get_leader(None, self.round)
+            .get_leader(None, self.round, Some(&remote))
             .await
             .map_err(|err| {
                 log::warn!(
@@ -2372,7 +2409,7 @@ impl HotstuffRunner {
         log::debug!("[hotstuff] local: {:?}, handle_proposal_waiting", self);
 
         assert_eq!(
-            self.committee.get_leader(None, self.round).await?,
+            self.committee.get_leader(None, self.round, None).await?,
             self.local_device_id
         );
 
@@ -2409,7 +2446,66 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn sync_to_block(
+    async fn sync_to_block(&mut self, latest_block: &GroupConsensusBlock, remote: ObjectId) {
+        let fetch_height_immediate = self.store.header_height() + 3;
+
+        if latest_block.height() <= fetch_height_immediate {
+            // little blocks, get them from remote immediately.
+            if self
+                .sync_to_block_by_get_prev(latest_block.clone(), remote)
+                .await
+                .is_err()
+            {
+                self.network_sender
+                    .post_message(
+                        HotstuffMessage::SyncRequest(
+                            SyncBound::Height(self.store.header_height() + 1),
+                            SyncBound::Height(latest_block.height() - 1),
+                        ),
+                        self.rpath.clone(),
+                        &remote,
+                    )
+                    .await;
+
+                self.synchronizer.push_outorder_block(
+                    latest_block.clone(),
+                    fetch_height_immediate,
+                    remote,
+                );
+            }
+        } else {
+            // large blocks, notify remote to push.
+            log::debug!(
+                "[hotstuff] local: {:?}, will sync blocks from height({}) to height({}). block.round={}, remote: {}",
+                self,
+                self.store.max_height(),
+                latest_block.height(),
+                latest_block.round(),
+                remote
+            );
+
+            if self.store.max_height() + 1 <= fetch_height_immediate - 1 {
+                self.network_sender
+                    .post_message(
+                        HotstuffMessage::SyncRequest(
+                            SyncBound::Height(self.store.max_height() + 1),
+                            SyncBound::Height(fetch_height_immediate - 1),
+                        ),
+                        self.rpath.clone(),
+                        &remote,
+                    )
+                    .await;
+            }
+
+            self.synchronizer.push_outorder_block(
+                latest_block.clone(),
+                fetch_height_immediate,
+                remote,
+            );
+        }
+    }
+
+    async fn sync_to_block_by_get_prev(
         &mut self,
         latest_block: GroupConsensusBlock,
         remote: ObjectId,
@@ -2658,7 +2754,7 @@ impl HotstuffRunner {
         });
         self.timer.reset(duration);
 
-        if let Ok(leader) = self.committee.get_leader(None, self.round).await {
+        if let Ok(leader) = self.committee.get_leader(None, self.round, None).await {
             if leader == self.local_device_id {
                 match max_round_block {
                     Some(max_round_block)

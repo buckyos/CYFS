@@ -320,7 +320,10 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
                 .last()
                 .map_or(true, |p| p.result_state == desc.result_state_id);
 
-            if is_result_state_match && body.hash() == desc.body_hash {
+            if is_result_state_match
+                && self.0.desc().owner().is_some()
+                && body.hash() == desc.body_hash
+            {
                 self.1 .0.store(BLOCK_CHECK_STATE_SUCC, Ordering::SeqCst);
                 true
             } else {

@@ -145,13 +145,14 @@ impl GroupStorage {
     }
 
     pub fn max_height(&self) -> u64 {
+        let mut max_height = self.header_height();
         if self.cache.prepares.len() > 0 {
-            self.header_height() + 2
-        } else if self.cache.pre_commits.len() > 0 {
-            self.header_height() + 1
-        } else {
-            self.header_height()
+            max_height += 1;
         }
+        if self.cache.pre_commits.len() > 0 {
+            max_height += 1;
+        }
+        max_height
     }
 
     pub fn first_block(&self) -> &Option<GroupConsensusBlock> {
@@ -508,7 +509,12 @@ impl GroupStorage {
         );
 
         let header_height = self.header_height();
-        if block.height() <= header_height {
+        let header_round = self.header_round();
+        let qc_round = block.qc().as_ref().map_or(0, |q| q.round);
+        if block.height() <= header_height
+            || block.round() <= header_round
+            || qc_round < header_round
+        {
             return Ok(BlockLinkState::Expired);
         }
 
@@ -538,7 +544,7 @@ impl GroupStorage {
                     if prev_block.height() + 1 != block.height() {
                         return Err(BuckyError::new(BuckyErrorCode::Failed, "height error"));
                     } else if prev_block.round() >= block.round() {
-                        return Err(BuckyError::new(BuckyErrorCode::Failed, "round error"));
+                        return Err(BuckyError::new(BuckyErrorCode::Failed, "qc round to large"));
                     } else {
                         Some(prev_block)
                     }
@@ -560,6 +566,12 @@ impl GroupStorage {
                 }
             }
         };
+
+        if prev_block.as_ref().map_or(0, |b| b.round())
+            != block.qc().as_ref().map_or(0, |q| q.round)
+        {
+            return Err(BuckyError::new(BuckyErrorCode::Failed, "qc round error"));
+        }
 
         log::debug!(
             "[group storage] {} block_linked {} step3",

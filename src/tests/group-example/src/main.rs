@@ -98,7 +98,7 @@ mod Common {
 
     lazy_static::lazy_static! {
         pub static ref EXAMPLE_APP_NAME: String = "group-example".to_string();
-        pub static ref EXAMPLE_RPATH: String = "rpath-example".to_string();
+        pub static ref EXAMPLE_RPATH: String = "rpath-example-7".to_string();
         pub static ref EXAMPLE_VALUE_PATH: String = "/root/folder1/folder2/value".to_string();
         pub static ref STATE_PATH_SEPARATOR: String = "/".to_string();
     }
@@ -880,27 +880,42 @@ mod GroupDecService {
             };
 
             let result_state_id = {
-                state_op_env
-                    .set_with_path(EXAMPLE_VALUE_PATH.as_str(), &result_value, prev_value, true)
-                    .await
-                    .expect(
-                        format!(
-                            "set_with_path {:?} from {:?} to {} failed",
-                            EXAMPLE_VALUE_PATH.as_str(),
-                            prev_value,
-                            result_value
+                let mut obj_map_id = result_value;
+                for key in EXAMPLE_VALUE_PATH.split('/').rev() {
+                    let key: &str = key.into();
+                    if key.is_empty() {
+                        continue;
+                    }
+
+                    let state_op_env = object_map_processor
+                        .create_single_op_env(Some(RootStateOpEnvAccess {
+                            path: "".to_string(),
+                            access: AccessPermissions::Full,
+                        }))
+                        .await
+                        .expect(format!("create_sub_tree_op_env failed").as_str());
+
+                    state_op_env
+                        .create_new_with_option(
+                            ObjectMapSimpleContentType::Map,
+                            &CreateObjectMapOption::new_with_owner(
+                                proposal.rpath().group_id().clone(),
+                            ),
                         )
-                        .as_str(),
-                    );
-                state_op_env.commit().await.expect(
-                    format!(
-                        "commit {:?} from {:?} to {} failed",
-                        EXAMPLE_VALUE_PATH.as_str(),
-                        prev_value,
-                        result_value
-                    )
-                    .as_str(),
-                )
+                        .await
+                        .expect(format!("create_new {} failed", key).as_str());
+
+                    state_op_env
+                        .insert_with_key(key, &obj_map_id)
+                        .await
+                        .expect(format!("insert with key {} failed", key).as_str());
+
+                    obj_map_id = state_op_env
+                        .commit()
+                        .await
+                        .expect(format!("commit key {} failed", key).as_str());
+                }
+                obj_map_id
             };
 
             let receipt = {
@@ -929,7 +944,7 @@ mod GroupDecService {
              */
             Ok(ExecuteResult {
                 context,
-                result_state_id: Some(result_state_id.root),
+                result_state_id: Some(result_state_id),
                 receipt,
             })
         }
@@ -945,12 +960,23 @@ mod GroupDecService {
              * let is_same = (execute_result.result_state_id, execute_result.return_object)
              *  == prev_state_id + proposal + execute_result.context
              */
+
+            log::info!(
+                "verify({}) enter, expect: prev-state: {:?}, {:?}/{:?}/{:?}",
+                self.stack.local_device_id(),
+                prev_state_id,
+                execute_result.result_state_id,
+                execute_result.context.as_ref().map(|v| v.to_hex()),
+                execute_result.receipt.as_ref().map(|r| r.object_id),
+            );
+
             let result = self
                 .execute(proposal, prev_state_id, object_map_processor)
                 .await?;
 
             log::info!(
-                "verify expect: prev-state: {:?}, {:?}/{:?}/{:?}, got: {:?}/{:?}/{:?}",
+                "verify({}) expect: prev-state: {:?}, {:?}/{:?}/{:?}, got: {:?}/{:?}/{:?}",
+                self.stack.local_device_id(),
                 prev_state_id,
                 execute_result.result_state_id,
                 execute_result.context.as_ref().map(|v| v.to_hex()),
@@ -981,8 +1007,26 @@ mod GroupDecService {
             prev_state_id: &Option<cyfs_base::ObjectId>,
             object_map_processor: &dyn GroupObjectMapProcessor,
         ) -> BuckyResult<ExecuteResult> {
-            self.execute(proposal, prev_state_id, object_map_processor)
-                .await
+            log::info!(
+                "execute({}) enter, proposal: {}, prev-state: {:?}",
+                self.stack.local_device_id(),
+                proposal.desc().object_id(),
+                prev_state_id,
+            );
+
+            let result = self
+                .execute(proposal, prev_state_id, object_map_processor)
+                .await?;
+
+            log::info!(
+                "execute({}), proposal: {}, prev-state: {:?}, result: {:?}",
+                self.stack.local_device_id(),
+                proposal.desc().object_id(),
+                prev_state_id,
+                result.result_state_id,
+            );
+
+            Ok(result)
         }
 
         async fn on_verify(

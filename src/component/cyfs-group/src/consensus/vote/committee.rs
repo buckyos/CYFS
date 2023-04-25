@@ -68,12 +68,13 @@ impl Committee {
         &self,
         group_shell_id: Option<&ObjectId>,
         round: u64,
+        remote: Option<&ObjectId>,
     ) -> BuckyResult<ObjectId> {
         let group = if group_shell_id.is_none() {
             self.shell_mgr.group().0
         } else {
             self.shell_mgr
-                .get_group(&self.group_id, group_shell_id, None)
+                .get_group(&self.group_id, group_shell_id, remote)
                 .await?
         };
         let i = (round % (group.ood_list().len() as u64)) as usize;
