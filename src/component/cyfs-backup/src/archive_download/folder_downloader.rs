@@ -2,20 +2,16 @@ use crate::archive::ObjectArchiveIndexHelper;
 use cyfs_backup_lib::*;
 use cyfs_base::*;
 
-use super::def::RemoteArchiveUrl;
 use super::file_downloader::ArchiveDownloader;
+use super::{def::RemoteArchiveUrl, progress::ArchiveProgessHolder};
 
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
 };
 
 pub struct ArchiveFolderDownloader {
     url_info: RemoteArchiveUrl,
     folder: PathBuf,
-
-    total: AtomicU64,
-    downloaded: AtomicU64,
 }
 
 impl ArchiveFolderDownloader {
@@ -23,19 +19,16 @@ impl ArchiveFolderDownloader {
         Self {
             url_info,
             folder,
-
-            total: AtomicU64::new(0),
-            downloaded: AtomicU64::new(0),
         }
     }
 
-    pub async fn download(&self) -> BuckyResult<()> {
+    pub async fn download(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> {
         info!(
             "will download archive index: url={}",
             self.url_info.base_url
         );
 
-        let index = self.download_index().await?;
+        let index = self.download_index(progress).await?;
 
         info!("download archive index complete: {:?}", index);
 
@@ -54,14 +47,14 @@ impl ArchiveFolderDownloader {
             self.url_info.base_url, total
         );
 
-        self.total.store(total, Ordering::SeqCst);
+        progress.reset_total(total);
 
         for item in &index.object_files {
-            self.download_file(&index, item).await?;
+            self.download_file(&index, item, progress).await?;
         }
 
         for item in &index.chunk_files {
-            self.download_file(&index, item).await?;
+            self.download_file(&index, item, progress).await?;
         }
 
         info!("download archive complete! total={}", total);
@@ -69,14 +62,17 @@ impl ArchiveFolderDownloader {
         Ok(())
     }
 
-    async fn download_index(&self) -> BuckyResult<ObjectArchiveIndex> {
+    async fn download_index(
+        &self,
+        progress: &ArchiveProgessHolder,
+    ) -> BuckyResult<ObjectArchiveIndex> {
         let mut url = self.url_info.clone();
         url.file_name = Some("index".to_owned());
         let url = url.parse_url()?;
 
         let file = self.folder.join("index");
         let downloader = ArchiveDownloader::new(url, file)?;
-        downloader.download().await?;
+        downloader.download(progress).await?;
 
         ObjectArchiveIndexHelper::load(&self.folder).await
     }
@@ -85,6 +81,7 @@ impl ArchiveFolderDownloader {
         &self,
         index: &ObjectArchiveIndex,
         item: &ObjectPackFileInfo,
+        progress: &ArchiveProgessHolder,
     ) -> BuckyResult<()> {
         let relative_path = match &index.data_folder {
             Some(folder_name) => {
@@ -100,7 +97,7 @@ impl ArchiveFolderDownloader {
         let url = url.parse_url()?;
 
         let downloader = ArchiveDownloader::new(url, file)?;
-        downloader.download().await?;
+        downloader.download(progress).await?;
 
         Ok(())
     }

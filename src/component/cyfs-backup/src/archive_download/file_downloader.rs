@@ -5,16 +5,14 @@ use async_std::{fs::File, io::WriteExt};
 use http_types::Url;
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
 };
 use surf::Client;
+
+use super::ArchiveProgessHolder;
 
 pub struct ArchiveDownloader {
     file: PathBuf,
     url: Url,
-
-    total: AtomicU64,
-    downloaded: AtomicU64,
 }
 
 impl ArchiveDownloader {
@@ -22,14 +20,21 @@ impl ArchiveDownloader {
         let ret = Self {
             url,
             file,
-            total: AtomicU64::new(0),
-            downloaded: AtomicU64::new(0),
         };
 
         Ok(ret)
     }
 
-    pub async fn download(&self) -> BuckyResult<()> {
+    pub async fn download(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> { 
+        progress.begin_file(&self.file.as_os_str().to_string_lossy(), 0);
+
+        let ret = self.download_inner(progress).await;
+        progress.finish_current_file(ret.clone());
+
+        ret
+    }
+
+    async fn download_inner(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> {
         // Get a client instance
         let mut res = Client::new().get(&self.url).await.map_err(|e| {
             let msg = format!(
@@ -49,7 +54,7 @@ impl ArchiveDownloader {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        self.total.store(content_length as u64, Ordering::SeqCst);
+        progress.reset_current_file_total(content_length as u64);
 
         info!(
             "will download archive file: {} -> {}, len={}bytes",
@@ -111,7 +116,7 @@ impl ArchiveDownloader {
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
-            self.downloaded.fetch_add(len as u64, Ordering::SeqCst);
+            progress.update_current_file_progress(len as u64);
         }
 
         file.flush().await.map_err(|e| {
