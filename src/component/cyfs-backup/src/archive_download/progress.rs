@@ -3,7 +3,6 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileProgress {
     pub file: String,
@@ -32,7 +31,7 @@ impl ArchiveProgress {
     }
 
     pub fn reset_total(&mut self, total: u64) {
-        self.total = total;    
+        self.total = total;
     }
 
     pub fn finish(&mut self, result: BuckyResult<()>) {
@@ -79,13 +78,16 @@ impl ArchiveProgress {
     }
 }
 
-
 #[derive(Clone)]
-pub struct ArchiveProgessHolder(Arc<Mutex<ArchiveProgress>>);
+pub struct ArchiveProgressHolder(Arc<Mutex<ArchiveProgress>>);
 
-impl ArchiveProgessHolder {
+impl ArchiveProgressHolder {
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(ArchiveProgress::new())))
+    }
+
+    pub fn get_progress(&self) -> ArchiveProgress {
+        self.0.lock().unwrap().clone()
     }
 
     pub fn reset_total(&self, total: u64) {
@@ -106,7 +108,10 @@ impl ArchiveProgessHolder {
     }
 
     pub fn update_current_file_progress(&self, completed: u64) {
-        self.0.lock().unwrap().update_current_file_progress(completed)
+        self.0
+            .lock()
+            .unwrap()
+            .update_current_file_progress(completed)
     }
 
     pub fn finish_current_file(&self, result: BuckyResult<()>) {

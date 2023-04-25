@@ -3,29 +3,22 @@ use cyfs_base::*;
 use async_std::io::ReadExt;
 use async_std::{fs::File, io::WriteExt};
 use http_types::Url;
-use std::{
-    path::PathBuf,
-};
+use std::path::PathBuf;
 use surf::Client;
 
-use super::ArchiveProgessHolder;
+use super::ArchiveProgressHolder;
 
-pub struct ArchiveDownloader {
+pub struct ArchiveFileDownloader {
     file: PathBuf,
     url: Url,
 }
 
-impl ArchiveDownloader {
-    pub fn new(url: Url, file: PathBuf) -> BuckyResult<Self> {
-        let ret = Self {
-            url,
-            file,
-        };
-
-        Ok(ret)
+impl ArchiveFileDownloader {
+    pub fn new(url: Url, file: PathBuf) -> Self {
+        Self { url, file }
     }
 
-    pub async fn download(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> { 
+    pub async fn download(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
         progress.begin_file(&self.file.as_os_str().to_string_lossy(), 0);
 
         let ret = self.download_inner(progress).await;
@@ -34,7 +27,7 @@ impl ArchiveDownloader {
         ret
     }
 
-    async fn download_inner(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> {
+    async fn download_inner(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
         // Get a client instance
         let mut res = Client::new().get(&self.url).await.map_err(|e| {
             let msg = format!(

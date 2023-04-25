@@ -1,8 +1,7 @@
-use super::progress::ArchiveProgessHolder;
+use super::progress::ArchiveProgressHolder;
 use cyfs_base::*;
 
-use async_std::io::WriteExt;
-use std::io::Read;
+use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 pub struct ArchiveUnzip {
@@ -18,7 +17,7 @@ impl ArchiveUnzip {
         }
     }
 
-    pub async fn unzip(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> {
+    pub async fn unzip(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
         let file = std::fs::File::open(&self.archive_file).map_err(|e| {
             let msg = format!(
                 "open archive file failed! file={}, {}",
@@ -92,8 +91,7 @@ impl ArchiveUnzip {
                 progress.begin_file(&file_path_str, file.compressed_size());
 
                 let ret = self
-                    .unzip_file(&mut file, &target_file_path, progress)
-                    .await;
+                    .unzip_file(&mut file, &target_file_path, progress);
                 progress.finish_current_file(ret.clone());
 
                 ret?;
@@ -103,15 +101,15 @@ impl ArchiveUnzip {
         Ok(())
     }
 
-    async fn unzip_file(
+    fn unzip_file(
         &self,
         zip_file: &mut zip::read::ZipFile<'_>,
         target_file_path: &Path,
-        progress: &ArchiveProgessHolder,
+        progress: &ArchiveProgressHolder,
     ) -> BuckyResult<()> {
         if let Some(dir) = target_file_path.parent() {
             if !dir.is_dir() {
-                async_std::fs::create_dir_all(&dir).await.map_err(|e| {
+                std::fs::create_dir_all(&dir).map_err(|e| {
                     let msg = format!(
                         "create local archive dir failed! dir={}, {}",
                         dir.display(),
@@ -123,18 +121,16 @@ impl ArchiveUnzip {
             }
         }
 
-        let out = async_std::fs::File::create(&target_file_path)
-            .await
-            .map_err(|e| {
-                let msg = format!(
-                    "create local archive file failed! dir={}, {}",
-                    target_file_path.display(),
-                    e
-                );
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
-        let mut writer = async_std::io::BufWriter::new(out.clone());
+        let out = std::fs::File::create(&target_file_path).map_err(|e| {
+            let msg = format!(
+                "create local archive file failed! dir={}, {}",
+                target_file_path.display(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+        let mut writer = std::io::BufWriter::new(out);
 
         #[allow(deprecated)]
         let file_path_str = zip_file
@@ -158,9 +154,9 @@ impl ArchiveUnzip {
                 break;
             }
 
-            writer.write_all(&buf[..len]).await.map_err(|e| {
+            writer.write_all(&buf[..len]).map_err(|e| {
                 let msg = format!(
-                    "write buf to local archive file but failed! file={}, {}",
+                    "write buf to local archive file failed! file={}, {}",
                     target_file_path.display(),
                     e
                 );
@@ -175,6 +171,16 @@ impl ArchiveUnzip {
             }
             progress.update_current_file_progress(compress_len);
         }
+
+        writer.flush().map_err(|e| {
+            let msg = format!(
+                "flush to local archive file failed! file={}, {}",
+                target_file_path.display(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
         progress.update_current_file_progress(zip_file.compressed_size());
         /*

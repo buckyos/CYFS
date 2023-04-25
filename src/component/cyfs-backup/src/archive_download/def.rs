@@ -40,6 +40,6 @@ impl RemoteArchiveUrl {
 
 
 pub enum RemoteArchiveInfo {
-    ZipFile(String),
-    Folder(String),
+    ZipFile(RemoteArchiveUrl),
+    Folder(RemoteArchiveUrl),
 }

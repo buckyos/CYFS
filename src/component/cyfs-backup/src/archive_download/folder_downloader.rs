@@ -2,12 +2,10 @@ use crate::archive::ObjectArchiveIndexHelper;
 use cyfs_backup_lib::*;
 use cyfs_base::*;
 
-use super::file_downloader::ArchiveDownloader;
-use super::{def::RemoteArchiveUrl, progress::ArchiveProgessHolder};
+use super::file_downloader::ArchiveFileDownloader;
+use super::{def::RemoteArchiveUrl, progress::ArchiveProgressHolder};
 
-use std::{
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 pub struct ArchiveFolderDownloader {
     url_info: RemoteArchiveUrl,
@@ -16,13 +14,10 @@ pub struct ArchiveFolderDownloader {
 
 impl ArchiveFolderDownloader {
     pub fn new(url_info: RemoteArchiveUrl, folder: PathBuf) -> Self {
-        Self {
-            url_info,
-            folder,
-        }
+        Self { url_info, folder }
     }
 
-    pub async fn download(&self, progress: &ArchiveProgessHolder) -> BuckyResult<()> {
+    pub async fn download(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
         info!(
             "will download archive index: url={}",
             self.url_info.base_url
@@ -64,14 +59,14 @@ impl ArchiveFolderDownloader {
 
     async fn download_index(
         &self,
-        progress: &ArchiveProgessHolder,
+        progress: &ArchiveProgressHolder,
     ) -> BuckyResult<ObjectArchiveIndex> {
         let mut url = self.url_info.clone();
         url.file_name = Some("index".to_owned());
         let url = url.parse_url()?;
 
         let file = self.folder.join("index");
-        let downloader = ArchiveDownloader::new(url, file)?;
+        let downloader = ArchiveFileDownloader::new(url, file);
         downloader.download(progress).await?;
 
         ObjectArchiveIndexHelper::load(&self.folder).await
@@ -81,7 +76,7 @@ impl ArchiveFolderDownloader {
         &self,
         index: &ObjectArchiveIndex,
         item: &ObjectPackFileInfo,
-        progress: &ArchiveProgessHolder,
+        progress: &ArchiveProgressHolder,
     ) -> BuckyResult<()> {
         let relative_path = match &index.data_folder {
             Some(folder_name) => {
@@ -96,7 +91,7 @@ impl ArchiveFolderDownloader {
         url.file_name = Some(relative_path);
         let url = url.parse_url()?;
 
-        let downloader = ArchiveDownloader::new(url, file)?;
+        let downloader = ArchiveFileDownloader::new(url, file);
         downloader.download(progress).await?;
 
         Ok(())
