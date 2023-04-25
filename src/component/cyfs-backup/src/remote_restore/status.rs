@@ -88,7 +88,8 @@ impl RemoteRestoreStatusManagerInner {
 
     pub fn status(&self) -> RemoteRestoreStatus {
         let mut status = RemoteRestoreStatus::default();
-
+        status.phase = self.phase;
+        
         match self.phase {
             RemoteRestoreTaskPhase::Init => {}
             RemoteRestoreTaskPhase::Download => {

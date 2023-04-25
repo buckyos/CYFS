@@ -4,6 +4,7 @@ use cyfs_base::*;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone)]
 pub struct ArchiveUnzip {
     archive_file: PathBuf,
     target_folder: PathBuf,
@@ -18,6 +19,16 @@ impl ArchiveUnzip {
     }
 
     pub async fn unzip(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
+        let this = self.clone(); 
+        let progress = progress.clone();
+        let task = async_std::task::spawn_blocking(move || {
+            this.unzip_inner(&progress)
+        });
+
+        task.await
+    }
+
+    fn unzip_inner(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
         let file = std::fs::File::open(&self.archive_file).map_err(|e| {
             let msg = format!(
                 "open archive file failed! file={}, {}",
@@ -121,7 +132,7 @@ impl ArchiveUnzip {
             }
         }
 
-        let out = std::fs::File::create(&target_file_path).map_err(|e| {
+        let mut out = std::fs::File::create(&target_file_path).map_err(|e| {
             let msg = format!(
                 "create local archive file failed! dir={}, {}",
                 target_file_path.display(),
@@ -130,7 +141,6 @@ impl ArchiveUnzip {
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
-        let mut writer = std::io::BufWriter::new(out);
 
         #[allow(deprecated)]
         let file_path_str = zip_file
@@ -154,7 +164,7 @@ impl ArchiveUnzip {
                 break;
             }
 
-            writer.write_all(&buf[..len]).map_err(|e| {
+            out.write_all(&buf[..len]).map_err(|e| {
                 let msg = format!(
                     "write buf to local archive file failed! file={}, {}",
                     target_file_path.display(),
@@ -172,7 +182,7 @@ impl ArchiveUnzip {
             progress.update_current_file_progress(compress_len);
         }
 
-        writer.flush().map_err(|e| {
+        out.flush().map_err(|e| {
             let msg = format!(
                 "flush to local archive file failed! file={}, {}",
                 target_file_path.display(),

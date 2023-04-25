@@ -38,7 +38,7 @@ impl RemoteArchiveUrl {
     }
 }
 
-
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RemoteArchiveInfo {
     ZipFile(RemoteArchiveUrl),
     Folder(RemoteArchiveUrl),

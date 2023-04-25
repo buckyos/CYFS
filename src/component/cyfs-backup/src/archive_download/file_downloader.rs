@@ -38,6 +38,15 @@ impl ArchiveFileDownloader {
             BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
         })?;
 
+        if !res.status().is_success() {
+            let msg = format!(
+                "get from remote archive url failed! url={}, status={}",
+                self.url, res.status(),
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+        }
+
         let content_length = res.len().ok_or_else(|| {
             let msg = format!(
                 "get content-length header from remote archive response but not found! url={}",
@@ -82,8 +91,6 @@ impl ArchiveFileDownloader {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        let mut writer = async_std::io::BufWriter::new(file.clone());
-
         // Stream download the file with progress
         let mut body = res.take_body().into_reader();
 
@@ -99,7 +106,7 @@ impl ArchiveFileDownloader {
                 break;
             }
 
-            writer.write_all(&buf[..len]).await.map_err(|e| {
+            file.write_all(&buf[..len]).await.map_err(|e| {
                 let msg = format!(
                     "write buf to local archive file but failed! file={}, {}",
                     self.file.display(),
