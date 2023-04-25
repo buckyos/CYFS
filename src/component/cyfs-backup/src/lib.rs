@@ -11,6 +11,7 @@ mod state_backup;
 mod uni_backup;
 mod service;
 mod archive_download;
+mod remote_restore;
 
 pub use backup::*;
 pub use crypto::*;
