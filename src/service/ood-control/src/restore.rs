@@ -61,15 +61,12 @@ impl RestoreController {
                 resp
             }
             Err(e) => {
-                let msg = format!("parse restore task_id error: {}", e);
-                error!("{}", msg);
-
-                Response::builder(StatusCode::BadRequest).body(msg).build()
+                RequestorHelper::trans_error(e)
             }
         }
     }
 
-    pub fn get_task_status(&self, req: Request<()>) -> BuckyResult<RemoteRestoreStatus> {
+    fn get_task_status(&self, req: Request<()>) -> BuckyResult<RemoteRestoreStatus> {
         let task_id = req.param("task_id").map_err(|e| {
             let msg = format!("invalid task_id segment: {}", e);
             error!("{}", msg);
@@ -78,6 +75,37 @@ impl RestoreController {
         })?;
 
         self.restore_manager.get_task_status(task_id)
+    }
+
+    pub async fn process_abort_remote_restore_task_request(
+        &self,
+        req: Request<()>,
+    ) -> tide::Response {
+        match self.abort_task(req).await {
+            Ok(status) => {
+                let mut resp: Response = RequestorHelper::new_ok_response();
+                let body = serde_json::to_string(&status).unwrap();
+
+                resp.set_content_type(tide::http::mime::JSON);
+                resp.set_body(body);
+
+                resp
+            }
+            Err(e) => {
+                RequestorHelper::trans_error(e)
+            }
+        }
+    }
+
+    async fn abort_task(&self, req: Request<()>) -> BuckyResult<()> {
+        let task_id = req.param("task_id").map_err(|e| {
+            let msg = format!("invalid task_id segment: {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        self.restore_manager.abort_task(task_id).await
     }
 
     pub fn process_get_remote_restore_task_list_request(
