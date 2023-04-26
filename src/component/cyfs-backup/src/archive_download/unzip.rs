@@ -1,8 +1,10 @@
 use super::progress::ArchiveProgressHolder;
 use cyfs_base::*;
+use super::helper::TaskAbortHandler;
 
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+
 
 #[derive(Clone)]
 pub struct ArchiveUnzip {
@@ -18,17 +20,19 @@ impl ArchiveUnzip {
         }
     }
 
-    pub async fn unzip(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
+    pub async fn unzip(&self, progress: &ArchiveProgressHolder, abort_handler: &TaskAbortHandler) -> BuckyResult<()> {
         let this = self.clone(); 
         let progress = progress.clone();
+        let abort_handler = abort_handler.clone();
+        
         let task = async_std::task::spawn_blocking(move || {
-            this.unzip_inner(&progress)
+            this.unzip_inner(&progress, abort_handler)
         });
 
         task.await
     }
 
-    fn unzip_inner(&self, progress: &ArchiveProgressHolder) -> BuckyResult<()> {
+    fn unzip_inner(&self, progress: &ArchiveProgressHolder, abort_handler: TaskAbortHandler) -> BuckyResult<()> {
         let file = std::fs::File::open(&self.archive_file).map_err(|e| {
             let msg = format!(
                 "open archive file failed! file={}, {}",
@@ -65,7 +69,11 @@ impl ArchiveUnzip {
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
+        abort_handler.check_aborted()?;
+ 
         for i in 0..archive.len() {
+            abort_handler.check_aborted()?;
+
             let mut file = archive.by_index(i).map_err(|e| {
                 let msg = format!("load file from archive failed! index={}, {}", i, e);
                 error!("{}", msg);
@@ -102,7 +110,7 @@ impl ArchiveUnzip {
                 progress.begin_file(&file_path_str, file.compressed_size());
 
                 let ret = self
-                    .unzip_file(&mut file, &target_file_path, progress);
+                    .unzip_file(&mut file, &target_file_path, progress, &abort_handler);
                 progress.finish_current_file(ret.clone());
 
                 ret?;
@@ -117,6 +125,7 @@ impl ArchiveUnzip {
         zip_file: &mut zip::read::ZipFile<'_>,
         target_file_path: &Path,
         progress: &ArchiveProgressHolder,
+        abort_handler: &TaskAbortHandler,
     ) -> BuckyResult<()> {
         if let Some(dir) = target_file_path.parent() {
             if !dir.is_dir() {
@@ -151,6 +160,8 @@ impl ArchiveUnzip {
 
         let mut buf = vec![0; 1024 * 64];
         loop {
+            abort_handler.check_aborted()?;
+
             let len: usize = zip_file.read(&mut buf).map_err(|e| {
                 let msg = format!(
                     "read data from archive failed! file={}, {}",
@@ -163,6 +174,8 @@ impl ArchiveUnzip {
             if len == 0 {
                 break;
             }
+
+            abort_handler.check_aborted()?;
 
             out.write_all(&buf[..len]).map_err(|e| {
                 let msg = format!(
@@ -181,6 +194,8 @@ impl ArchiveUnzip {
             }
             progress.update_current_file_progress(compress_len);
         }
+
+        abort_handler.check_aborted()?;
 
         out.flush().map_err(|e| {
             let msg = format!(

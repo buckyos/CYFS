@@ -46,6 +46,7 @@ base58 = '0.2.0'
 tide = "0.16"
 http-types = "2.12"
 surf = { version = '2.3', default-features = false, features = ['h1-client-rustls'] }
+futures = "0.3"
 
 [dev-dependencies]
 rand = "0.8"

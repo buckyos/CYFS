@@ -1,12 +1,14 @@
 use super::def::*;
 use super::status::*;
+use crate::archive_download::TaskAbortHandler;
 use crate::backup::RestoreManager;
 use crate::{archive_download::*, remote_restore::status::RemoteRestoreTaskPhase};
 use cyfs_backup_lib::*;
 use cyfs_base::*;
 
+use futures::future::{AbortHandle, Abortable};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct RemoteRestoreTask {
@@ -16,6 +18,10 @@ pub struct RemoteRestoreTask {
     archive_file: PathBuf,
 
     status: RemoteRestoreStatusManager,
+
+    // Use for cancel task
+    task_handle: Arc<Mutex<Option<AbortHandle>>>,
+    abort_handler: TaskAbortHandler,
 }
 
 impl RemoteRestoreTask {
@@ -40,6 +46,9 @@ impl RemoteRestoreTask {
             archive_file,
 
             status: RemoteRestoreStatusManager::new(),
+
+            task_handle: Arc::new(Mutex::new(None)),
+            abort_handler: TaskAbortHandler::new(),
         }
     }
 
@@ -51,21 +60,84 @@ impl RemoteRestoreTask {
         self.status.status()
     }
 
+    pub async fn abort(&self) {
+        warn!("will cancel restore task: {}", self.id);
+
+        self.abort_handler.abort();
+
+        if let Some(task_handle) = self.task_handle.lock().unwrap().take() {
+            task_handle.abort();
+        }
+
+        // Wait for task compelte(for some blocking task)
+        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+
+        warn!(
+            "cancel restore task complete, now will clean temp data! {}",
+            self.id
+        );
+
+        self.clean_temp_data().await;
+    }
+
     pub async fn run(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
         assert_eq!(self.status.status().phase, RemoteRestoreTaskPhase::Init);
 
-        let ret = self.run_inner(params).await;
-        self.status.complete(ret.clone());
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
 
-        // FIXME should we clean the archive file and archive dir?
-        self.clean_temp_data().await;
+        let task = self.clone();
+        let fut = Abortable::new(
+            async move {
+                let ret = task.run_inner(params).await;
+                task.status.complete(ret.clone());
 
-        ret
+                // FIXME should we clean the archive file and archive dir?
+                task.clean_temp_data().await;
+
+                ret
+            },
+            abort_registration,
+        );
+
+        {
+            let mut holder = self.task_handle.lock().unwrap();
+            assert!(holder.is_none());
+            *holder = Some(abort_handle);
+        }
+
+        match fut.await {
+            Ok(ret) => ret,
+            Err(futures::future::Aborted { .. }) => {
+                let msg = format!("The restore task has been aborted! {}", self.id);
+                warn!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::Aborted, msg))
+            }
+        }
+    }
+
+    pub fn start(&mut self, params: RemoteRestoreParams) -> BuckyResult<()> {
+        let task = self.clone();
+        async_std::task::spawn(async move {
+            let id = params.id.clone();
+            match task.run(params).await {
+                Ok(()) => {
+                    info!("run remote restore task complete! task={}", id);
+                }
+                Err(e) => {
+                    error!("run remote restore task failed! task={}, {}", id, e);
+                }
+            }
+        });
+
+        Ok(())
     }
 
     async fn run_inner(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
         let remote_archive = RemoteArchiveInfo::parse(&params.remote_archive).map_err(|e| {
-            let msg = format!("invalid remote archive url format: {}, {}", params.remote_archive, e);
+            let msg = format!(
+                "invalid remote archive url format: {}, {}",
+                params.remote_archive, e
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
@@ -110,7 +182,7 @@ impl RemoteRestoreTask {
                 );
 
                 let unzip = ArchiveUnzip::new(self.archive_file.clone(), self.archive_dir.clone());
-                let ret = unzip.unzip(&progress).await;
+                let ret = unzip.unzip(&progress, &self.abort_handler).await;
 
                 ret?;
             }

@@ -1,3 +1,4 @@
+use cyfs_base::BuckyErrorCode;
 
 use super::*;
 
@@ -22,12 +23,48 @@ async fn download_folder() {
         loop {
             async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-            let status = manager1.get_task_status(ID).unwrap();
-            println!("status: {}", serde_json::to_string(&status).unwrap());
+            let ret = manager1.get_task_status(ID);
+            match ret {
+                Ok(status) => {
+                    println!("status: {}", serde_json::to_string(&status).unwrap());
+                }
+                Err(e) => {
+                    if e.code() == BuckyErrorCode::NotFound {
+                        warn!("restore task not found! {}", ID);
+                        break;
+                    } else {
+                        unreachable!();
+                    }
+                }
+            }
         }
     });
 
-    manager.run_remote_restore(params).await.unwrap();
+    // test cancel
+    let manager1 = manager.clone();
+    async_std::task::spawn(async move {
+        loop {
+            async_std::task::sleep(std::time::Duration::from_secs(20)).await;
+
+            manager1.abort_task(ID).await.unwrap();
+        }
+    });
+
+    match manager.run_remote_restore(params).await {
+        Ok(()) => {
+            info!("run restore task complete!");
+        }
+        Err(e) => {
+            match e.code() {
+                BuckyErrorCode::Aborted => {
+                    warn!("restore task aborted!");
+                }
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+    }
 }
 
 async fn download_file() {

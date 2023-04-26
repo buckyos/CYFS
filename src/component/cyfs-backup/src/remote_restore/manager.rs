@@ -51,21 +51,9 @@ impl RemoteRestoreManager {
     }
 
     pub fn start_remote_restore(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
-        let task = self.create_remote_restore_task(&params)?;
+        let mut task = self.create_remote_restore_task(&params)?;
 
-        async_std::task::spawn(async move {
-            let id = params.id.clone();
-            match task.run(params).await {
-                Ok(()) => {
-                    info!("run remote restore task complete! task={}", id);
-                }
-                Err(e) => {
-                    error!("run remote restore task failed! task={}, {}", id, e);
-                }
-            }
-        });
-
-        Ok(())
+        task.start(params)
     }
 
     pub fn get_task_status(&self, id: &str) -> BuckyResult<RemoteRestoreStatus> {
@@ -82,6 +70,24 @@ impl RemoteRestoreManager {
         };
 
         Ok(status)
+    }
+
+    pub async fn abort_task(&self, id: &str) -> BuckyResult<()> {
+        let task = 
+        {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(index) = tasks.iter().position(|task| task.id() == id) {
+                tasks.swap_remove(index)
+            } else {
+                let msg = format!("backup task not exists! task={}", id);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
+        };
+
+        task.abort().await;
+
+        Ok(())
     }
 }
 

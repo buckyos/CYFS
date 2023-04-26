@@ -1553,6 +1553,7 @@ dependencies = [
  "cyfs-tracker-cache",
  "cyfs-util",
  "file-rotate",
+ "futures",
  "hmac 0.12.1",
  "http-types",
  "log 0.4.17",
