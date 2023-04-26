@@ -12,6 +12,9 @@ enum RequestType {
     Check,
     Bind,
     SystemInfo,
+
+    CreateRestoreTask,
+    GetRestoreTaskStatus,
 }
 
 pub(crate) struct HandlerEndpoint {
@@ -54,7 +57,7 @@ impl HandlerEndpoint {
         Ok(())
     }
 
-    async fn process_request<State>(&self, mut req: ::tide::Request<State>) -> Response {
+    async fn process_request(&self, mut req: ::tide::Request<()>) -> Response {
         if self.access_token.is_some() {
             if let Err(e) = self.check_token(&req.url()) {
                 return cyfs_lib::RequestorHelper::trans_error(e);
@@ -78,6 +81,14 @@ impl HandlerEndpoint {
                 }
             },
             RequestType::SystemInfo => self.on_get_system_info_request().await,
+
+            RequestType::CreateRestoreTask => {
+                self.handler.restore_controller().process_create_remote_restore_task_request(req).await
+            }
+
+            RequestType::GetRestoreTaskStatus => {
+                self.handler.restore_controller().process_get_remote_restore_task_status_request(req).await
+            }
         }
     }
 
@@ -159,6 +170,31 @@ impl HandlerEndpoint {
             handler.to_owned(),
         ));
 
+        // restore
+        server.at("/restore").post(HandlerEndpoint::new(
+            RequestType::CreateRestoreTask,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
+        server.at("/restore/").post(HandlerEndpoint::new(
+            RequestType::CreateRestoreTask,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
+        server.at("/restore/:task_id").get(HandlerEndpoint::new(
+            RequestType::GetRestoreTaskStatus,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
+        server.at("/restore/:task_id").get(HandlerEndpoint::new(
+            RequestType::GetRestoreTaskStatus,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
         // external
         let all = handler.fetch_all_external_servers();
         for item in all {
@@ -168,11 +204,9 @@ impl HandlerEndpoint {
 }
 
 #[async_trait]
-impl<State> tide::Endpoint<State> for HandlerEndpoint
-where
-    State: Clone + Send + Sync + 'static,
+impl tide::Endpoint<()> for HandlerEndpoint
 {
-    async fn call(&self, req: ::tide::Request<State>) -> ::tide::Result {
+    async fn call(&self, req: ::tide::Request<()>) -> ::tide::Result {
         let resp = self.process_request(req).await;
         Ok(resp)
     }

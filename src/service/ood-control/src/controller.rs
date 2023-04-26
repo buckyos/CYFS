@@ -2,6 +2,7 @@ use super::bind::*;
 use super::device_info::*;
 use super::request::*;
 use cyfs_base::*;
+use super::restore::RestoreController;
 
 use once_cell::sync::OnceCell;
 use std::collections::hash_map::{Entry, HashMap};
@@ -19,7 +20,7 @@ pub(crate) struct ControllerImpl {
     ext_info_file: PathBuf,
     zone_owner_desc_file: PathBuf,
 
-    // 设备信息
+    // Device info
     device_info: DeviceInfo,
 
     bind_state: BindState,
@@ -29,6 +30,8 @@ pub(crate) struct ControllerImpl {
     access_info: OnceCell<ControlInterfaceAccessInfo>,
 
     external_servers: Mutex<Vec<Box<dyn ExternalServerEndPoint>>>,
+
+    restore_controller: RestoreController,
 }
 
 impl ControllerImpl {
@@ -39,7 +42,7 @@ impl ControllerImpl {
         let bind_state = BindState::new(desc_file.clone(), sec_file.clone(), ext_info_file.clone());
         let _r = bind_state.load();
 
-        // 如果尚未绑定，那么开启一个检测
+        // Start the check routine if not bind yet
         if !bind_state.is_bind() {
             bind_state.start_monitor_bind();
         }
@@ -60,6 +63,8 @@ impl ControllerImpl {
             access_info: OnceCell::new(),
 
             external_servers: Mutex::new(vec![]),
+
+            restore_controller: RestoreController::new(),
         }
     }
 
@@ -351,8 +356,12 @@ impl Controller {
     pub(crate) fn new() -> Self {
         Self(Arc::new(ControllerImpl::new()))
     }
+    
+    pub fn restore_controller(&self) -> &RestoreController {
+        &self.0.restore_controller
+    }
 
-    // 记录一次check请求
+    // Record a check request once
     pub fn on_check_request(&self, source: &str) {
         self.0.on_check_request(source)
     }

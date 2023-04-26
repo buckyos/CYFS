@@ -43,7 +43,7 @@ impl RemoteRestoreManager {
         task.run(params).await
     }
 
-    pub async fn start_remote_restore(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
+    pub fn start_remote_restore(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
         let task = self.create_remote_restore_task(&params)?;
 
         async_std::task::spawn(async move {

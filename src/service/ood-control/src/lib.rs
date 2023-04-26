@@ -7,6 +7,7 @@ mod http_server;
 pub mod interface;
 mod request;
 mod ood_controller;
+mod restore;
 
 pub use app_bind_manager::AppBindManager;
 pub use controller::*;

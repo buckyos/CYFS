@@ -5,6 +5,7 @@ mod task;
 
 pub use def::*;
 pub use manager::*;
+pub use status::*;
 pub use task::*;
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ mod remote_restore;
 pub use backup::*;
 pub use crypto::*;
 pub use service::*;
+pub use remote_restore::*;
 
 #[macro_use]
 extern crate log;

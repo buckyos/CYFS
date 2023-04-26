@@ -4794,6 +4794,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "cyfs-async-h1",
+ "cyfs-backup",
  "cyfs-base",
  "cyfs-debug",
  "cyfs-lib",

@@ -13,6 +13,7 @@ cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
+cyfs-backup = { path = "../../component/cyfs-backup" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
