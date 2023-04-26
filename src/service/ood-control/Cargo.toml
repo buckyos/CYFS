@@ -39,3 +39,6 @@ android_logger = "0.11"
 [lib]
 name = "ood_control"
 crate-type = ["lib", "cdylib", "staticlib"]
+
+[dev-dependencies]
+surf = { version = '2.3', default-features = false, features = ['h1-client-rustls'] }

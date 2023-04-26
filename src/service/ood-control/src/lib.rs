@@ -17,6 +17,9 @@ pub use interface::{
 pub use request::*;
 pub use ood_controller::*;
 
+#[cfg(test)]
+mod test;
+
 #[macro_use]
 extern crate log;
 
