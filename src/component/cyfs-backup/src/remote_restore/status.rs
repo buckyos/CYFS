@@ -38,7 +38,6 @@ impl Default for RemoteRestoreStatus {
     }
 }
 
-
 pub struct RemoteRestoreStatusManagerInner {
     pub phase: RemoteRestoreTaskPhase,
     pub result: Option<BuckyResult<()>>,
@@ -89,7 +88,7 @@ impl RemoteRestoreStatusManagerInner {
     pub fn status(&self) -> RemoteRestoreStatus {
         let mut status = RemoteRestoreStatus::default();
         status.phase = self.phase;
-        
+
         match self.phase {
             RemoteRestoreTaskPhase::Init => {}
             RemoteRestoreTaskPhase::Download => {
@@ -131,7 +130,10 @@ impl RemoteRestoreStatusManager {
     }
 
     pub fn begin_restore(&self, task_id: &str, restore_manager: RestoreManagerRef) {
-        self.0.lock().unwrap().begin_restore(task_id, restore_manager)
+        self.0
+            .lock()
+            .unwrap()
+            .begin_restore(task_id, restore_manager)
     }
 
     pub fn complete(&self, result: BuckyResult<()>) {
@@ -140,5 +142,36 @@ impl RemoteRestoreStatusManager {
 
     pub fn status(&self) -> RemoteRestoreStatus {
         self.0.lock().unwrap().status()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn display() {
+        let e = BuckyError::new(BuckyErrorCode::NotFound, "not found error");
+
+        let mut progress = ArchiveProgress::new();
+        progress.current = Some(FileProgress {
+            file: "object.0.data".to_owned(),
+            total: 100000,
+            completed: 100,
+            result: None,
+        });
+
+        let status = RemoteRestoreStatus {
+            phase: RemoteRestoreTaskPhase::Download,
+            // result: Some(Ok(())),
+            result: Some(Err(e)),
+
+            download_progress: Some(progress),
+            unpack_progress: Some(ArchiveProgress::new()),
+            restore_status: Some(RestoreStatus::default()),
+        };
+
+        let s = serde_json::to_string_pretty(&status).unwrap();
+        println!("{}", s);
     }
 }
