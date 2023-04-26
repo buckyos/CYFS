@@ -15,6 +15,7 @@ enum RequestType {
 
     CreateRestoreTask,
     GetRestoreTaskStatus,
+    GetRestoreTaskList,
 }
 
 pub(crate) struct HandlerEndpoint {
@@ -87,7 +88,11 @@ impl HandlerEndpoint {
             }
 
             RequestType::GetRestoreTaskStatus => {
-                self.handler.restore_controller().process_get_remote_restore_task_status_request(req).await
+                self.handler.restore_controller().process_get_remote_restore_task_status_request(req)
+            }
+
+            RequestType::GetRestoreTaskList => {
+                self.handler.restore_controller().process_get_remote_restore_task_list_request(req)
             }
         }
     }
@@ -189,8 +194,20 @@ impl HandlerEndpoint {
             handler.to_owned(),
         ));
 
-        server.at("/restore/:task_id").get(HandlerEndpoint::new(
+        server.at("/restore/:task_id/").get(HandlerEndpoint::new(
             RequestType::GetRestoreTaskStatus,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
+        server.at("/restore/tasks").get(HandlerEndpoint::new(
+            RequestType::GetRestoreTaskList,
+            access_token.clone(),
+            handler.to_owned(),
+        ));
+
+        server.at("/restore/tasks/").get(HandlerEndpoint::new(
+            RequestType::GetRestoreTaskList,
             access_token.clone(),
             handler.to_owned(),
         ));

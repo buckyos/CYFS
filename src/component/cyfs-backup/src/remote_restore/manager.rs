@@ -17,6 +17,13 @@ impl RemoteRestoreManager {
         }
     }
 
+    pub fn get_tasks(&self) -> Vec<String> {
+        let tasks = self.tasks.lock().unwrap();
+        let list: Vec<String> = tasks.iter().map(|task| task.id().to_owned()).collect();
+
+        list
+    }
+
     fn create_remote_restore_task(
         &self,
         params: &RemoteRestoreParams,
