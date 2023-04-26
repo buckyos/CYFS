@@ -1,17 +1,10 @@
 
 use super::*;
-use crate::archive_download::*;
 
 use std::sync::Arc;
 
 async fn download_folder() {
     let manager = Arc::new(RemoteRestoreManager::new());
-
-    let url = RemoteArchiveUrl {
-        base_url: "http://127.0.0.1:8887/test65".to_owned(),
-        file_name: None,
-        query_string: Some("token=123456".to_owned()),
-    };
 
     const ID: &str = "remote_store1";
     let params = RemoteRestoreParams {
@@ -21,7 +14,7 @@ async fn download_folder() {
         isolate: None,
         password: None,
 
-        remote_archive: RemoteArchiveInfo::Folder(url),
+        remote_archive: "http://127.0.0.1:8887/test65/${filename}?token=123456".to_owned(),
     };
 
     let manager1 = manager.clone();
@@ -40,12 +33,6 @@ async fn download_folder() {
 async fn download_file() {
     let manager = Arc::new(RemoteRestoreManager::new());
 
-    let url = RemoteArchiveUrl {
-        base_url: "http://127.0.0.1:8887/test65.zip".to_owned(),
-        file_name: None,
-        query_string: Some("token=123456".to_owned()),
-    };
-
     const ID: &str = "remote_store1";
     let params = RemoteRestoreParams {
         id: ID.to_owned(),
@@ -54,7 +41,7 @@ async fn download_file() {
         isolate: None,
         password: None,
 
-        remote_archive: RemoteArchiveInfo::ZipFile(url),
+        remote_archive: "http://127.0.0.1:8887/test65.zip?token=123456".to_owned(),
     };
 
     let manager1 = manager.clone();
@@ -73,5 +60,5 @@ async fn download_file() {
 #[test]
 fn test() {
     cyfs_base::init_simple_log("test-remote-restore", None);
-    async_std::task::block_on(download_file());
+    async_std::task::block_on(download_folder());
 }

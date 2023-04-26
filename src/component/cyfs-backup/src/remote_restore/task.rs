@@ -1,26 +1,12 @@
+use super::def::*;
 use super::status::*;
 use crate::backup::RestoreManager;
 use crate::{archive_download::*, remote_restore::status::RemoteRestoreTaskPhase};
 use cyfs_backup_lib::*;
 use cyfs_base::*;
 
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RemoteRestoreParams {
-    // TaskId, should be valid segment string of path
-    pub id: String,
-
-    // Restore related params
-    pub cyfs_root: Option<String>,
-    pub isolate: Option<String>,
-    pub password: Option<ProtectedPassword>,
-
-    // Remote archive info
-    pub remote_archive: RemoteArchiveInfo,
-}
 
 #[derive(Clone)]
 pub struct RemoteRestoreTask {
@@ -78,6 +64,12 @@ impl RemoteRestoreTask {
     }
 
     async fn run_inner(&self, params: RemoteRestoreParams) -> BuckyResult<()> {
+        let remote_archive = RemoteArchiveInfo::parse(&params.remote_archive).map_err(|e| {
+            let msg = format!("invalid remote archive url format: {}, {}", params.remote_archive, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
         if !self.archive_dir.is_dir() {
             if let Err(e) = async_std::fs::create_dir_all(&self.archive_dir).await {
                 let msg = format!(
@@ -90,7 +82,7 @@ impl RemoteRestoreTask {
             }
         }
 
-        match params.remote_archive {
+        match remote_archive {
             RemoteArchiveInfo::ZipFile(file_url) => {
                 let url = file_url.parse_url()?;
 
