@@ -1,5 +1,10 @@
 syntax="proto3";
 
+// object body ext
+message ObjectBodyExt {
+    optional bytes object_id = 1;
+}
+
 // contract
 message ContractBodyContent {
     bytes data = 1;

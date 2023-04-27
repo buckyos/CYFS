@@ -66,7 +66,6 @@ pub trait SingleKeyObjectDesc: PublicKeyObjectDesc {
     fn public_key(&self) -> &PublicKey;
 }
 
-
 /// Multi public key Authorized object, explicitly using the PublicKey::MN type
 /// The object that implements the Trait must also implement the PublicKeyObjectDesc
 pub trait MNKeyObjectDesc: PublicKeyObjectDesc {
@@ -156,8 +155,6 @@ pub const OBJECT_BODY_FLAG_USER_DATA: u8 = 0x01 << 1;
 
 // Whether include extended fields, in the same format as desc
 pub const OBJECT_BODY_FLAG_EXT: u8 = 0x01 << 2;
-
-pub const OBJECT_BODY_FLAG_OBJECT_ID: u8 = 0x01 << 3;
 
 #[derive(Clone, Debug)]
 pub struct NamedObjectBodyContext {
@@ -447,6 +444,56 @@ impl<'de> RawDecode<'de> for NamedObjectContext {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ObjectBodyExt {
+    // The object_id of the associated desc
+    object_id: Option<ObjectId>,
+}
+
+impl Default for ObjectBodyExt {
+    fn default() -> Self {
+        Self { object_id: None }
+    }
+}
+
+impl ObjectBodyExt {
+    pub fn is_empty(&self) -> bool {
+        self.object_id.is_none()
+    }
+}
+
+// object body ext should use protobuf for codec
+impl TryFrom<protos::ObjectBodyExt> for ObjectBodyExt {
+    type Error = BuckyError;
+
+    fn try_from(value: protos::ObjectBodyExt) -> BuckyResult<Self> {
+        let mut ret = Self { object_id: None };
+
+        if value.has_object_id() {
+            ret.object_id = Some(ObjectId::clone_from_slice(value.get_object_id())?);
+        }
+
+        Ok(ret)
+    }
+}
+
+impl TryFrom<&ObjectBodyExt> for protos::ObjectBodyExt {
+    type Error = BuckyError;
+
+    fn try_from(value: &ObjectBodyExt) -> BuckyResult<Self> {
+        let mut ret = Self::new();
+
+        if let Some(object_id) = &value.object_id {
+            ret.set_object_id(object_id.to_vec()?);
+        }
+
+        Ok(ret)
+    }
+}
+
+crate::inner_impl_default_protobuf_raw_codec!(ObjectBodyExt);
+
+
 #[derive(Clone)]
 pub struct ObjectMutBody<B, O>
 where
@@ -457,7 +504,7 @@ where
     update_time: u64, // Record the timestamp of the last update of body, in bucky time format
     content: B,       // Depending on the type, there can be different MutBody
     user_data: Option<Vec<u8>>, // Any data can be embedded. (e.g. json?)
-    object_id: Option<ObjectId>, // The object_id of the associated desc
+    ext: Option<ObjectBodyExt>,
     obj_type: Option<PhantomData<O>>,
 }
 
@@ -469,8 +516,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ObjectMutBody:{{ prev_version={:?}, update_time={}, object_id={:?}, version={}, format={}, content={:?}, user_data: ... }}",
-            self.prev_version, self.update_time, self.object_id, self.content.version(), self.content.format(), self.content,
+            "ObjectMutBody:{{ prev_version={:?}, update_time={}, version={}, format={}, content={:?}, ext={:?} user_data: ... }}",
+            self.prev_version, self.update_time, self.content.version(), self.content.format(), self.content, self.ext,
         )
     }
 }
@@ -485,7 +532,7 @@ where
     update_time: u64,
     content: B,
     user_data: Option<Vec<u8>>,
-    object_id: Option<ObjectId>,
+    ext: ObjectBodyExt,
     obj_type: Option<PhantomData<O>>,
 }
 
@@ -500,7 +547,7 @@ where
             update_time: bucky_time_now(),
             content,
             user_data: None,
-            object_id: None,
+            ext: ObjectBodyExt::default(),
             obj_type: None,
         }
     }
@@ -539,12 +586,12 @@ where
     }
 
     pub fn object_id(mut self, value: ObjectId) -> Self {
-        self.object_id = Some(value);
+        self.ext.object_id = Some(value);
         self
     }
 
     pub fn option_object_id(mut self, value: Option<ObjectId>) -> Self {
-        self.object_id = value;
+        self.ext.object_id = value;
         self
     }
 
@@ -555,7 +602,11 @@ where
             content: self.content,
             user_data: self.user_data,
             obj_type: self.obj_type,
-            object_id: self.object_id,
+            ext: if self.ext.is_empty() {
+                None
+            } else {
+                Some(self.ext)
+            },
         }
     }
 }
@@ -592,11 +643,14 @@ where
     }
 
     pub fn object_id(&self) -> &Option<ObjectId> {
-        &self.object_id
+        match &self.ext {
+            Some(ext) => &ext.object_id,
+            None => &None,
+        }
     }
 
     pub fn verify_object_id(&self, object_id: &ObjectId) -> BuckyResult<()> {
-        match &self.object_id {
+        match &self.object_id() {
             Some(bind_object_id) => {
                 if object_id != bind_object_id {
                     let msg = format!("object_id and object_id of body binding do not match! body object_id={}, object_id={}", bind_object_id, object_id);
@@ -606,9 +660,7 @@ where
                     Ok(())
                 }
             }
-            None => {
-                Ok(())
-            }
+            None => Ok(()),
         }
     }
 
@@ -642,7 +694,11 @@ where
     }
 
     pub fn set_object_id(&mut self, object_id: Option<ObjectId>) {
-        self.object_id = object_id;
+        if self.ext.is_none() {
+            self.ext = Some(ObjectBodyExt::default());
+        }
+
+        self.ext.as_mut().unwrap().object_id = object_id;
     }
 
     /// Split the Body，Move everything inside
@@ -690,7 +746,7 @@ where
             content: B::default(),
             user_data: None,
             obj_type: None,
-            object_id: None,
+            ext: None,
         }
     }
 }
@@ -708,15 +764,6 @@ where
         // body_flags
         let mut size = u8::raw_bytes().unwrap();
 
-        // object_id
-        if self.object_id.is_some() {
-            size = size
-                + self.object_id.unwrap().raw_measure(purpose).map_err(|e| {
-                    log::error!("ObjectMutBody<B, O>::raw_measure/object_id error:{}", e);
-                    e
-                })?;
-        }
-
         // prev_version
         if self.prev_version.is_some() {
             size = size
@@ -732,6 +779,18 @@ where
 
         // update_time
         size += u64::raw_bytes().unwrap();
+
+        // ext
+        if let Some(ext) = &self.ext {
+            if !ext.is_empty() {
+                size = size
+                    + u16::raw_bytes().unwrap()
+                    + ext.raw_measure(purpose).map_err(|e| {
+                        log::error!("ObjectMutBody<B, O>::raw_measure/ext error:{}", e);
+                        e
+                    })?;
+            }
+        }
 
         // verison+format
         size += u16::raw_bytes().unwrap();
@@ -780,9 +839,6 @@ where
 
         // body_flags
         let mut body_flags = 0u8;
-        if self.object_id.is_some() {
-            body_flags |= OBJECT_BODY_FLAG_OBJECT_ID;
-        }
 
         if self.prev_version().is_some() {
             body_flags |= OBJECT_BODY_FLAG_PREV;
@@ -791,26 +847,19 @@ where
             body_flags |= OBJECT_BODY_FLAG_USER_DATA;
         }
 
+        let mut encode_ext = false;
+        if let Some(ext) = &self.ext {
+            if !ext.is_empty() {
+                body_flags |= OBJECT_BODY_FLAG_EXT;
+                encode_ext = true;
+            }
+        }
+
         // Version information is added by default and no longer occupies the flags field
         let buf = body_flags.raw_encode(buf, purpose).map_err(|e| {
             log::error!("ObjectMutBody<B, O>::raw_encode/body_flags error:{}", e);
             e
         })?;
-
-        // object_id
-        let buf = if self.object_id.is_some() {
-            let buf = self
-                .object_id
-                .unwrap()
-                .raw_encode(buf, purpose)
-                .map_err(|e| {
-                    log::error!("ObjectMutBody<B, O>::raw_encode/object_id error:{}", e);
-                    e
-                })?;
-            buf
-        } else {
-            buf
-        };
 
         // prev_version
         let buf = if self.prev_version().is_some() {
@@ -832,6 +881,24 @@ where
             log::error!("ObjectMutBody<B, O>::raw_encode/update_time error:{}", e);
             e
         })?;
+
+        // ext
+        let buf = if encode_ext {
+            let ext = self.ext.as_ref().unwrap();
+            let size = ext.raw_measure(purpose)? as u16;
+            let buf = size.raw_encode(buf, purpose).map_err(|e| {
+                log::error!("ObjectMutBody<B, O>::raw_encode/ext error:{}", e);
+                e
+            })?;
+
+            let buf = ext.raw_encode(buf, purpose).map_err(|e| {
+                log::error!("ObjectMutBody<B, O>::raw_encode/ext error:{}", e);
+                e
+            })?;
+            buf
+        } else {
+            buf
+        };
 
         // version+format
         let buf = self
@@ -910,18 +977,6 @@ where
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
-        // object_id
-        let (object_id, buf) = if (body_flags & OBJECT_BODY_FLAG_OBJECT_ID) == OBJECT_BODY_FLAG_OBJECT_ID {
-            let (object_id, buf) = ObjectId::raw_decode(buf).map_err(|e| {
-                let msg = format!("ObjectMutBody<B, O>::raw_decode/object_id error:{}", e);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::InvalidData, msg)
-            })?;
-            (Some(object_id), buf)
-        } else {
-            (None, buf)
-        };
-
         // prev_version
         let (prev_version, buf) = if (body_flags & OBJECT_BODY_FLAG_PREV) == OBJECT_BODY_FLAG_PREV {
             let (prev_version, buf) = HashValue::raw_decode(buf).map_err(|e| {
@@ -945,7 +1000,8 @@ where
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
-        // Here we try to read if there is an ext extension field, if it exists then we have to skip it for forward compatibility 
+        // Here we try to read if there is an ext extension field, if it exists then we have to skip it for forward compatibility
+        let mut ext = None;
         let buf = if (body_flags & OBJECT_BODY_FLAG_EXT) == OBJECT_BODY_FLAG_EXT {
             let (len, buf) = u16::raw_decode(buf).map_err(|e| {
                 let msg = format!(
@@ -968,6 +1024,22 @@ where
                 return Err(BuckyError::new(BuckyErrorCode::OutOfLimit, msg));
             }
 
+            if len > 0 {
+                // Decode using exact size buffer
+                let ext_buf = &buf[..len as usize];
+                let (ret, _) = ObjectBodyExt::raw_decode(ext_buf).map_err(|e| {
+                    let msg = format!(
+                        "ObjectMutBody<B, O>::raw_decode/ext error:{}, body={}",
+                        e,
+                        B::debug_info()
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                })?;
+
+                ext = Some(ret);
+            }
+            
             // Skip the specified length
             &buf[len as usize..]
         } else {
@@ -1074,7 +1146,7 @@ where
                 content,
                 user_data,
                 obj_type: None,
-                object_id,
+                ext,
             },
             buf,
         ))
