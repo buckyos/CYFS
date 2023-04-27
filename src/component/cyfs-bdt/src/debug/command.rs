@@ -8,20 +8,9 @@ use cyfs_base::*;
 use crate::stack::Stack;
 
 pub fn debug_command_line() -> clap::App<'static, 'static> {
-    App::new("bdt-debug")
-        .about("bdt stack debug")
-        .arg(Arg::with_name("host")
-        .short("h")
-        .long("host")
-        .value_name("host")
-        .help("connect remote host")
-        .default_value("127.0.0.1"))
-        .arg(Arg::with_name("port")
-        .short("p")
-        .long("port")
-        .value_name("port")
-        .help("local server port")
-        .default_value("12345"))
+    App::new("bdt-debug").about("bdt stack debug")
+        .arg(Arg::with_name("host").short("h").long("host").value_name("host").help("connect remote host").default_value("127.0.0.1"))
+        .arg(Arg::with_name("port").short("p").long("port").value_name("port").help("local server port").default_value("12345"))
         .subcommand(SubCommand::with_name("test"))
         .subcommand(SubCommand::with_name("ping")
             .arg(Arg::with_name("remote").required(true))

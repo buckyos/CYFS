@@ -2,7 +2,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown},
     path::Path, 
     str::FromStr, 
-    time::{Duration, Instant}
+    time::{Duration, Instant},
 };
 use async_std::{
     sync::Arc, 

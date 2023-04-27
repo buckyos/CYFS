@@ -54,6 +54,7 @@ members = [
     "./tools/cyfs-check",
     "./tools/sn-updater",
     "./tools/cyfs-backup-tool",
+    "./tools/bdt-tool",
 
     "./meta/browser-meta-spv",
     "./meta/cyfs-meta",
