@@ -169,8 +169,8 @@ impl AnyNamedObject {
     }
 
     pub fn has_body(&self) -> BuckyResult<bool> {
-        match_any_obj!(self, o, { Ok(o.body().is_some()) }, _chunk_id, {
-            let msg = format!("chunk has no body: {}", self.calculate_id());
+        match_any_obj!(self, o, { Ok(o.body().is_some()) }, chunk_id, {
+            let msg = format!("chunk has no body: {}", chunk_id);
             error!("{}", msg);
             Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
         })
@@ -188,9 +188,47 @@ impl AnyNamedObject {
                     Ok(None)
                 }
             },
-            _chunk_id,
+            chunk_id,
             {
-                let msg = format!("chunk has no body: {}", self.calculate_id());
+                let msg = format!("chunk has no body: {}", chunk_id);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+            }
+        )
+    }
+
+    pub fn body_object_id(&self) -> &Option<ObjectId> {
+        match_any_obj!(
+            self,
+            o,
+            {
+                if let Some(body) = o.body() {
+                    body.object_id()
+                } else {
+                    &None
+                }
+            },
+            _chunk_id,
+            { &None }
+        )
+    }
+
+    pub fn verify_body_object_id(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        match_any_obj!(
+            self,
+            o,
+            {
+                if let Some(body) = o.body() {
+                    body.verify_object_id(object_id)
+                } else {
+                    let msg = format!("object has no body: {}", self.calculate_id());
+                    error!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+                }
+            },
+            chunk_id,
+            {
+                let msg = format!("chunk has no body: {}", chunk_id);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
@@ -290,7 +328,9 @@ impl AnyNamedObject {
     }
 
     pub fn option_create_time(&self) -> Option<u64> {
-        match_any_obj!(self, o, { o.desc().option_create_time() }, _chunk_id, { None })
+        match_any_obj!(self, o, { o.desc().option_create_time() }, _chunk_id, {
+            None
+        })
     }
 
     pub fn expired_time(&self) -> Option<u64> {
@@ -328,11 +368,11 @@ impl AnyNamedObject {
         )
     }
 
-    // 获取body+signs的最新修改时间
+    // Get the latest modification time of body+signs
     pub fn get_full_update_time(&self) -> u64 {
         let update_time = self.get_update_time();
 
-        // 如果签名时间比较新，那么取签名时间
+        // If the signature time is relatively new, then take the signature time
         let latest_sign_time = match self.signs() {
             Some(v) => v.latest_sign_time(),
             None => 0,

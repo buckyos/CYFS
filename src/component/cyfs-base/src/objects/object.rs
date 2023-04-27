@@ -595,6 +595,23 @@ where
         &self.object_id
     }
 
+    pub fn verify_object_id(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        match &self.object_id {
+            Some(bind_object_id) => {
+                if object_id != bind_object_id {
+                    let msg = format!("object_id and object_id of body binding do not match! body object_id={}, object_id={}", bind_object_id, object_id);
+                    warn!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
+                } else {
+                    Ok(())
+                }
+            }
+            None => {
+                Ok(())
+            }
+        }
+    }
+
     // Modify relate methods
 
     pub fn set_update_time(&mut self, value: u64) {
