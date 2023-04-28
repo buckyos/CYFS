@@ -60,3 +60,6 @@ pub use standard::*;
 pub use tx::*;
 pub use union_account::*;
 pub use unique_id::*;
+
+#[cfg(test)]
+mod test;
