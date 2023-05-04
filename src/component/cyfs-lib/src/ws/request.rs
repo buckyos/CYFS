@@ -313,7 +313,7 @@ impl WebSocketRequestManager {
         packet: WSPacket,
     ) -> BuckyResult<()> {
         let cmd = packet.header.cmd;
-        if cmd > 0 {
+        if cmd > 0 && cmd != WS_CMD_ERROR {
             let seq = packet.header.seq;
 
             let ret = requestor
@@ -430,7 +430,6 @@ impl WebSocketRequestManager {
 
     // Receive the answer
     async fn on_resp(&self, packet: WSPacket) -> BuckyResult<()> {
-        assert!(packet.header.cmd == 0);
         assert!(packet.header.seq > 0);
 
         let seq = packet.header.seq;
@@ -478,6 +477,7 @@ impl WebSocketRequestManager {
 
                     item.resp = Some(Err(err));
                 } else {
+                    assert!(packet.header.cmd == 0);
                     item.resp = Some(Ok(packet.content));
                 }
             } else {
