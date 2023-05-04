@@ -820,6 +820,7 @@ impl FrontProtocolHandler {
         let mut group = None;
 
         let pairs = req.request.url().query_pairs();
+        let mut user_pairs = vec![];
         for (k, v) in pairs {
             match k.as_ref() {
                 "mode" => {
@@ -863,11 +864,24 @@ impl FrontProtocolHandler {
                     group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 _ => {
-                    warn!("unknown global state access url query: {}={}", k, v);
+                    debug!("user global state access url query: {}={}", k, v);
+                    user_pairs.push(format!("{}={}", k, v));
                 }
             }
         }
 
+        let inner_path: Option<String> = if let Some(inner_path) = inner_path {
+            if user_pairs.is_empty() {
+                Some(inner_path)
+            } else {
+                let user_querys = user_pairs.join("&");
+                Some(format!("{}?{}", inner_path, user_querys))
+            }
+        } else {
+            None
+        };
+
+        
         let r_req = FrontRRequest {
             source: req.source,
 
@@ -1073,5 +1087,21 @@ impl FrontProtocolHandler {
                 tide::Redirect::new(url).into()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_o_query_string() {
+        let url = "http://www.cyfs.com/a/b?req_path=/a/b%3Ftoken=xxx%26id=xxx&dec_id=xxx";
+        let url = http_types::Url::parse(url).unwrap();
+        let value: String = RequestorHelper::value_from_querys_with_utf8_decoding("dec_id", &url).unwrap().unwrap();
+        assert_eq!(value, "xxx");
+
+        let value: String = RequestorHelper::value_from_querys_with_utf8_decoding("req_path", &url).unwrap().unwrap();
+        assert_eq!(value, "/a/b?token=xxx&id=xxx");
     }
 }

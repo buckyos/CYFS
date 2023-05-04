@@ -45,3 +45,4 @@ wait-timeout = '0.2.0'
 once_cell = "1.17.0"
 surf = { version = '2.3.2', default-features = false, features = ['h1-client-rustls'] }
 itertools = "0.10"
+sysinfo = "0.28"

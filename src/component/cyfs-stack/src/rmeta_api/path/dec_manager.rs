@@ -92,7 +92,7 @@ impl GlobalStateDecPathMetaHolder {
             GlobalStateCategory::LocalCache => "cyfs-local-cache-path-meta",
         };
 
-        let data = NOCCollectionRWSync::<GlobalStatePathMeta>::new_global_state(
+        let data = NOCCollectionRWAsync::<GlobalStatePathMeta>::new_global_state(
             root_state,
             dec_id.clone(),
             meta_path,
@@ -115,7 +115,7 @@ impl GlobalStateDecPathMetaHolder {
             "load global state meta success! dec={}, category={}, content={}",
             GlobalStatePathMetaStorage::get_dec_string(&dec_id),
             category,
-            serde_json::to_string(&data.coll().read().unwrap() as &GlobalStatePathMeta).unwrap(),
+            serde_json::to_string(&data.coll().read().await as &GlobalStatePathMeta).unwrap(),
         );
 
         let ret = GlobalStatePathMetaSyncCollection::new(device_id, storage, data);

@@ -92,6 +92,7 @@ impl PartialOrd for GlobalStatePathSpecifiedGroup {
 pub enum GlobalStatePathGroupAccess {
     Specified(GlobalStatePathSpecifiedGroup),
     Default(u32 /*AccessString*/),
+    Handler,
 }
 
 impl PartialOrd for GlobalStatePathGroupAccess {
@@ -99,12 +100,17 @@ impl PartialOrd for GlobalStatePathGroupAccess {
         match &self {
             Self::Specified(left) => match other {
                 Self::Specified(right) => left.partial_cmp(&right),
-                Self::Default(_) => Some(Ordering::Less),
+                _ => Some(Ordering::Less),
             },
             Self::Default(_left) => match other {
                 Self::Specified(_) => Some(Ordering::Greater),
                 Self::Default(_right) => Some(Ordering::Equal),
+                Self::Handler => Some(Ordering::Less),
             },
+            Self::Handler => match other {
+                Self::Handler => Some(Ordering::Equal),
+                _ => Some(Ordering::Greater),
+            }
         }
     }
 }
@@ -131,6 +137,9 @@ impl std::fmt::Display for GlobalStatePathGroupAccess {
                     AccessPermissions::format_u8(s.access),
                 )
             }
+            Self::Handler => {
+                write!(f, "[Handler]")
+            }
         }
     }
 }
@@ -144,6 +153,7 @@ impl GlobalStatePathGroupAccess {
                     return false;
                 }
             }
+            Self::Handler => {}
         }
 
         true
@@ -229,20 +239,38 @@ impl Ord for GlobalStatePathAccessItem {
 
 pub struct GlobalStateAccessRequest<'d, 'a, 'b> {
     pub dec: Cow<'d, ObjectId>,
-    pub path: Cow<'a, str>,
     pub source: Cow<'b, RequestSourceInfo>,
+    
+    pub path: Cow<'a, str>,
+    pub query_string: Option<Cow<'a, str>>,
+    
     pub permissions: AccessPermissions,
 }
 
 impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "path={}, {}, permissions={}",
-            self.path,
-            self.source,
-            self.permissions.as_str()
-        )
+        match &self.query_string {
+            Some(query_string) => {
+                write!(
+                    f,
+                    "path={}, query={}, {}, permissions={}",
+                    self.path,
+                    query_string,
+                    self.source,
+                    self.permissions.as_str()
+                )
+            }
+            None => {
+                write!(
+                    f,
+                    "path={}, {}, permissions={}",
+                    self.path,
+                    self.source,
+                    self.permissions.as_str()
+                )
+            }
+        }
+        
     }
 }
 

@@ -104,7 +104,7 @@ impl ObjectTraverserHandler for ObjectTraverserHelper {
             return ObjectTraverseFilterResult::Keep(None);
         }
 
-        match self.dec_meta.as_ref().unwrap().query_path_config(path) {
+        match self.dec_meta.as_ref().unwrap().query_path_config(path).await {
             Some(meta) => match meta.storage_state {
                 None | Some(GlobalStatePathStorageState::Concrete) => {
                     ObjectTraverseFilterResult::Keep(meta.depth.map(|v| v as u32))
@@ -135,7 +135,7 @@ impl ObjectTraverserHandler for ObjectTraverserHelper {
             None => object as &dyn ObjectSelectorDataProvider,
         };
 
-        match self.dec_meta.as_ref().unwrap().query_object_meta(provider) {
+        match self.dec_meta.as_ref().unwrap().query_object_meta(provider).await {
             Some(meta) => ObjectTraverseFilterResult::Keep(meta.depth.map(|v| v as u32)),
             None => ObjectTraverseFilterResult::Keep(None),
         }

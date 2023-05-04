@@ -18,6 +18,12 @@ pub(crate) struct ObjectMeta {
 
 impl ObjectMeta {
     pub fn new(item: GlobalStateObjectMetaItem) -> BuckyResult<Self> {
+        if item.access == GlobalStatePathGroupAccess::Handler {
+            let msg = format!("object meta does not support dynamic handler! {}", item);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
+        }
+
         let selector = ObjectSelector::new(item.selector)?;
         Ok(Self {
             selector,
@@ -80,6 +86,7 @@ impl GlobalStateObjectMetaList {
         } else {
             info!("new object meta: {}", item);
             self.list.push(item);
+            self.list.sort();
         }
 
         true
@@ -206,6 +213,11 @@ impl GlobalStateObjectMetaList {
                         // Find next path access item
                         continue;
                     }
+                }
+                GlobalStatePathGroupAccess::Handler => {
+                    let msg = format!("object meta does not support dynamic handler!");
+                    error!("{}", msg);
+                    continue;
                 }
             }
         }

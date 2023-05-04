@@ -89,6 +89,40 @@ fn run_docker_only_status<S: AsRef<OsStr>>(args: Vec<S>) -> BuckyResult<ExitStat
     Ok(run_docker(args)?.wait()?)
 }
 
+fn is_docker_running(name: &str) -> BuckyResult<bool> {
+    let output = run_docker(vec!["container", "inspect", name, "--format", "{{.State.Status}}"])?.wait_with_output()?;
+    if output.status.success() {
+        let status = String::from_utf8(output.stdout).unwrap();
+        Ok(status.trim() == "running")
+    } else {
+        info!("container inspect return error, tract as not running");
+        Ok(false)
+    }
+}
+
+pub(crate) fn stop_docker(name: &str) -> BuckyResult<()> {
+    info!("try to stop container[{}]", name);
+    if !(is_docker_running(name)?) {
+        info!("container {} not running", name);
+        return Ok(());
+    }
+
+    let args = vec!["stop", "-t", "30", &name];
+
+    let output = run_docker_only_status(args).map_err(|e| {
+        error!("stop container {} err {}", name, e);
+        e
+    })?;
+
+    if output.success() {
+        info!("stop container {} success", name);
+        Ok(())
+    } else {
+        error!("stop container {} fail, exit code {}", name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
+        Err(BuckyError::from(BuckyErrorCode::Failed))
+    }
+}
+
 fn add_bind_volume<P: AsRef<Path>, Q: AsRef<Path>>(args: &mut Vec<String>, source: P, target: Q, read_only: bool) {
     args.push("-v".to_owned());
     let mounts = if read_only {
@@ -218,6 +252,10 @@ impl DockerApi {
 
         // 构造 start.sh
         let start_sh_path = dockerfile_dir.join("start.sh");
+        if start_sh_path.is_dir() {
+            warn!("remove wrong sh path dir {}", start_sh_path.display());
+            let _ = std::fs::remove_dir_all(&start_sh_path);
+        }
         let gateway_ip = DockerApi::get_network_gateway_ip()?;
         info!("get docker start shell 's gateway ip: {}", gateway_ip);
 
@@ -226,6 +264,7 @@ impl DockerApi {
             .replace("{gateway_ip}", &gateway_ip);
         info!("docker start shell content: {}", &shell);
         std::fs::write(&start_sh_path, shell)?;
+        info!("write start shell file {}", start_sh_path.display());
         Ok(())
     }
 
@@ -236,7 +275,6 @@ impl DockerApi {
         install_cmd: Vec<String>,
     ) -> BuckyResult<()> {
         self.prepare(id)?;
-        // TODO 在容器内执行install命令
         for cmd in install_cmd {
             info!("start app {} install cmd {} in docker", id, cmd);
             let container_name = format!("decapp-{}-install", id.to_lowercase());
@@ -267,6 +305,7 @@ impl DockerApi {
                 None => {
                     let msg = format!("app {} run install cmd {} not return after {} secs, kill", id, &cmd, INSTALL_CMD_TIME_OUT_IN_SECS);
                     error!("{}", &msg);
+                    stop_docker(&container_name)?;
                     let _ = child.kill();
                     let _ = child.wait();
                     return Err(BuckyError::new(BuckyErrorCode::Timeout, msg));
@@ -419,38 +458,12 @@ impl DockerApi {
 
     pub fn stop(&self, id: &str) -> BuckyResult<()> {
         let container_name = format!("decapp-{}", id.to_lowercase());
-        info!("try to stop container[{}]", container_name);
-        if !(self.is_running(id)?) {
-            info!("container {} not running", container_name);
-            return Ok(());
-        }
-
-        let args = vec!["stop", "-t", "30", &container_name];
-
-        let output = run_docker_only_status(args).map_err(|e| {
-            error!("stop container {} err {}", container_name, e);
-            e
-        })?;
-
-        if output.success() {
-            info!("stop container {} success", container_name);
-            Ok(())
-        } else {
-            error!("stop container {} fail, exit code {}", container_name, output.code().map(|i|{i.to_string()}).unwrap_or("signal".to_owned()));
-            Err(BuckyError::from(BuckyErrorCode::Failed))
-        }
+        stop_docker(&container_name)
     }
 
     pub fn is_running(&self, id: &str) -> BuckyResult<bool> {
         let container_name = format!("decapp-{}", id.to_lowercase());
-        let output = run_docker(vec!["container", "inspect", &container_name, "--format", "{{.State.Status}}"])?.wait_with_output()?;
-        if output.status.success() {
-            let status = String::from_utf8(output.stdout).unwrap();
-            Ok(status.trim() == "running")
-        } else {
-            info!("container inspect return error, tract as not running");
-            Ok(false)
-        }
+        is_docker_running(&container_name)
     }
 }
 

@@ -167,11 +167,6 @@ impl GlobalRootIndex {
         new_root_id: ObjectId,
         prev_root_id: Option<ObjectId>,
     ) -> BuckyResult<()> {
-        info!(
-            "will update global root: category={}, {:?} -> {}",
-            self.category, prev_root_id, new_root_id
-        );
-
         let _update_lock = self.update_lock.lock().await;
         let current_root_info;
         {
@@ -187,6 +182,12 @@ impl GlobalRootIndex {
 
             root_info.root_state = Some(new_root_id);
             root_info.revision += 1;
+
+            info!(
+                "update global root: category={}, {:?} -> {}, revision={}",
+                self.category, prev_root_id, root_info.root_state.as_ref().unwrap(), root_info.revision,
+            );
+
             current_root_info = root_info.clone();
         }
 

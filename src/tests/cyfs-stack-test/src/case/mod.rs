@@ -30,6 +30,7 @@ mod object_meta_access;
 mod shared_stack;
 mod context;
 mod backup;
+mod acl_handler;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -39,7 +40,7 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
-    root_state::test().await;
+    acl_handler::test().await;
     return;
 
     backup::test().await;

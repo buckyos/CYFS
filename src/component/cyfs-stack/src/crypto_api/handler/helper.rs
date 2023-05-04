@@ -91,8 +91,8 @@ impl RequestHandlerHelper<CryptoSignObjectInputRequest> for CryptoSignObjectInpu
         self.object.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -115,8 +115,8 @@ impl RequestHandlerHelper<CryptoVerifyObjectInputRequest> for CryptoVerifyObject
         self.object.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -140,8 +140,8 @@ impl RequestHandlerHelper<Self> for CryptoEncryptDataInputRequest {
         self.data_len().to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -165,8 +165,8 @@ impl RequestHandlerHelper<Self> for CryptoDecryptDataInputRequest {
         self.data.len().to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {

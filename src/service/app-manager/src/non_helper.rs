@@ -438,7 +438,7 @@ impl NonHelper {
             .root_state_stub(None, None)
             .create_path_op_env()
             .await?;
-        op_env.lock(vec![path.to_owned()], 0).await.unwrap();
+        op_env.lock(vec![path.to_owned()], 0).await?;
         op_env.set_with_path(path, obj_id, None, true).await?;
         op_env.commit().await?;
 

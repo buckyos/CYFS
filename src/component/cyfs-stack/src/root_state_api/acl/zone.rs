@@ -53,6 +53,7 @@ impl GlobalStateInputProcessor for GlobalStateAclZoneInputProcessor {
                         global_state_root: None,
                         dec_id: Some(cyfs_core::get_system_dec_app().to_owned()),
                         req_path: Some(CYFS_GLOBAL_STATE_ROOT_VIRTUAL_PATH.to_owned()),
+                        req_query_string: None,
                     }
                 }
                 RootStateRootType::Dec => {
@@ -61,6 +62,7 @@ impl GlobalStateInputProcessor for GlobalStateAclZoneInputProcessor {
                         global_state_root: None,
                         dec_id: req.common.target_dec_id.clone(),
                         req_path: None, // None will treat as /
+                        req_query_string: None,
                     }
                 }
             };
@@ -99,11 +101,13 @@ impl GlobalStateInputProcessor for GlobalStateAclZoneInputProcessor {
 
             let access = req.access.as_ref().unwrap();
 
+            let (req_path, req_query_string) = RequestGlobalStatePath::parse_req_path_with_query_string_owned(&access.path);
             let global_state = RequestGlobalStatePath {
                 global_state_category: Some(self.get_category()),
                 global_state_root: None,
                 dec_id: req.common.target_dec_id.clone(),
-                req_path: Some(access.path.clone()),
+                req_path: Some(req_path),
+                req_query_string,
             };
 
             self.acl
@@ -157,11 +161,13 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
             .source
             .check_target_dec_permission(&req.common.target_dec_id)
         {
+            let (req_path, req_query_string) = RequestGlobalStatePath::parse_req_path_with_query_string_owned(&req.path);
             let global_state = RequestGlobalStatePath {
                 global_state_category: Some(self.next.get_category()),
                 global_state_root: None,
                 dec_id: req.common.target_dec_id.clone(),
-                req_path: Some(req.path.clone()),
+                req_path: Some(req_path),
+                req_query_string,
             };
 
             self.acl

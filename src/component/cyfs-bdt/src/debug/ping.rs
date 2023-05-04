@@ -17,6 +17,7 @@ use async_std::{
     future, 
 };
 use std::time::Duration;
+use std::io::ErrorKind;
 
 struct PingStubImpl {
     stack: WeakStack,
@@ -94,12 +95,18 @@ impl Pinger {
         let ts = cyfs_base::bucky_time_now();
         options.sequence = Some(TempSeq::from(ts as u32));
 
-        if let Err(err)  = self.0.datagram_tunnel.send_to(
+        if let Err(err) = self.0.datagram_tunnel.send_to(
             buf, 
             &mut options, 
             &remote.desc().device_id(), 
             datagram::ReservedVPort::Debug.into()) {
-            return Err(BuckyError::new(BuckyErrorCode::CodeError, format!("ping remote={:?} send err={:?}", remote, err)))
+            match err.kind() {
+                ErrorKind::NotConnected => {
+                },
+                _ => {
+                    return Err(BuckyError::new(BuckyErrorCode::CodeError, format!("ping remote={:?} send err={:?}", remote, err)));
+                }
+            }
         }
 
          match future::timeout(timeout, self.0.datagram_tunnel.recv_v()).await {

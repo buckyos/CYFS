@@ -5,7 +5,7 @@ use cyfs_base::*;
 use std::sync::{Arc, Mutex};
 
 pub struct RestoreManager {
-    // all backup tasks
+    // all restore tasks
     tasks: Mutex<Vec<UniRestoreTask>>,
 }
 

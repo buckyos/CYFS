@@ -84,9 +84,10 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
 
     async fn clear_access(&self) -> BuckyResult<usize>;
 
-    fn check_access<'d, 'a, 'b>(
+    async fn check_access<'d, 'a, 'b>(
         &self,
         req: GlobalStateAccessRequest<'d, 'a, 'b>,
+        handler: &GlobalStatePathHandlerRef,
     ) -> BuckyResult<()>;
 
     // link relate methods
@@ -100,7 +101,7 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
 
     async fn clear_link(&self) -> BuckyResult<usize>;
 
-    fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>>;
+    async fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>>;
 
     // object meta
     async fn add_object_meta(&self, item: GlobalStateObjectMetaItem) -> BuckyResult<bool>;
@@ -112,7 +113,7 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
 
     async fn clear_object_meta(&self) -> BuckyResult<usize>;
 
-    fn check_object_access(
+    async fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
         object_data: &dyn ObjectSelectorDataProvider,
@@ -120,7 +121,7 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>>;
 
-    fn query_object_meta(
+    async fn query_object_meta(
         &self,
         object_data: &dyn ObjectSelectorDataProvider,
     ) -> Option<GlobalStateObjectMetaConfigItemValue>;
@@ -134,7 +135,7 @@ pub trait GlobalStateMetaRawProcessor: Send + Sync {
     ) -> BuckyResult<Option<GlobalStatePathConfigItem>>;
     async fn clear_path_config(&self) -> BuckyResult<usize>;
 
-    fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue>;
+    async fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue>;
 }
 
 pub type GlobalStateMetaRawProcessorRef = Arc<Box<dyn GlobalStateMetaRawProcessor>>;

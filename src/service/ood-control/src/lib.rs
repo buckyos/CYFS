@@ -7,6 +7,7 @@ mod http_server;
 pub mod interface;
 mod request;
 mod ood_controller;
+mod restore;
 
 pub use app_bind_manager::AppBindManager;
 pub use controller::*;
@@ -15,6 +16,9 @@ pub use interface::{
 };
 pub use request::*;
 pub use ood_controller::*;
+
+#[cfg(test)]
+mod test;
 
 #[macro_use]
 extern crate log;

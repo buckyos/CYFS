@@ -68,8 +68,8 @@ impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
         self.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -92,8 +92,8 @@ impl RequestHandlerHelper<NDNGetDataInputRequest> for NDNGetDataInputRequest {
         self.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -116,8 +116,8 @@ impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputReque
         self.object_id.to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &self.common.req_path
+    fn req_path(&self) -> Option<&String> {
+        self.common.req_path.as_ref()
     }
 
     fn source(&self) -> &RequestSourceInfo {
@@ -142,8 +142,8 @@ impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
         self.session_id.value().to_string()
     }
 
-    fn req_path(&self) -> &Option<String> {
-        &None
+    fn req_path(&self) -> Option<&String> {
+        None
     }
 
     fn source(&self) -> &RequestSourceInfo {
