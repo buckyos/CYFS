@@ -1,4 +1,4 @@
-use crate::WS_CMD_ERROR;
+use crate::WS_CMD_PROCESS_ERROR;
 use super::packet::*;
 use super::session::*;
 use cyfs_base::JsonCodec;
@@ -313,7 +313,7 @@ impl WebSocketRequestManager {
         packet: WSPacket,
     ) -> BuckyResult<()> {
         let cmd = packet.header.cmd;
-        if cmd > 0 && cmd != WS_CMD_ERROR {
+        if cmd > 0 && cmd != WS_CMD_PROCESS_ERROR {
             let seq = packet.header.seq;
 
             let ret = requestor
@@ -336,9 +336,9 @@ impl WebSocketRequestManager {
                     }
                 }
                 Err(e) => {
-                    // Some error occured during process, resp with WS_CMD_ERROR
+                    // Some error occured during process, resp with WS_CMD_PROCESS_ERROR
                     let resp = e.encode_string();
-                    let resp_packet = WSPacket::new_from_bytes(seq, WS_CMD_ERROR, resp.into_bytes());
+                    let resp_packet = WSPacket::new_from_bytes(seq, WS_CMD_PROCESS_ERROR, resp.into_bytes());
                     let buf = resp_packet.encode();
                     requestor.post_to_session(buf).await?;
                 }
@@ -451,7 +451,7 @@ impl WebSocketRequestManager {
         let mut item = item.lock().unwrap();
         if let Some(waker) = item.waker.take() {
             if item.resp.is_none() {
-                if packet.header.cmd == crate::WS_CMD_ERROR {
+                if packet.header.cmd == crate::WS_CMD_PROCESS_ERROR {
                     let content = String::from_utf8(packet.content).map_err(|e| {
                         let msg = format!(
                             "decode ws error cmd packet as string failed! sid={}, {}",

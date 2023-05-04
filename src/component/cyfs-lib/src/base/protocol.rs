@@ -31,4 +31,4 @@ pub const HTTP_CMD_REQUEST: u16 = 21;
 pub const WS_CMD_RESERVED_BEGIN: u16 = u16::MAX - 32;
 
 // An error occurred while processing the request
-pub const WS_CMD_ERROR: u16 = u16::MAX;
+pub const WS_CMD_PROCESS_ERROR: u16 = u16::MAX;
