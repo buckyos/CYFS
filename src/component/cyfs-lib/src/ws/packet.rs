@@ -11,17 +11,17 @@ const WS_PACKET_HEADER_LENGTH: usize = 10;
 pub struct WSPacketHeader {
     pub magic: u8,
 
-    // 版本
+    // protocol version
     pub version: u8,
 
-    // 序号
+    // request's serial no.
     pub seq: u16,
 
     // cmd
-    // CMD=0表示是response，大于0表示request
+    // CMD=0 is response，(0, (u16::MAX-32)) is user request, [u16::MAX - 32, u16::MAX] for reserved
     pub cmd: u16,
 
-    // 内容长度
+    // content length in bytes
     pub content_length: u32,
 }
 
@@ -45,7 +45,7 @@ impl WSPacketHeader {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        // TODO 版本判断
+        // TODO check the version
         let _version = buf.get_u8();
 
         let seq = buf.get_u16();

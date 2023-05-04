@@ -12,7 +12,7 @@ lazy_static::lazy_static! {
 }
 
 ////// ws的cmd定义
-// CMD=0表示是response，大于0表示request
+// CMD=0 is response，(0, (u16::MAX-32)) is user request, [u16::MAX - 32, u16::MAX] for reserved
 
 // events
 pub const ROUTER_WS_EVENT_CMD_ADD: u16 = 1;
@@ -24,5 +24,11 @@ pub const ROUTER_WS_HANDLER_CMD_ADD: u16 = 11;
 pub const ROUTER_WS_HANDLER_CMD_REMOVE: u16 = 12;
 pub const ROUTER_WS_HANDLER_CMD_EVENT: u16 = 13;
 
-// 基于ws的http request
+// WS based http request
 pub const HTTP_CMD_REQUEST: u16 = 21;
+
+// [u16::MAX - 32, u16::MAX] for reserved
+pub const WS_CMD_RESERVED_BEGIN: u16 = u16::MAX - 32;
+
+// An error occurred while processing the request
+pub const WS_CMD_ERROR: u16 = u16::MAX;
