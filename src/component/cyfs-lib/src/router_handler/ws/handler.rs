@@ -269,8 +269,9 @@ impl RouterWSHandlerManagerImpl {
 
         match self.handlers.entry(id) {
             Entry::Occupied(_) => {
-                error!("router handler already exists! id={}", handler_item.id);
-                return Err(BuckyError::from(BuckyErrorCode::AlreadyExists));
+                let msg = format!("router handler already exists! id={}", handler_item.id);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
             }
 
             Entry::Vacant(vc) => {
