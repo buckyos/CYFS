@@ -100,7 +100,7 @@ impl HttpRequestor for WSHttpRequestor {
             );
             error!("{}", msg);
 
-            BuckyError::from(msg)
+            BuckyError::new(BuckyErrorCode::ConnectionAborted, msg)
         })?;
 
         // 发起请求并等待应答
@@ -118,7 +118,7 @@ impl HttpRequestor for WSHttpRequestor {
             );
             error!("{}", msg);
 
-            BuckyError::from(msg)
+            BuckyError::new(BuckyErrorCode::ConnectionAborted, msg)
         })?;
 
         info!(

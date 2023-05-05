@@ -111,15 +111,18 @@ impl WebSocketSession {
         if let Some(tx) = tx {
             let msg = Message::binary(msg);
             if let Err(e) = tx.send(msg).await {
-                warn!("session tx already closed! sid={}, {}", self.sid, e);
-                Err(BuckyError::from(BuckyErrorCode::NotConnected))
+                let msg = format!("session tx already closed! sid={}, {}", self.sid, e);
+                warn!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotConnected, msg))
             } else {
                 Ok(())
             }
         } else {
-            // session已经结束，直接忽略
-            warn!("session tx not exists! sid={}", self.sid);
-            Err(BuckyError::from(BuckyErrorCode::NotConnected))
+            // session is aborted, should ignore
+            let msg = format!("session tx not exists! sid={}", self.sid);
+            warn!("{}", msg);
+
+            Err(BuckyError::new(BuckyErrorCode::NotConnected, msg))
         }
     }
 
@@ -133,7 +136,7 @@ impl WebSocketSession {
                 let msg = format!("ws connect error: service_url={}, err={}", service_url, e);
                 error!("{}", msg);
 
-                BuckyError::new(BuckyErrorCode::Unknown, msg)
+                BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
             })?;
 
         Self::run(session, stream, false).await
@@ -147,7 +150,7 @@ impl WebSocketSession {
             let msg = format!("ws accept error: err={}", e);
             error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::Unknown, msg)
+            BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
         })?;
 
         Self::run(session, stream, true).await
@@ -251,7 +254,7 @@ impl WebSocketSession {
                         }
                     }
 
-                    // 检查连接是否还在活跃
+                    // Check if still alive
                     let now = Instant::now();
                     if now - last_alive >= WS_ALIVE_TIMEOUT_IN_SECS {
                         let msg = format!("ws session alive timeout: sid={}", session.sid());
@@ -363,14 +366,14 @@ impl WebSocketSession {
 
         match WebSocketRequestManager::on_msg(requestor, packet).await {
             Ok(_) => {
-                // 处理消息成功了
+                // Process the msg successfully
             }
             Err(e) => {
                 error!("process ws request error: {}", e);
 
                 /*
-                // 处理消息失败，不需要终止当前session
-                // 只要包格式正确,session就可以继续使用
+                // The processing msg failed, no need to terminate the current session
+                // As long as the packet format is correct, the session can continue to use
                 *has_err.lock().unwrap() = Some(e);
 
                 let mut abort_state = abort_state.lock().unwrap();

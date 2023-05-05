@@ -143,7 +143,7 @@ impl WebSocketClient {
             let msg = format!("ws connect to {} error: {}", self.service_addr, e);
             error!("{}", msg);
 
-            BuckyError::from(e)
+            BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
         })?;
 
         let conn_info = (

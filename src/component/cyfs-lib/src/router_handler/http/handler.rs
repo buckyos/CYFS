@@ -298,8 +298,10 @@ impl RouterHttpHandlerManager {
 
             match inner.handlers.entry(id.clone()) {
                 Entry::Occupied(_) => {
-                    error!("router handler already exists! id={:?}", id);
-                    return Err(BuckyError::from(BuckyErrorCode::AlreadyExists));
+                    let msg = format!("router handler already exists! id={:?}", id);
+                    error!("{}", msg);
+
+                    return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
                 }
                 Entry::Vacant(vc) => {
                     vc.insert(Arc::new(item));

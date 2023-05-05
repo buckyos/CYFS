@@ -98,9 +98,10 @@ impl JsonCodec<Self> for RouterWSHandlerResponse {
             match k.as_str() {
                 "err" => {
                     let v = v.as_str().unwrap_or("").parse::<u32>().map_err(|e| {
-                        error!("parse err field error: {} {:?}", e, obj);
+                        let msg = format!("parse err field error: {} {:?}", e, obj);
+                        error!("{}", msg);
 
-                        BuckyError::from(BuckyErrorCode::InvalidFormat)
+                        BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                     })?;
 
                     err = Some(v);
@@ -118,8 +119,10 @@ impl JsonCodec<Self> for RouterWSHandlerResponse {
         }
 
         if err.is_none() {
-            error!("err field missing! {:?}", obj);
-            return Err(BuckyError::from(BuckyErrorCode::InvalidFormat));
+            let msg = format!("err field missing! {:?}", obj);
+            error!("{}", msg);
+            
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
         Ok(Self {

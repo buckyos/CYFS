@@ -1,5 +1,7 @@
+use crate::WS_CMD_PROCESS_ERROR;
 use super::packet::*;
 use super::session::*;
+use cyfs_base::JsonCodec;
 use cyfs_base::{bucky_time_now, BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
 
@@ -82,14 +84,14 @@ impl RequestItem {
         }
     }
 
-    fn resp(&mut self, code: BuckyErrorCode) {
+    fn resp(&mut self, err: BuckyError) {
         if let Some(waker) = self.waker.take() {
             if self.resp.is_none() {
-                self.resp = Some(Err(BuckyError::from(code)));
+                self.resp = Some(Err(err));
             } else {
                 warn!(
-                    "end ws request with {:?} but already has resp! send_tick={}, seq={}",
-                    code, self.send_tick, self.seq
+                    "end ws request with {} but already has resp! send_tick={}, seq={}",
+                    err, self.send_tick, self.seq
                 );
                 unreachable!();
             }
@@ -99,11 +101,19 @@ impl RequestItem {
     }
 
     fn timeout(&mut self) {
-        self.resp(BuckyErrorCode::Timeout);
+        let msg = format!(
+            "request timeout! seq={}, send_tick={}",
+            self.seq, self.send_tick
+        );
+        self.resp(BuckyError::new(BuckyErrorCode::Timeout, msg));
     }
 
     fn abort(&mut self) {
-        self.resp(BuckyErrorCode::Aborted);
+        let msg = format!(
+            "request aborted! seq={}, send_tick={}",
+            self.seq, self.send_tick
+        );
+        self.resp(BuckyError::new(BuckyErrorCode::Aborted, msg));
     }
 }
 
@@ -188,13 +198,13 @@ impl WebSocketRequestContainer {
     }
 
     fn check_timeout(&mut self) -> Vec<(u16, Arc<Mutex<RequestItem>>)> {
-        // 直接清除过期的元素，不能迭代这些元素，否则会导致这些元素被更新时间戳
+        // Clear the expired elements directly and cannot iterate these elements, otherwise it will cause these elements to be updated at the time stamp
         let (_, list) = self.list.notify_get(&0);
 
         list
     }
 
-    // 清空所有元素
+    // Clear all elements
     fn clear(&mut self) {
         for (seq, item) in self.list.iter() {
             info!("will abort ws request: seq={}", seq);
@@ -282,7 +292,7 @@ impl WebSocketRequestManager {
     pub fn unbind_session(&self) {
         self.stop_monitor();
 
-        // 强制所有pending的请求为超时
+        // Force all pending request as timeout
         self.reqs.lock().unwrap().clear();
 
         let _ = {
@@ -297,38 +307,50 @@ impl WebSocketRequestManager {
         };
     }
 
-    // 收到了msg
+    // Has received MSG
     pub async fn on_msg(
         requestor: Arc<WebSocketRequestManager>,
         packet: WSPacket,
     ) -> BuckyResult<()> {
         let cmd = packet.header.cmd;
-        if cmd > 0 {
+        if cmd > 0 && cmd != WS_CMD_PROCESS_ERROR {
             let seq = packet.header.seq;
 
-            let resp = requestor
+            let ret = requestor
                 .handler
                 .on_request(requestor.clone(), cmd, packet.content)
-                .await?;
+                .await;
 
-            // 如果seq==0，表示不需要应答，那么应该返回None
-            if resp.is_none() {
-                assert!(seq == 0);
-            } else {
-                assert!(seq > 0);
+            match ret {
+                Ok(resp) => {
+                    // If SEQ == 0 means that we don’t need to answer, then should return NONE
+                    if resp.is_none() {
+                        assert!(seq == 0);
+                    } else {
+                        assert!(seq > 0);
 
-                // 发起应答,cmd需要设置为0
-                let resp_packet = WSPacket::new_from_bytes(seq, 0, resp.unwrap());
-                let buf = resp_packet.encode();
-                requestor.post_to_session(buf).await?;
+                        // Send response, CMD needs to be set to 0
+                        let resp_packet = WSPacket::new_from_bytes(seq, 0, resp.unwrap());
+                        let buf = resp_packet.encode();
+                        requestor.post_to_session(buf).await?;
+                    }
+                }
+                Err(e) => {
+                    // Some error occured during process, resp with WS_CMD_PROCESS_ERROR
+                    let resp = e.encode_string();
+                    let resp_packet = WSPacket::new_from_bytes(seq, WS_CMD_PROCESS_ERROR, resp.into_bytes());
+                    let buf = resp_packet.encode();
+                    requestor.post_to_session(buf).await?;
+                }
             }
         } else {
             requestor.on_resp(packet).await?;
         }
+
         Ok(())
     }
 
-    // 发送一个字符串请求
+    // Send a request in string format
     pub async fn post_req(&self, cmd: u16, msg: String) -> BuckyResult<String> {
         let content = self.post_bytes_req(cmd, msg.into_bytes()).await?;
 
@@ -348,12 +370,12 @@ impl WebSocketRequestManager {
         }
     }
 
-    // 发送一个请求并等待应答
+    // Send a request and wait for the answer
     pub async fn post_bytes_req(&self, cmd: u16, msg: Vec<u8>) -> BuckyResult<Vec<u8>> {
         let (seq, item, timeout_list) = self.reqs.lock().unwrap().new_request(self.sid());
         assert!(seq > 0);
 
-        // 首先处理超时的
+        // First process the timeout requests
         if !timeout_list.is_empty() {
             WebSocketRequestContainer::on_timeout(self.sid(), timeout_list);
         }
@@ -376,11 +398,11 @@ impl WebSocketRequestManager {
 
         // info!("request send complete, now will wait for resp! cmd={}", cmd);
 
-        // 等待唤醒
+        // Wait wakeup on response
         let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
         future.await.unwrap_err();
 
-        // 应答
+        // got response
         let mut item = item.lock().unwrap();
         if let Some(resp) = item.resp.take() {
             resp
@@ -406,9 +428,8 @@ impl WebSocketRequestManager {
         self.post_to_session(buf).await
     }
 
-    // 收到了应答
+    // Receive the answer
     async fn on_resp(&self, packet: WSPacket) -> BuckyResult<()> {
-        assert!(packet.header.cmd == 0);
         assert!(packet.header.seq > 0);
 
         let seq = packet.header.seq;
@@ -426,11 +447,39 @@ impl WebSocketRequestManager {
 
         let item = ret.unwrap();
 
-        // 保存应答并唤醒
+        // Save the response and wake up
         let mut item = item.lock().unwrap();
         if let Some(waker) = item.waker.take() {
             if item.resp.is_none() {
-                item.resp = Some(Ok(packet.content));
+                if packet.header.cmd == crate::WS_CMD_PROCESS_ERROR {
+                    let content = String::from_utf8(packet.content).map_err(|e| {
+                        let msg = format!(
+                            "decode ws error cmd packet as string failed! sid={}, {}",
+                            packet.header.seq,
+                            e
+                        );
+                        error!("{}", msg);
+            
+                        BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+                    })?;
+
+                    let err = BuckyError::decode_string(&content).map_err(|e| {
+                        let msg = format!(
+                            "decode ws error cmd packet string as BuckyError failed! sid={}, content={}, {}",
+                            packet.header.seq,
+                            content,
+                            e
+                        );
+                        error!("{}", msg);
+            
+                        BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+                    })?;
+
+                    item.resp = Some(Err(err));
+                } else {
+                    assert!(packet.header.cmd == 0);
+                    item.resp = Some(Ok(packet.content));
+                }
             } else {
                 warn!(
                     "ws request recv resp but already has local resp! sid={}, seq={}",
@@ -457,8 +506,10 @@ impl WebSocketRequestManager {
     async fn post_to_session(&self, msg: Vec<u8>) -> BuckyResult<()> {
         let ret = self.session.lock().unwrap().clone();
         if ret.is_none() {
-            warn!("ws session not exists: {}", self.sid());
-            return Err(BuckyError::from(BuckyErrorCode::NotConnected));
+            let msg = format!("ws session not exists: {}", self.sid());
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::NotConnected, msg));
         }
 
         let session = ret.unwrap();
