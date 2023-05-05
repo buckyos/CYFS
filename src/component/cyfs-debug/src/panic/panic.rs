@@ -1,10 +1,10 @@
 use panic::PanicInfo;
 
 use backtrace::{Backtrace, BacktraceFrame};
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::panic;
 use std::thread;
-use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CyfsPanicInfo {
@@ -16,12 +16,11 @@ pub struct CyfsPanicInfo {
 impl CyfsPanicInfo {
     pub fn new(backtrace: Backtrace, info: &PanicInfo) -> Self {
         let backtrace_msg = Self::format_backtrace(&backtrace);
-        let msg = Self::format_info(info, &backtrace_msg);
+        let (msg, _) = Self::format_info(info, &backtrace_msg);
 
         let backtrace_msg = Self::format_backtrace_with_symbol(&backtrace);
-        let msg_with_symbol = Self::format_info(info, &backtrace_msg);
+        let (msg_with_symbol, hash) = Self::format_info(info, &backtrace_msg);
 
-        let hash = Self::calc_hash(&backtrace);
         let ret = Self {
             msg,
             msg_with_symbol,
@@ -33,7 +32,7 @@ impl CyfsPanicInfo {
         ret
     }
 
-    fn format_info(info: &PanicInfo, backtrace: &str) -> String {
+    fn format_info(info: &PanicInfo, backtrace: &str) -> (String, String) {
         let thread = thread::current();
         let thread = thread.name().unwrap_or("unnamed");
 
@@ -41,12 +40,15 @@ impl CyfsPanicInfo {
             Some(s) => *s,
             None => match info.payload().downcast_ref::<String>() {
                 Some(s) => &**s,
-                None => "Box<Any>",
+                None => "[panic]",
             },
         };
 
+        let unique_info;
         let msg = match info.location() {
             Some(location) => {
+                unique_info = format!("{}:{}:{}", msg, location.file(), location.line());
+
                 format!(
                     "thread '{}' panicked at '{}': {}:{}\n{}",
                     thread,
@@ -57,6 +59,8 @@ impl CyfsPanicInfo {
                 )
             }
             None => {
+                unique_info = format!("{}", msg);
+
                 format!(
                     "thread '{}' panicked at '{}'\n{}",
                     thread,
@@ -66,7 +70,15 @@ impl CyfsPanicInfo {
             }
         };
 
-        msg
+        let mut sha256 = sha2::Sha256::new();
+        sha256.input(unique_info.as_bytes());
+        let ret = sha256.result();
+        let hash = hex::encode(ret);
+
+        // Only use the first 32 bytes
+        let hash = hash[..32].to_owned();
+
+        (msg, hash)
     }
 
     fn format_backtrace_with_symbol(backtrace: &Backtrace) -> String {
@@ -88,6 +100,7 @@ impl CyfsPanicInfo {
         values.join("\n")
     }
 
+    /*
     fn calc_hash(backtrace: &Backtrace) -> String {
         let mut sha256 = sha2::Sha256::new();
 
@@ -108,11 +121,12 @@ impl CyfsPanicInfo {
         let ret = sha256.result();
         let hash = hex::encode(ret);
 
-        // 只截取前32个字节
+        // Only use the first 32 bytes
         let hash = hash[..32].to_owned();
 
         info!("stack_hash=\n{}", hash);
 
         hash
     }
+    */
 }

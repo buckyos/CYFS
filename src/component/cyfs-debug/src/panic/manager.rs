@@ -81,7 +81,8 @@ impl PanicManager {
 
             let _ = std::thread::spawn(move || {
                 this.on_panic(pinfo);
-            }).join();
+            })
+            .join();
         }));
     }
 
@@ -171,13 +172,13 @@ impl PanicBuilder {
         }
     }
 
-    // panic信息是否输出到日志文件，默认输出
+    // Whether the PANIC information is output to the log file, the default is true
     pub fn log_to_file(mut self, enable: bool) -> Self {
         self.log_to_file = enable;
         self
     }
 
-    // panic输出到的日志目录，默认是{cyfs_root}/log/panic/{product_name}/
+    // The log directory output for the PANIC info, the default is {cyfs_root}/log/panic/{product_name}/
     pub fn log_dir(mut self, log_dir: impl Into<PathBuf>) -> Self {
         self.log_dir = log_dir.into();
         self
@@ -207,7 +208,7 @@ impl PanicBuilder {
         self
     }
 
-    // panic后是否结束进程，默认不结束
+    // Whether to exit the process after panic, and the default is false
     pub fn exit_on_panic(mut self, exit: bool) -> Self {
         self.exit_on_panic = exit;
         self
@@ -215,5 +216,23 @@ impl PanicBuilder {
 
     pub fn build(self) -> PanicManager {
         PanicManager::new(self)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        cyfs_base::init_simple_log("test-panic", None);
+
+        PanicBuilder::new("test", "test-panic").build().start();
+
+        async_std::task::block_on(async move {
+            async_std::task::sleep(std::time::Duration::from_secs(2)).await;
+
+            unreachable!("panic");
+        });
     }
 }
