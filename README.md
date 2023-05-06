@@ -46,7 +46,7 @@ The above is the overall architecture diagram of CYFS, which can help to establi
 - Data property rights analysis based on the input and results of trusted computing, to realize the evolution from on-chain smart contracts to off-chain Data Exchage Contract (DEC).
 - The Service of Web3 DEC App is installed on everyone's OOD, realizing the decentralization of application services
 
-What key problems are these designs designed to solve? (We believe that "finding the right problem is half done~") You can read "[CYFS Architecture](./blob/main/doc/en/Introduction%20to%20CYFS%20Protocol.md)" and "CYFS Whitepaper" (coming soon), the amount of content comparison Great, you can understand it with practice~
+What key problems are these designs designed to solve? (We believe that "finding the right problem is half done~") You can read "[CYFS Architecture](./doc/en/Introduction%20to%20CYFS%20Protocol.md)" and "CYFS Whitepaper" (coming soon), the amount of content comparison Great, you can understand it with practice~
 
 ## Start your Web3 journey with “Hello CYFS”
 We strongly recommend that you read the "Hello CYFS" series of articles in full to get a complete initial experience of CYFS (the whole process can be completed within 1 hour):
@@ -137,7 +137,7 @@ cyfs get cyfs://o/$ownerid/$objid/index.html
 You can download the just-released official website.
 
 Any machine with a `cyfs browser` installed can use the cyfs browser to open `cyfs://o/$ownerid/$objid/index.html` and browse the website just released.
-For the download of `cyfs browser`, see [here](./blob/main/doc/en/Download.md)
+For the download of `cyfs browser`, see [here](./doc/en/Download.md)
 
 # Code guide
 Through the above process, you have a basic understanding of the design and use of CYFS. Although the design of CYFS is basically stable, we still have a lot of code to write. We are very eager for your help, but certainly not too much energy to write documentation (details are in the source code~). Here we do a minimalist code introduction, hoping to help you understand the implementation of CYFS faster.
