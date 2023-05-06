@@ -4,9 +4,9 @@
 ![liscence](https://img.shields.io/crates/l/cyfs-base?style=plastic)
 ![Downloads](https://img.shields.io/crates/d/cyfs-base?style=plastic)
 
-****CYFS：Next Generation Protocl Family to Build Web3****    
+****CYFS：Next Generation Protocol Family to Build Web3****    
 + CYFS is short for CYberFileSystem
-+ CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index](cyfs://cyfs/index)  
++ CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com), [cyfs://cyfs/index](cyfs://cyfs/index)  
 + Discord：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS White Paper(Coming soon)  
 + Language: [中文](./README.zh-CN.md)
@@ -29,7 +29,7 @@ This repository only contains the implementation of the CYFS core system. It doe
 - [cyfs-ts-sdk](https://github.com/buckyos/cyfs-ts-sdk): cyfs-sdk based on typescript to help typescript developers build Web3 DEC apps.
 - CYFS Transmission Lab: A system for the network lab for testing the CYFS protocol (Coming soon)
 - CyberChat: CYFS wallet, manage DID, OOD, DECApp and data assets (Coming soon)
-- CYFS Browser: A browser based on the Chrome kernel that supports the cyfs:// protocol (Coming soon)
+- CYFS Browser: A browser based on the Chrome kernel that supports the `cyfs://` protocol (https://github.com/buckyos/cyfs-browser)
 - CodeDAO: Decentralized Github with CYFS (Coming soon)
 
 # Background
@@ -256,7 +256,7 @@ Our next goal is to complete the launch of the testnet (beta). Relatively nightl
 
 We hope to launch the CYFS mainnet within 18 months. There is no definite launch time for the CYFS mainnet. As long as the asset security, stability and performance of the testnet reach the preset goals, we will enter the release channel of the mainnet.
 
-Welcome to follow [#1 issue](https://github.com/buckyos/CYFS/issues/1) to learn more about CYFS Roadmap~
+Welcome to follow [CYFS-Stack & Services](https://github.com/orgs/buckyos/projects/7) to learn more about CYFS Roadmap~
 
 # Contributing
 The dev_testnet of CYFS is designed and implemented by Shenzhen BuckyCloud. The core team of Shenzhen BuckyCloud is inherited from the original Xunlei(NASQ:XNET) infrastructure R&D team. We have rich experience in network protocol and infrastructure development, as well as super-large-scale P2P network design and tuning. experience. After CYFS is open source, BuckyCloud has completed its key historical mission. Now we prefer to call ourselves CYFS CoreDevTeam. In the future, it will be an open team organized based on DAO. The main responsibility is to promote the continuous research and development of CYFS. We welcome all engineers to join:
@@ -272,6 +272,6 @@ We are designing a DAO-NFT-based contribution record system. When this Repo is m
 
 # License
 BSD-2-Clause License    
-Copyright (c) 2022, CYFS Core Dev Team.
+Copyright (c) 2023, CYFS Core Dev Team.
 
 
