@@ -13,9 +13,13 @@ use clap::{
 use async_std::{
     future,
 };
+
 use cyfs_base::*;
 use cyfs_bdt::*;
 use log::*;
+
+mod sn_bench;
+use crate::sn_bench::*;
 
 fn load_dev_by_path(path: &str) -> Option<Device> {
     let desc_path = Path::new(path);
@@ -64,35 +68,6 @@ fn load_sn(sns: Vec<&str>) -> Option<Vec<Device>> {
     }
 }
 
-fn create_device(sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>) -> (Device, PrivateKey) {
-    let private_key = PrivateKey::generate_rsa(1024).unwrap();
-    let public_key = private_key.public();
-
-    let sn_list = match sns.as_ref() {
-        Some(sns) => {
-            let mut sn_list = Vec::new();
-            for sn in sns.iter() {
-                sn_list.push(sn.desc().device_id());
-            }
-            sn_list
-        },
-        None => vec![],
-    };
-
-    let device = Device::new(
-        None,
-        UniqueId::default(),
-        endpoints.clone(),
-        sn_list,
-        vec![],
-        public_key,
-        Area::default(), 
-        DeviceCategory::PC
-    ).build();
-
-    (device, private_key)
-}
-
 fn loger_init(log_level: &str, name: &str) {
     if log_level != "none" {
         cyfs_debug::CyfsLoggerBuilder::new_app(name)
@@ -127,6 +102,14 @@ pub fn command_line() -> clap::App<'static, 'static> {
             .arg(Arg::with_name("remote").required(true))
             .arg(Arg::with_name("port").required(true))
         )
+        .subcommand(SubCommand::with_name("sn_bench_ping")
+            .arg(Arg::with_name("remote").required(true))
+            .arg(Arg::with_name("port").required(true))
+        )
+        .subcommand(SubCommand::with_name("sn_bench_call")
+            .arg(Arg::with_name("remote").required(true))
+            .arg(Arg::with_name("port").required(true))
+        )
 }
 
 async fn remote_device(
@@ -153,7 +136,7 @@ async fn remote_device(
             Ok(device)
         }
     }
-} 
+}
 
 #[async_std::main]
 async fn main() {
@@ -163,6 +146,10 @@ async fn main() {
 
     let log_level = matches.value_of("log_level").unwrap();
     let udp_sn_only = u16::from_str(matches.value_of("udp_sn_only").unwrap()).unwrap();
+
+    let cmd_params = command_line().get_matches_from_safe(cmd_line.split(" "))
+        .map_err(|err| err.message).unwrap();
+    let subcommand = cmd_params.subcommand_name().ok_or_else(|| "no subcommand\r\n".to_string()).unwrap();
 
     let mut endpoints = vec![];
     for ep in matches.values_of("ep").unwrap() {
@@ -181,6 +168,34 @@ async fn main() {
         }
     }
     let sns = load_sn(sns);
+
+    match subcommand {
+        "sn_bench_ping" => {
+            let subcommand = cmd_params.subcommand_matches("sn_bench_ping").unwrap();
+            let device_load = subcommand.value_of("load").unwrap_or("");
+            let device_num = u64::from_str(subcommand.value_of("device").unwrap_or("1000")).unwrap();
+            let interval_ms = u64::from_str(subcommand.value_of("interval").unwrap_or("1000")).unwrap();
+            let timeout_sec = u64::from_str(subcommand.value_of("timeout").unwrap_or("3")).unwrap();
+            let bench_time = u64::from_str(subcommand.value_of("time").unwrap_or("60")).unwrap();
+
+            let ping_exception = SnBenchPingException::default();
+            let result = sn_bench_ping(
+                device_num, device_load, 
+                sns, endpoints, bench_time,
+                interval_ms, 
+                timeout_sec,
+                ping_exception).await.unwrap();
+
+            result.show();
+
+            return;
+        },
+        "sn_bench_call" => {
+
+            return;
+        },
+        _ => {}
+    }
 
     //load device
     let desc_path = Path::new("deamon.desc");
@@ -218,7 +233,7 @@ async fn main() {
         let mut buf = vec![];
         PrivateKey::decode_from_file(&sec_path, &mut buf).map(|(k, _)| k)
     }; 
-    
+
     if let Err(err) = private_key {
         println!("load {:?} failed for {}", sec_path, err);
         return;
@@ -295,12 +310,9 @@ async fn main() {
     }
 
     //
-    let params = command_line().get_matches_from_safe(cmd_line.split(" "))
-        .map_err(|err| err.message).unwrap();
-    let subcommand = params.subcommand_name().ok_or_else(|| "no subcommand\r\n".to_string()).unwrap();
     match subcommand {
         "ping" => {
-            let subcommand = params.subcommand_matches("ping").unwrap();
+            let subcommand = cmd_params.subcommand_matches("ping").unwrap();
             let remote = remote_device(&stack, subcommand.value_of("remote").unwrap()).await
                 .map_err(|err| format!("load remote desc {} failed for {}\r\n", subcommand.value_of("remote").unwrap(), err)).unwrap();
             let count = u32::from_str(subcommand.value_of("count").unwrap()).unwrap();
@@ -327,7 +339,7 @@ async fn main() {
 
         },
         "nc" => {
-            let subcommand = params.subcommand_matches("nc").unwrap();
+            let subcommand = cmd_params.subcommand_matches("nc").unwrap();
             let remote = remote_device(&stack, subcommand.value_of("remote").unwrap()).await
                 .map_err(|err| format!("load remote desc {} failed for {}\r\n", subcommand.value_of("remote").unwrap(), err)).unwrap();
             let port = u16::from_str(subcommand.value_of("port").unwrap()).unwrap();

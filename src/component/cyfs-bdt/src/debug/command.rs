@@ -49,6 +49,12 @@ pub fn debug_command_line() -> clap::App<'static, 'static> {
             .arg(Arg::with_name("plaintext").required(true))
             .arg(Arg::with_name("timeout").required(true))
         )
+        .subcommand(SubCommand::with_name("sn_bench_ping")
+            .arg(Arg::with_name("load").required(true))
+            .arg(Arg::with_name("device").required(true))
+            .arg(Arg::with_name("interval").required(true))
+            .arg(Arg::with_name("timeout").required(true))
+        )
 }
 
 pub enum DebugCommand {
