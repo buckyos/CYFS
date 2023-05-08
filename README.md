@@ -92,7 +92,7 @@ Compile successfully generates `ood-installer`
 
 ## Install the newly compiled OOD System
 Before installation, you need to prepare the depends:
-- Node.js 14 and above
+- Node.js 16 and above
 - MongoDB 4.4 version, configured to boot, use the default port, no authentication (using SQLite as the object storage engine can not rely on MongoDB, the subsequent installation script will support the selection of the storage engine)
 - The latest version of docker-ce, configured to start at boot
 
