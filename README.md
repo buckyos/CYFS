@@ -71,7 +71,7 @@ Note that this environment is normally not isolated, but can be added to the CYF
 ## Compile
 Prepare an idle Linux host, preferably a VPS, with more than 2G of memory.
 Preparation:
-- Node.js 14 or above
+- Node.js 16 or above
 - rustc 1.63 or above
 
 Run the following command to compile the OOD System.
