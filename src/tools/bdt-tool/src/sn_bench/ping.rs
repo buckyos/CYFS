@@ -22,19 +22,21 @@ pub async fn sn_bench_ping(
     ping_interval_ms: u64,
     timeout_sec: u64,
     _: SnBenchPingException) -> BuckyResult<SnBenchResult> {
-    let sn_bench_result = SnBenchResult::default();
+    let ping_bench_result = SnBenchResult::default();
 
+    println!("init devices");
     let device_emulator = {
         if device_dir.len() != 0 { //load the dir's desc files
             unimplemented!()
         } else { //create device
-            let de = device_stack_new(device_num, sns.clone(), endpoints).await;
+            let de = device_stack_new(device_num, sns.clone(), endpoints, 0).await;
             device_save(de.clone()).await;
             de
         }
     };
 
     //benching
+    println!("start benching");
     let exit_flag = Arc::new(RwLock::new(false));
     let mut tasks = vec![];
 
@@ -45,7 +47,7 @@ pub async fn sn_bench_ping(
         let snsl = sns.clone();
         let stacks = de.0.stacks.lock().unwrap();
         let stack = stacks.get(i as usize).unwrap().clone();
-        let result = sn_bench_result.clone();
+        let result = ping_bench_result.clone();
         tasks.push(task::spawn(async move {
             loop {
                 {
@@ -81,14 +83,11 @@ pub async fn sn_bench_ping(
                     Err(_) => {
                     }
                 }
-                let cost_ms = ((bucky_time_now() - ts) / 1000) as i16;
+                let cost_ms = bucky_time_now() - ts;
 
-                {
-                    if online {
-                        result.add_resp_time(cost_ms);
-                    } else {
-                        result.add_resp_time(-1);
-                    }
+
+                if online {
+                    result.add_resp_time(cost_ms);
                 }
 
                 if let Some(sns) = snsl.as_ref() {
@@ -108,9 +107,10 @@ pub async fn sn_bench_ping(
         let _ = t.await;
     }
     let end = bucky_time_now();
+    println!("finish");
 
     //stat
-    sn_bench_result.stat(start, end);
+    ping_bench_result.stat(start, end);
 
-    Ok(sn_bench_result)
+    Ok(ping_bench_result)
 }

@@ -14,7 +14,7 @@ pub struct SnBenchResultImpl {
     time_min: u64,
     time_max: u64,
     time_mean: u64,
-    results: Vec<i16>,
+    results: Vec<u32>, //us
     err_types: Vec<ErrorType>,
     qps: u64,
 }
@@ -39,9 +39,9 @@ impl SnBenchResult {
         })))
     }
 
-    pub fn add_resp_time(&self, resp_time: i16) {
+    pub fn add_resp_time(&self, resp_time: u64) {
         let mut result = self.0.lock().unwrap();
-        result.results.push(resp_time);
+        result.results.push(resp_time as u32);
     }
 
     pub fn add_error(&self, err_type: ErrorType) {
@@ -82,9 +82,8 @@ impl SnBenchResult {
         result.start = start;
         result.end = end;
 
-        let cost = (end - start)/1000/1000;
-        if cost > 0 {
-            result.qps = success / cost;
+        if result.time_total > 0 {
+            result.qps = (result.success * 1000 * 1000) / result.time_total;
         }
     }
 
@@ -92,10 +91,10 @@ impl SnBenchResult {
         let result = self.0.lock().unwrap();
 
         println!("qps={}", result.qps);
-        println!("time_mean={}", result.time_mean);
-        println!("time_total={}", result.time_total);
-        println!("time_min={}", result.time_min);
-        println!("time_max{}", result.time_max);
+        println!("time_mean={:.2} ms", result.time_mean as f64/1000.0);
+        println!("time_min={:.2} ms", result.time_min as f64/1000.0);
+        println!("time_max={:.2} ms", result.time_max as f64/1000.0);
+        println!("time_total={:.2} ms", result.time_total as f64/1000.0);
         println!("count={}", result.count);
         println!("success={}", result.success);
     }

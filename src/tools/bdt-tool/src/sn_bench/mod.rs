@@ -1,4 +1,5 @@
 use std::{
+    time::Duration,
     sync::{
         Arc,
         Mutex,
@@ -73,7 +74,7 @@ pub struct DeviceEmulatorImpl {
 #[derive(Clone)]
 pub struct DeviceEmulator(Arc<DeviceEmulatorImpl>);
 
-pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>) -> DeviceEmulator {
+pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>, ping_interval: u64) -> DeviceEmulator {
     let endpoint = endpoints.get(0).unwrap();
 
     let stacks = Arc::new(Mutex::new(vec![]));
@@ -117,8 +118,10 @@ pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoin
                     d.push(device.clone());
                 }
 
-                let params = StackOpenParams::new(format!("bench_sn_{}", i).as_str());
-                //params.config.sn_client.ping.interval = Duration::from_secs(1);
+                let mut params = StackOpenParams::new(format!("bench_sn_{}", i).as_str());
+                if ping_interval != 0 {
+                    params.config.sn_client.ping.interval = Duration::from_secs(ping_interval);
+                }
                 let stack = Stack::open(
                     device, 
                     private_key, 
