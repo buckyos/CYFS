@@ -1,4 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, collections::HashMap};
+
+use cyfs_base::BuckyErrorCode;
+
+use super::*;
 
 pub struct ErrorType {
     code: u32,
@@ -15,7 +19,9 @@ pub struct SnBenchResultImpl {
     time_max: u64,
     time_mean: u64,
     results: Vec<u32>, //us
-    err_types: Vec<ErrorType>,
+    errs: Vec<BuckyErrorCode>,
+    remote_offline: Vec<BuckyErrorCode>,
+    remote_not_exists: Vec<BuckyErrorCode>,
     qps: u64,
 }
 
@@ -34,7 +40,9 @@ impl SnBenchResult {
             time_max: 0,
             time_mean: 0,
             results: Vec::new(),
-            err_types: vec![],
+            errs: vec![],
+            remote_offline: vec![],
+            remote_not_exists: vec![],
             qps: 0,
         })))
     }
@@ -44,9 +52,13 @@ impl SnBenchResult {
         result.results.push(resp_time as u32);
     }
 
-    pub fn add_error(&self, err_type: ErrorType) {
+    pub fn add_error(&self, exception: ExceptionType, err_code: BuckyErrorCode) {
         let mut result = self.0.lock().unwrap();
-        result.err_types.push(err_type);
+        match exception {
+            ExceptionType::RemoteOffline => result.remote_offline.push(err_code),
+            ExceptionType::RemoteNotExists => result.remote_not_exists.push(err_code),
+            _ => result.errs.push(err_code)
+        }
     }
 
     pub fn stat(&self, start: u64, end: u64) {
@@ -90,6 +102,20 @@ impl SnBenchResult {
     pub fn show(&self) {
         let result = self.0.lock().unwrap();
 
+        let mut hm = HashMap::new();
+        for (_, bec) in result.remote_not_exists.iter().enumerate() {
+            let count = hm.entry(bec.to_string()).or_insert(0);
+            *count += 1;
+        }
+        for (_, bec) in result.remote_offline.iter().enumerate() {
+            let count = hm.entry(bec.to_string()).or_insert(0);
+            *count += 1;
+        }
+        for (_, bec) in result.errs.iter().enumerate() {
+            let count = hm.entry(bec.to_string()).or_insert(0);
+            *count += 1;
+        }
+
         println!("qps={}", result.qps);
         println!("time_mean={:.2} ms", result.time_mean as f64/1000.0);
         println!("time_min={:.2} ms", result.time_min as f64/1000.0);
@@ -97,5 +123,9 @@ impl SnBenchResult {
         println!("time_total={:.2} ms", result.time_total as f64/1000.0);
         println!("count={}", result.count);
         println!("success={}", result.success);
+        println!("exception:");
+        for (err, count) in hm.iter() {
+            println!("  {}={}", err, count);
+        }
     }
 }

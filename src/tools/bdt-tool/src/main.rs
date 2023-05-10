@@ -171,40 +171,44 @@ async fn main() {
 
     match subcommand {
         "sn_bench_ping" => {
+            loger_init(log_level, "sn_bench_ping");
+
             let subcommand = cmd_params.subcommand_matches("sn_bench_ping").unwrap();
             let device_load = subcommand.value_of("load").unwrap_or("");
             let device_num = u64::from_str(subcommand.value_of("device").unwrap_or("1000")).unwrap();
             let interval_ms = u64::from_str(subcommand.value_of("interval").unwrap_or("1000")).unwrap();
             let timeout_sec = u64::from_str(subcommand.value_of("timeout").unwrap_or("3")).unwrap();
             let bench_time = u64::from_str(subcommand.value_of("time").unwrap_or("60")).unwrap();
+            let exception = bool::from_str(subcommand.value_of("exception").unwrap_or("false")).unwrap();
 
-            let ping_exception = SnBenchPingException::default();
             let result = sn_bench_ping(
                 device_num, device_load, 
                 sns, endpoints, bench_time,
                 interval_ms, 
                 timeout_sec,
-                ping_exception).await.unwrap();
+                exception).await.unwrap();
 
             result.show();
 
             return;
         },
         "sn_bench_call" => {
+            loger_init(log_level, "sn_bench_call");
+
             let subcommand = cmd_params.subcommand_matches("sn_bench_call").unwrap();
             let device_load = subcommand.value_of("load").unwrap_or("");
             let device_num = u64::from_str(subcommand.value_of("device").unwrap_or("1000")).unwrap();
             let interval_ms = u64::from_str(subcommand.value_of("interval").unwrap_or("1000")).unwrap();
             let timeout_sec = u64::from_str(subcommand.value_of("timeout").unwrap_or("3")).unwrap();
             let bench_time = u64::from_str(subcommand.value_of("time").unwrap_or("60")).unwrap();
+            let exception = bool::from_str(subcommand.value_of("exception").unwrap_or("false")).unwrap();
 
-            let ping_exception = SnBenchPingException::default();
             let result = sn_bench_call(
                 device_num, device_load, 
                 sns, endpoints, bench_time,
                 interval_ms, 
                 timeout_sec,
-                ping_exception).await.unwrap();
+                exception).await.unwrap();
 
             result.show();
 

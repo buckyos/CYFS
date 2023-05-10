@@ -21,7 +21,7 @@ pub async fn sn_bench_ping(
     bench_time_sec: u64,
     ping_interval_ms: u64,
     timeout_sec: u64,
-    _: SnBenchPingException) -> BuckyResult<SnBenchResult> {
+    _: bool) -> BuckyResult<SnBenchResult> {
     let ping_bench_result = SnBenchResult::default();
 
     println!("init devices");
@@ -29,7 +29,7 @@ pub async fn sn_bench_ping(
         if device_dir.len() != 0 { //load the dir's desc files
             unimplemented!()
         } else { //create device
-            let de = device_stack_new(device_num, sns.clone(), endpoints, 0).await;
+            let de = device_stack_new(device_num, sns.clone(), endpoints, 0, 0).await;
             device_save(de.clone()).await;
             de
         }

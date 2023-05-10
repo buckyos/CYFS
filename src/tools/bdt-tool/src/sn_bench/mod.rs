@@ -74,7 +74,7 @@ pub struct DeviceEmulatorImpl {
 #[derive(Clone)]
 pub struct DeviceEmulator(Arc<DeviceEmulatorImpl>);
 
-pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>, ping_interval: u64) -> DeviceEmulator {
+pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoints: Vec<Endpoint>, port_offset: u16, ping_interval: u64) -> DeviceEmulator {
     let endpoint = endpoints.get(0).unwrap();
 
     let stacks = Arc::new(Mutex::new(vec![]));
@@ -107,7 +107,7 @@ pub async fn device_stack_new(device_num: u64, sns: Option<Vec<Device>>, endpoin
 
                 let mut endpoints = vec![];
 
-                let ep = new_endpoint(&ept, idx as u16);
+                let ep = new_endpoint(&ept, idx as u16 + port_offset);
 
                 endpoints.push(ep);
 
