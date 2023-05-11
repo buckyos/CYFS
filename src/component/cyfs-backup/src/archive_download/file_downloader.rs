@@ -6,7 +6,7 @@ use http_types::Url;
 use std::path::PathBuf;
 use surf::Client;
 
-use super::ArchiveProgressHolder;
+use cyfs_backup_lib::ArchiveProgressHolder;
 
 pub struct ArchiveFileDownloader {
     file: PathBuf,

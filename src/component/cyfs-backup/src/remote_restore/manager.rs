@@ -1,6 +1,5 @@
-use super::def::*;
-use super::status::*;
 use super::task::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 
 use std::sync::{Arc, Mutex};
@@ -73,8 +72,7 @@ impl RemoteRestoreManager {
     }
 
     pub async fn abort_task(&self, id: &str) -> BuckyResult<()> {
-        let task = 
-        {
+        let task = {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(index) = tasks.iter().position(|task| task.id() == id) {
                 tasks.swap_remove(index)

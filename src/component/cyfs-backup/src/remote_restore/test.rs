@@ -1,6 +1,6 @@
-use cyfs_base::BuckyErrorCode;
-
 use super::*;
+use cyfs_backup_lib::*;
+use cyfs_base::BuckyErrorCode;
 
 use std::sync::Arc;
 
@@ -46,7 +46,7 @@ async fn download_folder() {
         loop {
             async_std::task::sleep(std::time::Duration::from_secs(20)).await;
 
-            manager1.abort_task(ID).await.unwrap();
+            // manager1.abort_task(ID).await.unwrap();
         }
     });
 
@@ -54,16 +54,14 @@ async fn download_folder() {
         Ok(()) => {
             info!("run restore task complete!");
         }
-        Err(e) => {
-            match e.code() {
-                BuckyErrorCode::Aborted => {
-                    warn!("restore task aborted!");
-                }
-                _ => {
-                    unreachable!();
-                }
+        Err(e) => match e.code() {
+            BuckyErrorCode::Aborted => {
+                warn!("restore task aborted!");
             }
-        }
+            _ => {
+                unreachable!();
+            }
+        },
     }
 }
 

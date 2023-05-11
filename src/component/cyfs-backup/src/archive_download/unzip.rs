@@ -1,10 +1,9 @@
-use super::progress::ArchiveProgressHolder;
-use cyfs_base::*;
 use super::helper::TaskAbortHandler;
+use cyfs_backup_lib::ArchiveProgressHolder;
+use cyfs_base::*;
 
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-
 
 #[derive(Clone)]
 pub struct ArchiveUnzip {
@@ -20,19 +19,26 @@ impl ArchiveUnzip {
         }
     }
 
-    pub async fn unzip(&self, progress: &ArchiveProgressHolder, abort_handler: &TaskAbortHandler) -> BuckyResult<()> {
-        let this = self.clone(); 
+    pub async fn unzip(
+        &self,
+        progress: &ArchiveProgressHolder,
+        abort_handler: &TaskAbortHandler,
+    ) -> BuckyResult<()> {
+        let this = self.clone();
         let progress = progress.clone();
         let abort_handler = abort_handler.clone();
-        
-        let task = async_std::task::spawn_blocking(move || {
-            this.unzip_inner(&progress, abort_handler)
-        });
+
+        let task =
+            async_std::task::spawn_blocking(move || this.unzip_inner(&progress, abort_handler));
 
         task.await
     }
 
-    fn unzip_inner(&self, progress: &ArchiveProgressHolder, abort_handler: TaskAbortHandler) -> BuckyResult<()> {
+    fn unzip_inner(
+        &self,
+        progress: &ArchiveProgressHolder,
+        abort_handler: TaskAbortHandler,
+    ) -> BuckyResult<()> {
         let file = std::fs::File::open(&self.archive_file).map_err(|e| {
             let msg = format!(
                 "open archive file failed! file={}, {}",
@@ -70,7 +76,7 @@ impl ArchiveUnzip {
         })?;
 
         abort_handler.check_aborted()?;
- 
+
         for i in 0..archive.len() {
             abort_handler.check_aborted()?;
 
@@ -109,8 +115,7 @@ impl ArchiveUnzip {
                 // Stat current file use compressed size
                 progress.begin_file(&file_path_str, file.compressed_size());
 
-                let ret = self
-                    .unzip_file(&mut file, &target_file_path, progress, &abort_handler);
+                let ret = self.unzip_file(&mut file, &target_file_path, progress, &abort_handler);
                 progress.finish_current_file(ret.clone());
 
                 ret?;

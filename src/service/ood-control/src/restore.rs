@@ -1,4 +1,5 @@
 use cyfs_backup::*;
+use cyfs_backup_lib::*;
 use cyfs_base::*;
 use cyfs_lib::RequestorHelper;
 

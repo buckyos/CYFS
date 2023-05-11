@@ -1,9 +1,7 @@
+use super::file_downloader::ArchiveFileDownloader;
 use crate::archive::ObjectArchiveIndexHelper;
 use cyfs_backup_lib::*;
 use cyfs_base::*;
-
-use super::file_downloader::ArchiveFileDownloader;
-use super::{def::RemoteArchiveUrl, progress::ArchiveProgressHolder};
 
 use std::path::PathBuf;
 
