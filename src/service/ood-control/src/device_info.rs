@@ -22,7 +22,7 @@ impl DeviceInfoGen {
     }
 
     pub fn new() -> DeviceInfo {
-        // 获取第一个网卡地址
+        // Get the first NIC address
         #[cfg(all(not(target_os = "android"), not(target_os = "ios")))]
         let mac_address = match mac_address::get_mac_address() {
             Ok(Some(v)) => v.to_string(),
@@ -62,7 +62,7 @@ impl DeviceInfoGen {
         let disk_list = system.disks();
         for disk in disk_list {
             match disk.type_() {
-                // 移动设备和未知设备归入hdd
+                // Mobile devices and unknown devices are classified as hdd
                 DiskType::HDD | DiskType::Unknown(_) => {
                     hdd_total_disk_space += disk.total_space();
                     hdd_available_disk_space += disk.available_space();
@@ -74,7 +74,7 @@ impl DeviceInfoGen {
             }
         }
 
-        // 本地ip地址
+        // Local intranet ip address
         let private_ip_address: Vec<String> = match cyfs_util::get_system_hosts() {
             Ok(addr_list) => addr_list
                 .private_ip_v4

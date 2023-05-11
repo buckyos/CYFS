@@ -29,7 +29,7 @@ pub struct ControlInterfaceParam {
 
     pub addr_type: ControlInterfaceAddrType,
 
-    // 是否需要访问权限，如果提供了，那么会尝试绑定公网ip
+    // Whether access is required, if it is provided, then it will try to bind the public ip
     pub require_access_token: bool,
     pub tcp_host: Option<ControlTCPHost>,
 }
@@ -40,7 +40,7 @@ pub struct ControlInterface {
 }
 
 impl ControlInterface {
-    // tcp_port tcp监听的本地端口，传None表示使用默认值(取决于mode)
+    // tcp_port local port for tcp listening, pass None to use default value (depends on mode)
     pub fn new(param: ControlInterfaceParam, controller: &Controller) -> Self {
         let access_token = match param.require_access_token {
             true => Some(AccessTokenGen::new().gen_access_token(12)),
@@ -174,14 +174,14 @@ impl ControlInterface {
             OODControlMode::Runtime => cyfs_base::CYFS_RUNTIME_DAEMON_CONTROL_PORT,
             OODControlMode::Installer => cyfs_base::OOD_INSTALLER_CONTROL_PORT,
             OODControlMode::App => {
-                // 对于app，采用随机端口
+                // For app, random ports are used (set to 0 to identify that random ports are used)
                 0
             }
         }
     }
 
     fn get_local_hosts() -> Vec<SocketAddr> {
-        // 在获取不到内网ipv4情况下，只能使用127.0.0.1，避免绑定了外网端口导致安全问题
+        // If we can't get the intranet ipv4, you can only use 127.0.0.1 loopback to avoid the security problem caused by binding the external port.
         match cyfs_util::get_system_hosts() {
             Ok(info) => {
                 let mut private_ip_v4 = info.private_ip_v4;
@@ -200,21 +200,21 @@ impl ControlInterface {
     }
 
     fn get_public_hosts() -> Vec<SocketAddr> {
-        // 在获取不到内网ipv4情况下，只能使用127.0.0.1，避免绑定了外网端口导致安全问题
+        // Get the public network ipv4 and ipv6 addresses
         match cyfs_util::get_system_hosts() {
             Ok(mut info) => {
-                let mut public_ip_v4 = info.public_ip_v4;
+                let mut list = info.public_ip_v4;
 
-                if public_ip_v4.is_empty() {
+                if list.is_empty() {
                     error!("retrieve system hosts but public ipv4 addrs not found!");
                     // public_ip_v4.push("0.0.0.0".to_string());
                 }
 
                 if info.ip_v6.len() > 0 {
-                    public_ip_v4.append(&mut info.ip_v6);
+                    list.append(&mut info.ip_v6);
                 }
 
-                public_ip_v4
+                list
             }
             Err(e) => {
                 error!("retrieve system hosts failed, now will use default: {}", e);
@@ -229,7 +229,7 @@ impl ControlInterface {
     }
 
     pub async fn start(&self) -> BuckyResult<()> {
-        // 只有标准daemon和runtime模式，开启本地http控制接口
+        // Local http control interface is enabled only in standard daemon and runtime mode
         let mut count = 0;
         for listener in &self.tcp_listeners {
             let ret = listener.start().await;
@@ -238,7 +238,7 @@ impl ControlInterface {
             }
         }
 
-        // 全部绑定失败才认为失败
+        // The operation is considered to have failed only after all bindings have failed
         if count == 0 {
             let msg = format!("cyfs-control bind local address failed!");
             error!("{}", msg);
@@ -254,7 +254,7 @@ impl ControlInterface {
         }
     }
 
-    // 获取所有tcp监听的本地地址和端口
+    // Get the local address and port of all tcp listeners
     pub fn get_tcp_addr_list(&self) -> Vec<SocketAddr> {
         self.tcp_listeners
             .iter()

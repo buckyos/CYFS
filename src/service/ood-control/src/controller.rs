@@ -121,14 +121,14 @@ impl ControllerImpl {
     fn verify_zone(owner: &People, device: &Device) -> BuckyResult<()> {
         let owner_id = owner.desc().calculate_id();
 
-        // 检查people的ood_list是否为空
+        // Check if ood_list of people is empty
         if owner.ood_list().is_empty() {
             let msg = format!("device's owner's ood_list is empty! owner={}", owner_id);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
 
-        // 检查device的owner是否正确
+        // Check if the owner of the device is correct
         if device.desc().owner() != &Some(owner_id) {
             let msg = format!(
                 "device's owner is unmatch! owner={}, device's owner={:?}",
@@ -164,7 +164,7 @@ impl ControllerImpl {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        // 确保owner已经绑定了ood
+        // Make sure the owner has bound OOD
         Self::verify_zone(&owner, &device)?;
 
         let private_key =
@@ -175,7 +175,7 @@ impl ControllerImpl {
                 BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
             })?;
 
-        // 校验owner签名是否有效
+        // Verify that the owner's signature is valid
         let verifier_ret = Self::verify_sign(&owner, &device).await;
         if !verifier_ret {
             let msg = format!("verify device sign by owner failed!");
@@ -184,10 +184,10 @@ impl ControllerImpl {
             return Err(BuckyError::new(BuckyErrorCode::InvalidSignature, msg));
         }
 
-        // 尝试重命名已有的
+        // Try to rename the existing ones, don't delete the old data however
         self.rename_current();
 
-        // 保存到文件
+        // Save device desc and private key to target file
         device.encode_to_file(&self.desc_file, false).map_err(|e| {
             let msg = format!(
                 "save device.desc to file error! file={}, {}",
@@ -249,7 +249,7 @@ impl ControllerImpl {
             return false;
         }
 
-        // 校验签名
+        // Verify signature
         for sign in signs.iter() {
             match cyfs_base::verify_object_desc_sign(&verifier, device, sign).await {
                 Ok(result) => {

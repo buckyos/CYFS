@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use cyfs_debug::Mutex;
 
-// 保存的扩展信息
+// Saved extension information on binding
 #[derive(Serialize, Deserialize)]
 pub(super) struct BindExtInfo {
-    // 绑定的people
+    // bound people
     owner: String,
 
-    // 绑定设备对应people的索引
+    // Index of the corresponding people of current device
     index: i32,
 }
 
@@ -83,13 +83,13 @@ pub(super) struct BindStateImpl {
 
     is_bind: bool,
 
-    // 绑定的设备描述相关
+    // The bound device desc related info
     device: Option<String>,
     device_id: Option<String>,
 
     bind_ext_info: Option<BindExtInfo>,
 
-    // 事件
+    // the event
     on_bind: OnBindEventManager,
 }
 
@@ -108,7 +108,7 @@ impl BindStateImpl {
     }
 
     fn emit_bind_event(&self) {
-        // 触发事件
+        // emit the binding event async
         let event = self.on_bind.clone();
         async_std::task::spawn(async move {
             let _ = event.emit(&());

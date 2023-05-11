@@ -19,7 +19,7 @@ pub struct SystemInfo {
     pub total_memory: u64,
     pub used_memory: u64,
 
-    // 每个刷新周期之间的传输的bytes
+    // Bytes transferred between each refresh cycle
     pub received_bytes: u64,
     pub transmitted_bytes: u64,
 
@@ -27,11 +27,11 @@ pub struct SystemInfo {
     pub total_received_bytes: u64,
     pub total_transmitted_bytes: u64,
 
-    // SSD硬盘容量和可用容量，包括Unknown, in bytes
+    // SSD drive capacity and available capacity, including Unknown, in bytes
     pub ssd_disk_total: u64,
     pub ssd_disk_avail: u64,
 
-    // HDD硬盘容量和可用容量, in bytes
+    // HDD capacity and available capacity, in bytes
     pub hdd_disk_total: u64,
     pub hdd_disk_avail: u64,
 }
@@ -151,9 +151,9 @@ impl SystemInfoManagerInner {
                     self.info_inner.ssd_disk_total += disk.total_space();
                     self.info_inner.ssd_disk_avail += disk.available_space();
                 }
-                // 在linux+docker环境下，每个docker container挂载的路径会被认作一个单独的磁盘，导致OODsystem info返回错误
-                // 这里先保证OOD的正确性，不把Unknown的磁盘认为是ssd
-                // 影响：在WSL1下运行的OOD，磁盘大小是0，移动端的协议栈，磁盘大小是0，这些原来都是Unknown的
+                // In a linux+docker environment, each docker container mount path will be recognized as a separate disk, causing OOD's system info to return an error
+                // Here first ensure the correctness of OOD, not to consider the unknown disk as ssd
+                // Impact: OOD running under WSL1, the disk size is 0, the mobile stack, the disk size is 0, these turned out to be Unknown
                 DiskType::Unknown(_) => {
                     // self.info_inner.ssd_disk_total += disk.total_space();
                     // self.info_inner.ssd_disk_avail += disk.available_space();
@@ -279,7 +279,7 @@ impl SystemInfoManager {
     }
 }
 
-// 这里使用全局单例模式，避免runtime和non-stack不同的接口分别持有两个实例
+// The global singleton pattern is used here to avoid the cyfs-runtime and cyfs-stack components holding two separate instances
 lazy_static::lazy_static! {
     pub static ref SYSTEM_INFO_MANAGER: SystemInfoManager = SystemInfoManager::new();
 }

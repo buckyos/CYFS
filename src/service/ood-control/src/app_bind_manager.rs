@@ -23,7 +23,7 @@ impl EventListenerSyncRoutine<(), ()> for BindNotify {
     }
 }
 
-// 适用于内嵌协议栈的
+// For embedded cyfs-stack
 #[derive(Clone)]
 pub struct AppBindManager {
     controller: Controller,
@@ -55,12 +55,12 @@ impl AppBindManager {
         self.controller.is_bind()
     }
 
-    // start成功后，返回本地tcp的绑定端口，用以展示二维码等操作
+    // After a successful start, the local tcp bind port is returned, which can be used to display QR codes and other operations.
     pub fn get_tcp_addr_list(&self) -> Vec<SocketAddr> {
         self.control_interface.get_tcp_addr_list()
     }
 
-    //启动本地绑定服务器，必须is_bind返回false才可以调用！
+    // Start local binding server, must be called only if is_bind returns false!
     pub async fn start(&self) -> BuckyResult<()> {
         if self.is_bind() {
             return Ok(());
@@ -70,7 +70,7 @@ impl AppBindManager {
         self.control_interface.start().await
     }
 
-    // 不等待绑定完成，直接停止整个绑定流程
+    // Stop the whole binding process directly without waiting for the binding to complete
     pub fn stop(&self) {
         if let Some(handle) = self.abort_handle.lock().unwrap().take() {
             handle.abort();
@@ -79,7 +79,7 @@ impl AppBindManager {
         self.control_interface.stop();
     }
 
-    // start成功后，等待绑定完成
+    // After a successful start, wait for the binding to complete
     pub async fn wait_util_bind(&self) -> BuckyResult<()> {
         if self.controller.is_bind() {
             return Ok(());
@@ -87,21 +87,21 @@ impl AppBindManager {
 
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
 
-        // 保留abort—handle用以取消
+        // Keep abort-handle for later cancellation
         {
             let mut handle = self.abort_handle.lock().unwrap();
             assert!(handle.is_none());
             *handle = Some(abort_handle);
         }
 
-        // 关注绑定事件
+        // Focus on the binding events
         let notify = BindNotify {
             abort_handle: self.abort_handle.clone(),
         };
 
         self.controller.bind_event().on(Box::new(notify.clone()));
 
-        // 等待绑定结束
+        // Wait for binding to end
         match Abortable::new(async_std::future::pending::<()>(), abort_registration).await {
             Ok(_) => {
                 unreachable!();

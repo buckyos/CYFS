@@ -31,13 +31,13 @@ pub enum InterfaceProtocol {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OODControlMode {
-    // ood-daemon模式
+    // ood-daemon mode
     Daemon = 0,
 
-    // cyfs-runtime模式
+    // cyfs-runtime mode
     Runtime = 1,
 
-    // 第三方app模式，端口随机
+    // Third party app mode with random ports
     App = 2,
 
     // ood-installer mode

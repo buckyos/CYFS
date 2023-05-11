@@ -45,31 +45,31 @@ pub struct ControlInterfaceAccessInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CheckResponse {
-    // 是否已经绑定了device.desc和device.sec
+    // Is it already bound with device.desc & device.sec
     pub activation: bool,
 
     pub check_status: HashMap<String, CheckStatus>,
 
-    // 设备信息
+    // Current device info
     pub device_info: DeviceInfo,
 
-    // ood-control访问信息
+    // ood-control service access and permission configuration
     pub access_info: ControlInterfaceAccessInfo,
 
-    // 已经绑定的ood的device.desc
+    // device.desc of the already bound ood or runtime
     pub bind_info: Option<BindInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ActivateInfo {
 
-    // 绑定的people
+    // bound people
     pub owner: String,
 
-    // 对应的device的索引
+    // Index of the corresponding device
     pub index: i32,
 
-    // device描述文件和密钥
+    // device object's desc file and private key
     pub desc: String,
     pub sec: String,
 }
