@@ -91,6 +91,12 @@ async fn main_run() {
             .long("exit-on-done")
             .takes_value(false)
             .help("After the Backup & restore task is completed, the process will exits. default is true, and if with --iqf option, default is false"),
+    ).arg(
+        Arg::with_name("key-data-filter")
+            .long("key-data-filter")
+            .multiple(true)
+            .takes_value(true)
+            .help("The key data that meets the filter condition will be ignored, and the filter supports glob pattern")
     )
     .get_matches();
 
@@ -194,11 +200,17 @@ async fn main_run() {
                             .unwrap();
                     }
 
+                    let mut key_data_filters = vec![];
+                    if let Some(filters) = matches.values_of("key-data-filter") {
+                        key_data_filters = filters.map(|v| v.to_owned()).collect();
+                    }
+
                     let params = UniBackupParams {
                         id: id.to_owned(),
                         isolate: isolate.to_owned(),
                         target_file,
                         password,
+                        key_data_filters,
                     };
 
                     let backup_manager = backup::BackupService::new(&params.isolate)
