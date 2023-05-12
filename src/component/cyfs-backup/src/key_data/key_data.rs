@@ -42,6 +42,7 @@ impl KeyDataManager {
     pub fn new_uni(isolate: &str, filters: &Vec<String>) -> BuckyResult<Self> {
         let mut filter_list = vec![];
         for filter in filters {
+            info!("new key data filter: {}", filter);
             let glob = globset::GlobBuilder::new(filter)
                 .case_insensitive(true)
                 .literal_separator(true)

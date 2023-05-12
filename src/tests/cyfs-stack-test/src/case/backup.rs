@@ -24,6 +24,7 @@ pub async fn test() {
         isolate: isolate.clone(),
         target_file: LocalFileBackupParam::default(),
         password: Some(ProtectedPassword::new("123456")),
+        key_data_filters: vec![],
     };
 
     let target_dir = UniBackupTask::backup_dir(&params).to_path_buf();

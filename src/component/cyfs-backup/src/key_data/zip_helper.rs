@@ -155,6 +155,7 @@ impl ZipHelper {
             let path = entry.path();
             if !key_data_manager.check_filter(path) {
                 warn!("key data will be ignored by filter: {}", path.display());
+                continue;
             }
 
             let name = path.strip_prefix(prefix).unwrap();
