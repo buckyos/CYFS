@@ -39,7 +39,7 @@ lazy_static::lazy_static! {
 
 impl ChainCreator {
     pub fn create_chain(config_path: &Path, output_path: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<MinerRef> {
-        async_std::task::block_on(async move {
+        let runner_fut = Box::pin(async move {
             let config_file = File::open(config_path).map_err(|err| {
                 error!("open file {} failed, err {}", config_path.display(), err);
                 crate::meta_err!(ERROR_NOT_FOUND)
@@ -265,7 +265,9 @@ impl ChainCreator {
                 Err(BuckyError::new(BuckyErrorCode::InvalidParam, "InvalidParam"))
             };
             ret
-        })
+        });
+        
+        async_std::task::block_on(runner_fut)
     }
 
     pub fn start_miner_instance(dir: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<Arc<dyn Miner>> {
