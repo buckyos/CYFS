@@ -1,4 +1,5 @@
 use cyfs_base::*;
+use super::KeyDataManager;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -7,12 +8,14 @@ use std::iter::Iterator;
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
 
+
 pub struct ZipHelper {}
 
 impl ZipHelper {
     pub fn zip_dir_to_buffer(
         src_dir: &Path,
         method: zip::CompressionMethod,
+        key_data_manager: &KeyDataManager,
     ) -> BuckyResult<Vec<u8>> {
         let walkdir = WalkDir::new(src_dir);
         let it = walkdir.into_iter();
@@ -26,6 +29,7 @@ impl ZipHelper {
             src_dir,
             &mut cursor,
             method,
+            key_data_manager,
         )?;
 
         Ok(buf)
@@ -136,6 +140,7 @@ impl ZipHelper {
         prefix: &Path,
         writer: T,
         method: zip::CompressionMethod,
+        key_data_manager: &KeyDataManager,
     ) -> BuckyResult<()>
     where
         T: Write + Seek,
@@ -148,6 +153,10 @@ impl ZipHelper {
         let mut buffer = Vec::new();
         for entry in it {
             let path = entry.path();
+            if !key_data_manager.check_filter(path) {
+                warn!("key data will be ignored by filter: {}", path.display());
+            }
+
             let name = path.strip_prefix(prefix).unwrap();
 
             // Write file or directory explicitly

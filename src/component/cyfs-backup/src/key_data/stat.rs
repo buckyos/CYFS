@@ -1,25 +1,22 @@
 use crate::meta::*;
 use super::key_data::*;
 
-use std::path::PathBuf;
 
 pub struct KeyDataBackupStat {
-    cyfs_root: PathBuf,
-    list: Vec<KeyData>,
+    key_data_manager: KeyDataManager
 }
 
 impl KeyDataBackupStat {
-    pub fn new(keydata: KeyDataManager) -> Self {
+    pub fn new(key_data_manager: KeyDataManager) -> Self {
         Self {
-            cyfs_root: keydata.cyfs_root,
-            list: keydata.list,
+            key_data_manager,
         }
     }
 
     pub fn stat(&self) -> ObjectArchiveDataMeta {
         let mut result = ObjectArchiveDataMeta::default();
 
-        for item in &self.list {
+        for item in self.key_data_manager.list() {
             self.stat_data(&mut result, item);
         }
 
@@ -27,9 +24,14 @@ impl KeyDataBackupStat {
     }
 
     fn stat_data(&self, result: &mut ObjectArchiveDataMeta, data: &KeyData) {
-        let file = self.cyfs_root.join(&data.local_path);
+        let file = self.key_data_manager.cyfs_root().join(&data.local_path);
         if !file.exists() {
             warn!("target key data not exists! {}", file.display());
+            return;
+        }
+
+        if !self.key_data_manager.check_filter(&file) {
+            warn!("key data will be ignored by filter: {}", file.display());
             return;
         }
 
@@ -40,6 +42,11 @@ impl KeyDataBackupStat {
             KeyDataType::Dir => {
                 let walkdir = walkdir::WalkDir::new(file);
                 for item in walkdir.into_iter().filter_map(|e| e.ok()) {
+                    if !self.key_data_manager.check_filter(&item.path()) {
+                        warn!("key data will be ignored by filter: {}", item.path().display());
+                        return;
+                    }
+
                     if item.path().is_file() {
                         result.count += 1;
                     }

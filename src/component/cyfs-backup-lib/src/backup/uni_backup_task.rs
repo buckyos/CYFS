@@ -35,4 +35,7 @@ pub struct UniBackupParams {
     pub password: Option<ProtectedPassword>,
 
     pub target_file: LocalFileBackupParam,
+
+    // Key data filters in glob format
+    pub key_data_filters: Vec<String>,
 }
