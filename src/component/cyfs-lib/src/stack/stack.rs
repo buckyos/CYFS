@@ -94,7 +94,7 @@ pub struct SharedCyfsStack {
     // uni_stack
     uni_stack: Arc<OnceCell<UniCyfsStackRef>>,
 
-    requestor_holder: RequestorHolder,
+    requestor_holder: Arc<RwLock<RequestorHolder>>,
 }
 
 #[derive(Debug, Clone)]
@@ -493,14 +493,15 @@ impl SharedCyfsStack {
             device_info: Arc::new(RwLock::new(None)),
             uni_stack: Arc::new(OnceCell::new()),
 
-            requestor_holder,
+            requestor_holder: Arc::new(RwLock::new(requestor_holder)),
         };
 
         Ok(ret)
     }
 
     pub async fn stop(&self) {
-        self.requestor_holder.stop().await;
+        let requestor_holder = self.requestor_holder.read().unwrap();
+        requestor_holder.stop().await;
 
         self.router_handlers.stop().await;
 
@@ -743,6 +744,11 @@ impl SharedCyfsStack {
 
     pub fn uni_stack(&self) -> &UniCyfsStackRef {
         self.uni_stack.get_or_init(|| self.create_uni_stack())
+    }
+
+    pub fn select_requestor(&self, requestor_type: &CyfsStackRequestorType) -> HttpRequestorRef {
+        let mut requestor_holder = self.requestor_holder.write().unwrap();
+        requestor_holder.select_requestor(&self.param, requestor_type)
     }
 }
 

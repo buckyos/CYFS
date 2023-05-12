@@ -1,17 +1,30 @@
-use clap::{ArgMatches, App, SubCommand, Arg};
 use crate::desc;
-use crate::util::{get_objids_from_matches, get_deviceids_from_matches};
-use std::path::{Path};
-use log::*;
-use cyfs_base::{Area, FileEncoder, NamedObject, ObjectDesc, AnyNamedObject, FileDecoder, PublicKeyRef, DeviceCategory, ObjectId, RsaCPUObjectSigner, sign_and_set_named_object_desc, SignatureSource, SIGNATURE_SOURCE_REFINDEX_SELF, SIGNATURE_SOURCE_REFINDEX_OWNER};
-use std::str::FromStr;
-use std::io::Write;
 use crate::desc::create_people_desc;
+use crate::util::{
+    get_deviceids_from_matches, get_group_members_from_matches,
+};
+use clap::{App, Arg, ArgMatches, SubCommand};
+use cyfs_base::{
+    sign_and_set_named_object_desc, Area, DeviceCategory, FileEncoder,
+    NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner, SignatureSource,
+    SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF, BuckyResult,
+};
+use log::*;
+use std::io::Write;
+use std::path::Path;
+use std::str::FromStr;
 
+// .\desc-tool.exe create group -F=5r4MYfFfTakY1h6vdEuMurpkawk4MZpB5RmY9CFqSj99 -A=5r4MYfFfTakY1h6vdEuMurpkawk4MZpB5RmY9CFqSj99:;5r4MYfFPPRDNNcJdvve4XVx3FE355PUDpqaA5Mm9UcFh:;5r4MYfFAiXjbEkHZvc1NtHgJkZ4A7LJQcrY7cJeMz5YB:;5r4MYfFKmpMT2u2P13p3bLC6KtGEVsp42X85h5e2onhZ:; -M=5r4MYfF5r9cUfL9JemVXwLWJjufXETYSjfXqEsR3Qwn5:;5r4MYfF8ZaksbXfnZbdjiYJuJv8U4FfvyBgdHq7RiPhY:;5r4MYfFQxUB7okJMvia5yGksrkMBzPrUrwCFgja4Djv3:;5r4MYfFXjPJ9BBYvvdP5QHudAWLNrMzuzZpNpr45pYEc:;5r4MYfFXuCNgbhRPaqtUKsNvNH1RNGF5prFXg7UqiWDS:;5r4MYfFJHxPCYqwLWrHQ24jjv3ZvCbK4dPhBCNn8r3aE:;5r4MYfFXAtLvsW52oCRRAALEt7rEJB7qUdRDEEKAgPJJ:;5r4MYfFdFYt8ytAw9noVjg1aXfeQvHWpaChax73wWKwJ:;5r4MYfFbDWG8jibePJhSoL25mv6tv6ZMDaMZHRzKVEEB:; -l=5aSixgN8tVt1SAM4xBfc1dYvdrU7d5fVeZrzNFpx8FiB;5aSixgMxgNuMQFcG41fW1CN7MTsKMqEuVjW16BnJWrGW;5aSixgN64mtdhmNvKZ681P3iPZbnQPyQsezTFNB2HSdx;5aSixgNS8ij1mkjjNe2UWHVgVYFhr4dJF5BuxxpTb1m8; -n="group" -I="icon" -d="description" -a=0:0:0:0 -O --savepath="./" --idfile="./group.id.txt"
 
 pub fn create_subcommand<'a, 'b>() -> App<'a, 'b> {
-    let id_file_arg = Arg::with_name("id_file").long("idfile").takes_value(true).help("write object id to file");
-    let save_path = Arg::with_name("save_path").long("savepath").takes_value(true).help("save file path");
+    let id_file_arg = Arg::with_name("id_file")
+        .long("idfile")
+        .takes_value(true)
+        .help("write object id to file");
+    let save_path = Arg::with_name("save_path")
+        .long("savepath")
+        .takes_value(true)
+        .help("save file path");
     SubCommand::with_name("create").about("create desc")
         .subcommand(SubCommand::with_name("people").about("create people desc and sec")
             .arg(Arg::with_name("owner").long("owner").short("o").takes_value(true)
@@ -24,15 +37,25 @@ pub fn create_subcommand<'a, 'b>() -> App<'a, 'b> {
             .arg(Arg::with_name("area").long("area").short("a").takes_value(true)
                 .help("Object area info, if not set,will calc base ip. format [county:carrier:city:inner]"))
             .arg(id_file_arg.clone()).arg(save_path.clone()))
-        .subcommand(SubCommand::with_name("sgroup").about("create sgroup desc")
-            .arg(Arg::with_name("threshold").long("threshold").default_value("1").required(true)
-                .help("threshold in simple group"))
-            .arg(Arg::with_name("members").long("members").short("m").value_delimiter(";")
-                .help("members in simple group"))
+        .subcommand(SubCommand::with_name("group").about("create group desc")
+            .arg(Arg::with_name("founder").long("founder").short("F").takes_value(true)
+                .help("founder of group"))
+            .arg(Arg::with_name("admins").required(true).long("admins").short("A").value_delimiter(";")
+                .help("admins in group. format [PeopleId:title]"))
+            .arg(Arg::with_name("members").long("members").short("M").value_delimiter(";")
+                .help("members in group. format [PeopleId:title]"))
             .arg(Arg::with_name("ood_list").long("oodlist").short("l").value_delimiter(";")
                 .help("oods in group"))
-            .arg(Arg::with_name("owners").long("owners").short("o").value_delimiter(";")
-                .help("group owners, must have desc file in same path"))
+            .arg(Arg::with_name("name").long("name").short("n").takes_value(true)
+                .help("name of group"))
+            .arg(Arg::with_name("icon").long("icon").short("I").takes_value(true)
+                .help("icon of group"))
+            .arg(Arg::with_name("description").long("description").short("d").takes_value(true)
+                .help("description of group"))
+            .arg(Arg::with_name("area").required(true).long("area").short("a").takes_value(true)
+                .help("Object area info. format [county:carrier:city:inner]"))
+            .arg(Arg::with_name("org").long("org").short("O").takes_value(false)
+                .help("create a group as organization that administrators is changable."))
             .arg(id_file_arg.clone()).arg(save_path.clone()))
         .subcommand(SubCommand::with_name("device").about("create device desc and sec")
             .arg(Arg::with_name("area").long("area").short("a").takes_value(true)
@@ -71,14 +94,23 @@ fn write_id_file(matches: &ArgMatches, id: &ObjectId) {
 }
 
 fn get_area(matches: &ArgMatches) -> Option<Area> {
-    matches.value_of("area").map(|str_area| {
-        match Area::from_str(str_area) {
+    matches
+        .value_of("area")
+        .map(|str_area| match Area::from_str(str_area) {
             Ok(area) => area,
             Err(_) => {
                 error!("decode area from {} fail, use default", str_area);
                 Area::default()
-            },
-        }
+            }
+        })
+}
+
+fn get_area_no_default(matches: &ArgMatches) -> BuckyResult<Option<Area>> {
+    matches.value_of("area").map_or(Ok(None), |str_area| {
+        Area::from_str(str_area).map(|a| Some(a)).map_err(|e| {
+            error!("decode area from {} fail", str_area);
+            e
+        })
     })
 }
 
@@ -88,17 +120,17 @@ fn get_key_bits(matches: &ArgMatches) -> usize {
         "rsa2048" => 2048,
         "rsa3072" => 3072,
         "secp" => 1,
-        _ => 0
+        _ => 0,
     }
 }
 
 pub async fn create_desc(matches: &ArgMatches<'_>) {
     match matches.subcommand() {
         ("device", Some(matches)) => {
-            let owner = matches.value_of("owner").map(|str| {
-                ObjectId::from_str(str).unwrap()
-            });
-            let sn_list = get_deviceids_from_matches(matches,"snlist").unwrap_or(vec![]);
+            let owner = matches
+                .value_of("owner")
+                .map(|str| ObjectId::from_str(str).unwrap());
+            let sn_list = get_deviceids_from_matches(matches, "snlist").unwrap_or(vec![]);
             let eps = matches.values_of_lossy("eps").unwrap_or(vec![]);
 
             let str_unique_id = matches.value_of("deviceid").unwrap();
@@ -116,78 +148,41 @@ pub async fn create_desc(matches: &ArgMatches<'_>) {
                 "pc" => DeviceCategory::PC,
                 "server" => DeviceCategory::Server,
                 "browser" => DeviceCategory::Browser,
-                _ => {unreachable!()}
+                _ => {
+                    unreachable!()
+                }
             };
 
             let area = get_area(matches);
 
             let save_path = matches.value_of("save_path").unwrap_or("").to_owned();
-            if let Some((device, _)) = desc::create_device_desc(area, category, key_bits, str_unique_id, owner, eps, sn_list, Some(save_path)) {
+            if let Some((device, _)) = desc::create_device_desc(
+                area,
+                category,
+                key_bits,
+                str_unique_id,
+                owner,
+                eps,
+                sn_list,
+                Some(save_path),
+            ) {
                 write_id_file(matches, &device.desc().calculate_id());
             }
             return;
         }
-        ("sgroup", Some(matches)) => {
-            match matches.value_of("threshold").unwrap().parse::<u8>() {
-                Ok(threshold) => {
-                    let owners = if let Some(strs) = matches.values_of_lossy("owners") {
-                        let mut owners = vec![];
-                        for str in &strs {
-                            if let Ok((obj, _)) = AnyNamedObject::decode_from_file(&Path::new(str).with_extension("desc"), &mut vec![]) {
-                                if let Some(pk) = obj.public_key() {
-                                    match pk {
-                                        PublicKeyRef::Single(pk) => {owners.push(pk.clone())}
-                                        PublicKeyRef::MN((_, pks)) => {
-                                            owners.append(&mut pks.clone())
-                                        }
-                                    }
-                                } else {
-                                    warn!("desc {} not have pubkey, ignore", str);
-                                }
-                            } else {
-                                error!("decode desc file {} fail", str);
-                            }
-                        }
-                        owners
-                    } else {
-                        vec![]
-                    };
-
-                    if threshold as usize > owners.len() {
-                        error!("threshold must small owners count, detail info use --help");
-                        return;
-                    }
-
-                    let group_desc = desc::create_simple_group_desc(threshold
-                                                                    , owners
-                                                                    , get_objids_from_matches(matches, "members")
-                                                                    , get_deviceids_from_matches(matches, "ood_list"));
-
-                    let groupid = group_desc.desc().calculate_id();
-                    let desc_file = Path::new(matches.value_of("save_path").unwrap_or("")).join(&groupid.to_string()).with_extension("desc");
-                    if let Err(e) = group_desc.encode_to_file(&desc_file, true) {
-                        error!("write imple group desc file failed, err {}", e);
-                    } else {
-                        info!("write simple group desc file succ to {}", desc_file.display());
-                        write_id_file(matches, &groupid);
-                    };
-                },
-                Err(_e) => {
-                    error!("threshold must number, detail info use --help");
-                    return;
-                }
-            }
-        }
+        ("group", Some(matches)) => create_group_desc(matches).await,
         ("people", Some(matches)) => {
-            let owner_id = matches.value_of("owner").map(|str| {
-                ObjectId::from_str(str).unwrap()
-            });
+            let owner_id = matches
+                .value_of("owner")
+                .map(|str| ObjectId::from_str(str).unwrap());
             let ood_list = get_deviceids_from_matches(matches, "ood_list").unwrap_or(vec![]);
             let key_bits = get_key_bits(matches);
             let area = get_area(matches);
             let (people, secret) = create_people_desc(area, key_bits, owner_id, ood_list);
             let objid = people.desc().calculate_id();
-            let file_path = Path::new(matches.value_of("save_path").unwrap_or("")).join(&objid.to_string()).with_extension("desc");
+            let file_path = Path::new(matches.value_of("save_path").unwrap_or(""))
+                .join(&objid.to_string())
+                .with_extension("desc");
             if let Err(e) = people.encode_to_file(&file_path, true) {
                 error!("write people file failed, err {}", e);
             } else {
@@ -208,24 +203,66 @@ pub async fn create_desc(matches: &ArgMatches<'_>) {
             let people_id = people.desc().calculate_id();
 
             // 再创建ood，使用people为owner
-            let (mut ood_desc, ood_sec) = desc::create_device_desc(area.clone(), DeviceCategory::OOD, key_bits, "ood", Some(people_id.clone())
-                                                                   , vec![], vec![], None).unwrap();
+            let (mut ood_desc, ood_sec) = desc::create_device_desc(
+                area.clone(),
+                DeviceCategory::OOD,
+                key_bits,
+                "ood",
+                Some(people_id.clone()),
+                vec![],
+                vec![],
+                None,
+            )
+            .unwrap();
 
             // 修改people的ood_list
             people.ood_list_mut().push(ood_desc.desc().device_id());
             // 再创建client，使用people为owner
-            let (mut client_desc, client_sec) = desc::create_device_desc(area, DeviceCategory::PC, key_bits, "client", Some(people_id.clone())
-                                                                         , vec![], vec![], None).unwrap();
+            let (mut client_desc, client_sec) = desc::create_device_desc(
+                area,
+                DeviceCategory::PC,
+                key_bits,
+                "client",
+                Some(people_id.clone()),
+                vec![],
+                vec![],
+                None,
+            )
+            .unwrap();
 
             let signer = RsaCPUObjectSigner::new(people_sec.public(), people_sec.clone());
             // 给desc签名
-            sign_and_set_named_object_desc(&signer, &mut people, &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF)).await.unwrap();
-            sign_and_set_named_object_desc(&signer, &mut ood_desc, &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER)).await.unwrap();
-            sign_and_set_named_object_desc(&signer, &mut client_desc, &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER)).await.unwrap();
+            sign_and_set_named_object_desc(
+                &signer,
+                &mut people,
+                &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
+            )
+            .await
+            .unwrap();
+            sign_and_set_named_object_desc(
+                &signer,
+                &mut ood_desc,
+                &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+            )
+            .await
+            .unwrap();
+            sign_and_set_named_object_desc(
+                &signer,
+                &mut client_desc,
+                &SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+            )
+            .await
+            .unwrap();
             let file_path = Path::new(matches.value_of("save_path").unwrap_or(""));
             // 存储这些对象
             let mut postfix = String::from("");
-            if Path::new(&file_path.join(format!("device{}", &postfix)).with_extension("desc")).exists() {
+            if Path::new(
+                &file_path
+                    .join(format!("device{}", &postfix))
+                    .with_extension("desc"),
+            )
+            .exists()
+            {
                 postfix = chrono::Local::now().format("-%F-%H-%M-%S").to_string();
             }
             let people_file = file_path.join(format!("people{}", &postfix));
@@ -254,11 +291,96 @@ pub async fn create_desc(matches: &ArgMatches<'_>) {
             if let Err(e) = client_sec.encode_to_file(&client_file.with_extension("sec"), false) {
                 error!("write client sec failed, err {}", e);
             }
-
         }
         v @ _ => {
             error!("not support create type {}", v.0);
             return;
         }
     }
+}
+
+pub async fn create_group_desc(matches: &ArgMatches<'_>) {
+    let admins = match get_group_members_from_matches(matches, "admins") {
+        Ok(admins) => {
+            match admins {
+                Some(admins) if admins.len() > 0 => admins,
+                _ => {
+                    log::error!("empty admins.");
+                    return;                    
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("invalid admins: {}", e.msg());
+            return;
+        }
+    };
+
+    let area = match get_area_no_default(matches) {
+        Ok(area) => match area {
+            Some(area) => area,
+            None => {
+                log::error!("area is expected, detail info use --help");
+                return;
+            }
+        },
+        Err(_) => return,
+    };
+
+    let founder = match matches.value_of("founder") {
+        Some(str) => match ObjectId::from_str(str) {
+            Ok(id) => Some(id),
+            Err(_) => {
+                log::error!("invalid founder: {}", str);
+                return;
+            }
+        },
+        None => None,
+    };
+
+    let members = match get_group_members_from_matches(matches, "members") {
+        Ok(members) => members.unwrap_or(vec![]),
+        Err(e) => {
+            log::error!("invalid members: {}", e.msg());
+            return;
+        }
+    };
+
+    let ood_list = get_deviceids_from_matches(matches, "ood_list").unwrap_or(vec![]);
+    if ood_list.len() == 0 {
+        log::error!("no valid ood found.");
+        return;
+    }
+
+    let name = matches.value_of("name").map(|s| s.into());
+    let icon = matches.value_of("icon").map(|s| s.into());
+    let description = matches.value_of("description").map(|s| s.into());
+    let is_org = matches.is_present("org");
+
+    let group_desc = desc::create_group_desc(
+        founder,
+        admins,
+        members,
+        ood_list,
+        area,
+        name,
+        icon,
+        description,
+        is_org,
+    );
+
+    let groupid = group_desc.desc().calculate_id();
+    let desc_file = Path::new(matches.value_of("save_path").unwrap_or(""))
+        .join(&groupid.to_string())
+        .with_extension("desc");
+    if let Err(e) = group_desc.encode_to_file(&desc_file, true) {
+        error!("write group desc file({:?}) failed, err {}", desc_file, e);
+    } else {
+        info!(
+            "write group({}) desc file succ to {}",
+            groupid,
+            desc_file.display()
+        );
+        write_id_file(matches, &groupid);
+    };
 }

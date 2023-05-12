@@ -10,6 +10,7 @@ use crate::crypto_api::{CryptoService, ObjectCrypto, ObjectVerifier};
 use crate::events::RouterEventsManager;
 use crate::forward::ForwardProcessorManager;
 use crate::front::FrontService;
+use crate::group_api::GroupService;
 use crate::interface::{
     ObjectListenerManager, ObjectListenerManagerParams, ObjectListenerManagerRef,
 };
@@ -32,9 +33,12 @@ use crate::trans_api::{create_trans_store, TransService};
 use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
+use crate::GroupNONDriver;
 use cyfs_base::*;
+
 use cyfs_bdt::{DeviceCache, SnStatus, StackGuard};
 use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
+use cyfs_group::GroupManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
@@ -100,6 +104,9 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
+
+    // group
+    group_service: GroupService,
 }
 
 impl CyfsStackImpl {
@@ -277,6 +284,11 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
+        let signer = RsaCPUObjectSigner::new(
+            bdt_param.device.desc().public_key().clone(),
+            bdt_param.secret.clone(),
+        );
+
         // 初始化bdt协议栈
         let (bdt_stack, bdt_event) = Self::init_bdt_stack(
             zone_manager.clone(),
@@ -407,7 +419,7 @@ impl CyfsStackImpl {
 
         let services = ObjectServices {
             ndn_service,
-            non_service,
+            non_service: non_service.clone(),
 
             crypto_service,
             util_service,
@@ -422,6 +434,18 @@ impl CyfsStackImpl {
             services.crypto_service.local_service().verifier().clone(),
             config.clone(),
         );
+
+        let group_manager = GroupManager::new(
+            signer,
+            Box::new(GroupNONDriver::new(
+                non_service.clone(),
+                device_id.object_id().clone(),
+            )),
+            bdt_stack.clone(),
+            global_state_manager.clone_processor(),
+        )?;
+        let group_service =
+            GroupService::new(forward_manager.clone(), zone_manager.clone(), group_manager);
 
         let mut stack = Self {
             config,
@@ -458,6 +482,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            group_service,
         };
 
         // init an system-dec router-handler processor for later use
@@ -547,6 +573,7 @@ impl CyfsStackImpl {
             &stack.root_state,
             &stack.local_cache,
             &stack.global_state_meta,
+            &stack.group_service,
         );
 
         let interface = Arc::new(interface);
@@ -1149,6 +1176,10 @@ impl CyfsStack {
 
     pub fn root_state(&self) -> &GlobalStateService {
         &self.stack.root_state
+    }
+
+    pub fn group_service(&self) -> &GroupService {
+        &self.stack.group_service
     }
 
     // use system dec as default dec

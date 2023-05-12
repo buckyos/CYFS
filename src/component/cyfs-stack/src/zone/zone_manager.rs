@@ -424,7 +424,7 @@ impl ZoneManager {
                 // 目前owner只支持people和simplegroup
                 // People,SimpleGroup对象存在ood_list
                 match obj_type {
-                    ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+                    ObjectTypeCode::People | ObjectTypeCode::Group => {
                         // 查找owner对象
                         info!("will search owner: type={:?}, {}", obj_type, owner_id);
                         let object = self.search_object(&owner_id).await?;
@@ -648,17 +648,35 @@ impl ZoneManager {
 
             // 目前owner只支持people和simplegroup
             // People,SimpleGroup对象存在ood_list
-            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::SimpleGroup {
+            if obj_type == ObjectTypeCode::People || obj_type == ObjectTypeCode::Group {
                 match owner_object.ood_list() {
                     Ok(list) => {
                         if list.len() > 0 {
-                            let work_mode = owner_object.ood_work_mode().unwrap().to_owned();
-                            debug!(
-                                "get ood list from owner object ood_list: owner={}, work_mode={:?}, list={:?}",
-                                owner_id, work_mode, list
-                            );
+                            if obj_type == ObjectTypeCode::People {
+                                let work_mode = owner_object.ood_work_mode().unwrap().to_owned();
+                                debug!(
+                                    "get ood list from owner object ood_list: owner={}, work_mode={:?}, list={:?}",
+                                    owner_id, work_mode, list
+                                );
 
-                            return Ok((work_mode, list.to_owned()));
+                                return Ok((work_mode, list.to_owned()));
+                            } else if obj_type == ObjectTypeCode::Group {
+                                let group = owner_object.into_group();
+                                // TODO: 先简单处理，找最近的OOD，后面可能要依据具体操作向不同身份发起请求；
+                                // 比如：读操作向任意member请求即可
+                                let list = group
+                                    .ood_list_with_distance(
+                                        self.get_current_device_id().object_id(),
+                                    )
+                                    .into_iter()
+                                    .filter(|id| id.obj_type_code() == ObjectTypeCode::Device)
+                                    .map(|id| DeviceId::try_from(id).unwrap())
+                                    .collect();
+                                return Ok((OODWorkMode::Standalone, list));
+                            } else {
+                                unreachable!()
+                            }
+
                             /*
                             let ood_device_id = list[0].clone();
                             let obj_type = ood_device_id.object_id().obj_type_code();
@@ -736,7 +754,7 @@ impl ZoneManager {
             })?;
 
             match object_id.obj_type_code() {
-                ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+                ObjectTypeCode::People | ObjectTypeCode::Group => {
                     // 需要校验签名
                     let obj = Arc::new(obj);
 

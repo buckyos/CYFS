@@ -1,6 +1,13 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
-use cyfs_base::{AnyNamedObject, ChunkList, Dir, DirBodyContent, File, FileDecoder, InnerNode, NDNObjectInfo, NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource, SingleKeyObjectDesc, StandardObject, AreaObjectDesc};
-use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj};
+use cyfs_base::{
+    AnyNamedObject, AreaObjectDesc, ChunkList, Dir, DirBodyContent, File, FileDecoder, Group,
+    InnerNode, NDNObjectInfo, NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource,
+    SingleKeyObjectDesc, StandardObject,
+};
+use cyfs_core::{
+    AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj, ToGroupShell,
+};
+use itertools::Itertools;
 use std::convert::TryFrom;
 use std::path::Path;
 
@@ -41,13 +48,19 @@ pub fn show_desc_subcommand<'a, 'b>() -> App<'a, 'b> {
             Arg::with_name("show_members")
                 .short("m")
                 .long("member")
-                .help("show members in simple group"),
+                .help("show members in group"),
+        )
+        .arg(
+            Arg::with_name("show_admins")
+                .short("A")
+                .long("admins")
+                .help("show administrators in group"),
         )
         .arg(
             Arg::with_name("show_oodlist")
                 .short("l")
                 .long("ood_list")
-                .help("show ood_list in people"),
+                .help("show ood_list in people or group"),
         )
         .arg(
             Arg::with_name("all")
@@ -159,6 +172,78 @@ fn show_dir(dir: &Dir, matches: &ArgMatches) {
     }
 }
 
+fn show_group(group: &Group, matches: &ArgMatches) {
+    println!("desc type: Group");
+    let is_all = matches.is_present("all");
+
+    if is_all {
+        println!("name: {}", group.name().as_ref().map_or("", |n| n.as_str()));
+        println!(
+            "founder: {}",
+            group.founder_id().map_or("".to_string(), |f| f.to_string())
+        );
+        println!(
+            "icon: {}",
+            group.icon().as_ref().map_or("", |icon| icon.as_str())
+        );
+        println!(
+            "description: {}",
+            group.description().as_ref().map_or("", |d| d.as_str())
+        );
+        println!(
+            "area: {}",
+            group
+                .desc()
+                .area()
+                .as_ref()
+                .map_or("None".to_string(), |a| a.to_string())
+        );
+        println!("version: {}", group.version());
+        println!(
+            "prev-shell-id: {}",
+            group
+                .prev_shell_id()
+                .map_or("None".to_string(), |prev| prev.to_string())
+        );
+        println!("shell-id: {}", group.to_shell().shell_id());
+        println!(
+            "body-hash: {}",
+            group.body().as_ref().unwrap().raw_hash_value().unwrap()
+        );
+    }
+
+    if is_all || matches.is_present("show_admins") {
+        print!(
+            "administrators({}): [",
+            if group.is_org() {
+                "mutable"
+            } else {
+                "immutable"
+            }
+        );
+        for (_, member) in group.admins().iter().sorted_by(|l, r| l.0.cmp(r.0)) {
+            print!("{};", member.to_string());
+        }
+        println!("]");
+    }
+
+    if is_all || matches.is_present("show_members") {
+        print!("members: [");
+        for (_, member) in group.members().iter().sorted_by(|l, r| l.0.cmp(r.0)) {
+            print!("{};", member.to_string());
+        }
+        println!("]");
+    }
+
+    if is_all || matches.is_present("show_oodlist") {
+        print!("ood_list: [");
+        for ood in group.ood_list() {
+            print!("{};", ood);
+        }
+        println!("]");
+    }
+}
+
 pub fn show_desc(matches: &ArgMatches) {
     let path = Path::new(matches.value_of("desc_file").unwrap());
     let mut file_buf = vec![];
@@ -216,7 +301,6 @@ pub fn show_desc(matches: &ArgMatches) {
                             if let Some(area) = p.desc().area() {
                                 println!("area: {}", area)
                             }
-
                         }
                         if matches.is_present("all") || matches.is_present("show_endpoint") {
                             print!("endpoint: [");
@@ -237,7 +321,9 @@ pub fn show_desc(matches: &ArgMatches) {
                             let pubkey = p.desc().public_key();
                             let mut buf = vec![];
                             buf.resize(pubkey.raw_measure(&None).unwrap(), 0);
-                            pubkey.raw_encode(&mut buf, &None).expect("encode pubkey err");
+                            pubkey
+                                .raw_encode(&mut buf, &None)
+                                .expect("encode pubkey err");
                             println!("pubkey: {}", hex::encode(&buf));
                             println!("createtime: {}", p.desc().create_time());
                             println!("device catelogy: {}", p.category().unwrap())
@@ -251,16 +337,7 @@ pub fn show_desc(matches: &ArgMatches) {
                             ua.desc().content().right()
                         );
                     }
-                    StandardObject::SimpleGroup(g) => {
-                        println!("desc type: Group");
-                        if matches.is_present("all") || matches.is_present("show_members") {
-                            print!("members: [");
-                            for owner in g.body().as_ref().unwrap().content().members() {
-                                print!("{}, ", owner);
-                            }
-                            println!("]");
-                        }
-                    }
+                    StandardObject::Group(g) => show_group(g, matches),
                     StandardObject::File(f) => {
                         show_file(f, matches);
                     }

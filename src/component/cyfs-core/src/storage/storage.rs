@@ -57,6 +57,8 @@ pub trait StorageObj {
     fn into_value(self) -> Vec<u8>;
 
     fn storage_id(&self) -> StorageId;
+
+    fn check_hash(&self) -> Option<bool>;
 }
 
 impl StorageObj for Storage {
@@ -130,6 +132,12 @@ impl StorageObj for Storage {
 
     fn storage_id(&self) -> StorageId {
         self.desc().calculate_id().try_into().unwrap()
+    }
+
+    fn check_hash(&self) -> Option<bool> {
+        self.desc().content().hash.as_ref().map(|hash| {
+            hash == &hash_data(self.body().as_ref().unwrap().content().value.as_slice())
+        })
     }
 }
 
