@@ -453,6 +453,7 @@ mod Common {
             known_passive_pn: vec![],
             udp_sn_only: None,
             sn_mode: SNMode::Normal,
+            ping_interval: None,
         };
 
         let stack_param = CyfsStackParams {

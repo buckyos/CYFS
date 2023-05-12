@@ -37,7 +37,7 @@ impl RootObjectCategoryManager {
         list.push(item);
 
         let item = RootObjectCategory {
-            object_type: ObjectTypeCode::SimpleGroup.to_u16(),
+            object_type: ObjectTypeCode::Group.to_u16(),
             ref_depth: 0,
         };
         list.push(item);
