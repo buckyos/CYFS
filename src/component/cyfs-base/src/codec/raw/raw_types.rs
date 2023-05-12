@@ -740,7 +740,7 @@ impl<'de, T: RawEncode + RawDecode<'de>> RawDecode<'de> for Vec<T> {
 
 // HashSet<T>
 
-impl<T: RawEncode> RawEncode for HashSet<T> {
+impl<T: RawEncode + std::cmp::Ord> RawEncode for HashSet<T> {
     fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         let ulen = USize(self.len());
         let mut bytes = ulen.raw_measure(purpose).unwrap();
@@ -757,7 +757,12 @@ impl<T: RawEncode> RawEncode for HashSet<T> {
     ) -> BuckyResult<&'a mut [u8]> {
         let ulen = USize(self.len());
         let mut buf = ulen.raw_encode(buf, purpose)?;
-        for e in self {
+
+        // stable sort
+        let mut values: Vec<&T> = self.iter().collect();
+        values.sort();
+
+        for e in values {
             buf = e.raw_encode(buf, purpose)?;
         }
         Ok(buf)
