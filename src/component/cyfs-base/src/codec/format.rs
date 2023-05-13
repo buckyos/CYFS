@@ -494,10 +494,6 @@ impl ObjectFormat for StandardObject {
             StandardObject::Action(o) => o.format_json(),
             StandardObject::ObjectMap(o) => o.format_json(),
             StandardObject::Contract(o) => o.format_json(),
-            StandardObject::SimpleGroup => {
-                panic!("SimpleGroup is deprecated, you can use the Group.")
-            }
-            StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
         }
     }
 }

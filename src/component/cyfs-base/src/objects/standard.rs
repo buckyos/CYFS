@@ -4,8 +4,6 @@ use crate::*;
 pub enum StandardObject {
     Device(Device),
     People(People),
-    SimpleGroup,
-    Org,
     AppGroup(AppGroup),
     UnionAccount(UnionAccount),
     ChunkId(ChunkId),
@@ -38,10 +36,6 @@ macro_rules! match_standard_obj {
             StandardObject::Action($o) => $body,
             StandardObject::ObjectMap($o) => $body,
             StandardObject::Contract($o) => $body,
-            StandardObject::SimpleGroup => {
-                panic!("SimpleGroup is deprecated, you can use the Group.")
-            }
-            StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
         }
     };
 }
@@ -269,10 +263,6 @@ impl StandardObject {
             Self::ChunkId(_) => {
                 unreachable!();
             }
-            Self::SimpleGroup => {
-                panic!("SimpleGroup is deprecated, you can use the Group.")
-            }
-            Self::Org => panic!("Org is deprecated, you can use the Group."),
         }
     }
 }
@@ -294,10 +284,6 @@ impl RawEncode for StandardObject {
             StandardObject::Action(o) => o.raw_measure(purpose),
             StandardObject::ObjectMap(o) => o.raw_measure(purpose),
             StandardObject::Contract(o) => o.raw_measure(purpose),
-            StandardObject::SimpleGroup => {
-                panic!("SimpleGroup is deprecated, you can use the Group.")
-            }
-            StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
         }
     }
 
@@ -321,10 +307,6 @@ impl RawEncode for StandardObject {
             StandardObject::Action(o) => o.raw_encode(buf, purpose),
             StandardObject::ObjectMap(o) => o.raw_encode(buf, purpose),
             StandardObject::Contract(o) => o.raw_encode(buf, purpose),
-            StandardObject::SimpleGroup => {
-                panic!("SimpleGroup is deprecated, you can use the Group.")
-            }
-            StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
         }
     }
 }

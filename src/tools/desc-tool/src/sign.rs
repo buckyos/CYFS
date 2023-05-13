@@ -78,10 +78,6 @@ macro_rules! match_any_obj_mut {
                 StandardObject::Tx($o) => $body,
                 StandardObject::Action($o) => $body,
                 StandardObject::ObjectMap($o) => $body,
-                StandardObject::SimpleGroup => {
-                    panic!("SimpleGroup is deprecated, you can use the Group.")
-                }
-                StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
             },
             AnyNamedObject::Core($o) => $body,
             AnyNamedObject::DECApp($o) => $body,
