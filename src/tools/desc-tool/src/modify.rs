@@ -433,7 +433,7 @@ fn modify_group_desc(group: &mut Group, matches: &ArgMatches) -> BuckyResult<()>
         .body_mut()
         .as_mut()
         .unwrap()
-        .set_update_time(bucky_time_now());
+        .increase_update_time(bucky_time_now());
 
     group.signs_mut().clear_body_signs();
 
