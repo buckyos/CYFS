@@ -111,7 +111,7 @@ impl UniBackupTask {
         let uni_stat = UniBackupStat::new(self.noc.clone(), self.ndc.clone());
         let uni_stat = uni_stat.stat().await?;
 
-        let keydata = KeyDataManager::new_uni(&params.isolate);
+        let keydata = KeyDataManager::new_uni(&params.isolate, &params.key_data_filters)?;
         let keydata_stat = KeyDataBackupStat::new(keydata);
         let keydata_stat = keydata_stat.stat();
 
@@ -225,7 +225,7 @@ impl UniBackupTask {
         }
 
         let keydata_meta = {
-            let keydata = KeyDataManager::new_uni(&params.isolate);
+            let keydata = KeyDataManager::new_uni(&params.isolate, &params.key_data_filters)?;
             let keydata_backup = KeyDataBackupManager::new(keydata, data_writer);
 
             keydata_backup.run().await.map_err(|e| {

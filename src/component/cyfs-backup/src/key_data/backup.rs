@@ -5,27 +5,23 @@ use crate::meta::{KeyDataMeta, KeyDataType};
 use cyfs_base::*;
 use cyfs_util::AsyncReadWithSeek;
 
-use std::path::PathBuf;
-
 pub struct KeyDataBackupManager {
-    cyfs_root: PathBuf,
-    list: Vec<KeyData>,
+    key_data_manager: KeyDataManager,
     data_writer: BackupDataWriterRef,
 }
 
 impl KeyDataBackupManager {
-    pub fn new(keydata: KeyDataManager, data_writer: BackupDataWriterRef) -> Self {
+    pub fn new(key_data_manager: KeyDataManager, data_writer: BackupDataWriterRef) -> Self {
         Self {
-            cyfs_root: keydata.cyfs_root,
-            list: keydata.list,
+            key_data_manager,
             data_writer,
         }
     }
 
     pub async fn run(&self) -> BuckyResult<Vec<KeyDataMeta>> {
-        let mut list = Vec::with_capacity(self.list.len());
+        let mut list = Vec::with_capacity(self.key_data_manager.list().len());
 
-        for item in &self.list {
+        for item in self.key_data_manager.list() {
             let chunk_id = self.backup_data(item).await?;
             if chunk_id.is_none() {
                 continue;
@@ -50,9 +46,14 @@ impl KeyDataBackupManager {
     }
 
     async fn backup_data(&self, data: &KeyData) -> BuckyResult<Option<ChunkId>> {
-        let file = self.cyfs_root.join(&data.local_path);
+        let file = self.key_data_manager.cyfs_root().join(&data.local_path);
         if !file.exists() {
             warn!("target key data not exists! {}", file.display());
+            return Ok(None);
+        }
+
+        if !self.key_data_manager.check_filter(&file) {
+            warn!("key data will be ignored by filter: {}", file.display());
             return Ok(None);
         }
 
@@ -66,9 +67,11 @@ impl KeyDataBackupManager {
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?,
-            KeyDataType::Dir => {
-                ZipHelper::zip_dir_to_buffer(&file, zip::CompressionMethod::Stored)?
-            }
+            KeyDataType::Dir => ZipHelper::zip_dir_to_buffer(
+                &file,
+                zip::CompressionMethod::Stored,
+                &self.key_data_manager,
+            )?,
         };
 
         let chunk_id = ChunkId::calculate_sync(&data).unwrap();

@@ -15,7 +15,8 @@ impl BackupLogFile {
             AppendCount::new(1024),
             ContentLimit::BytesSurpassed(1024 * 1024 * 10),
             Compression::None,
-            #[cfg(unix)] None,
+            #[cfg(unix)]
+            None,
         );
 
         Self { writer }
@@ -58,17 +59,19 @@ impl BackupLogManager {
         id: &ObjectId,
         e: BuckyError,
     ) {
+        let t = if id.is_chunk_id() { "chunk" } else { "object" };
+
         let msg = match isolate_id {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
                 if self.state_default_isolate == Some(*isolate_id) {
-                    format!("[{}] [{}] {}\n", dec_id, id, e)
+                    format!("[{}] [{}] [{}] {}\n", t, dec_id, id, e)
                 } else {
-                    format!("[{}] [{}] [{}] {}\n", isolate_id, dec_id, id, e)
+                    format!("[{}] [{}] [{}] [{}] {}\n", t, isolate_id, dec_id, id, e)
                 }
             }
             None => {
-                format!("[{}] {}\n", id, e)
+                format!("[{}] [{}] {}\n", t, id, e)
             }
         };
 
@@ -81,17 +84,19 @@ impl BackupLogManager {
         dec_id: Option<&ObjectId>,
         id: &ObjectId,
     ) {
+        let t = if id.is_chunk_id() { "chunk" } else { "object" };
+
         let msg = match isolate_id {
             Some(isolate_id) => {
                 let dec_id = dec_id.unwrap();
                 if self.state_default_isolate == Some(*isolate_id) {
-                    format!("[{}] [{}]\n", dec_id, id,)
+                    format!("[{}] [{}] [{}]\n", t, dec_id, id,)
                 } else {
-                    format!("[{}] [{}] [{}]\n", isolate_id, dec_id, id)
+                    format!("[{}] [{}] [{}] [{}]\n", t, isolate_id, dec_id, id)
                 }
             }
             None => {
-                format!("[{}]\n", id)
+                format!("[{}] [{}]\n", t, id)
             }
         };
 
