@@ -91,7 +91,7 @@ impl GroupRequestor {
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
         log::info!("will start group service: {:?}", rpath);
 
-        let url = self.service_url.join("start-service").unwrap();
+        let url = self.service_url.join("service").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
         let req = GroupStartServiceOutputRequest {
@@ -154,7 +154,7 @@ impl GroupRequestor {
             proposal_id
         );
 
-        let url = self.service_url.join("push-proposal").unwrap();
+        let url = self.service_url.join("proposal").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
         self.encode_common_headers(NONAction::PutObject, &req_common, &mut http_req);

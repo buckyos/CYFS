@@ -46,7 +46,7 @@ impl GroupInputProcessor for GroupAclInnerInputProcessor {
         req_common: NONInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
-        self.check_local_zone_permit("group.start-service", &req_common.source)?;
+        self.check_local_zone_permit("group.service", &req_common.source)?;
         self.next.start_service(req_common, req).await
     }
 
@@ -55,7 +55,7 @@ impl GroupInputProcessor for GroupAclInnerInputProcessor {
         req_common: NONInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
-        self.check_local_zone_permit("group.push-proposal", &req_common.source)?;
+        self.check_local_zone_permit("group.proposal", &req_common.source)?;
         self.next.push_proposal(req_common, req).await
     }
 }

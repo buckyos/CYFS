@@ -49,7 +49,7 @@ impl GroupRequestHandler {
         Ok(ret)
     }
 
-    // group/start-service
+    // group/service
     pub async fn process_start_service<State: Send>(
         &self,
         req: NONInputHttpRequest<State>,

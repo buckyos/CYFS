@@ -127,7 +127,7 @@ impl DeviceInfoManagerImpl {
         }
     }
 
-    async fn verfiy_group_own_signs(
+    async fn verfiy_group(
         &self,
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
@@ -472,7 +472,7 @@ impl DeviceCache for DeviceInfoManager {
         object: &Arc<AnyNamedObject>,
     ) -> BuckyResult<()> {
         if ObjectTypeCode::Group == object_id.obj_type_code() {
-            self.0.verfiy_group_own_signs(object_id, object).await
+            self.0.verfiy_group(object_id, object).await
         } else {
             self.0.verfiy_single_own_signs(object_id, object).await
         }
