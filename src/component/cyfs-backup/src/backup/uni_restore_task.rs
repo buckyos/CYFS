@@ -85,18 +85,12 @@ impl UniRestoreTask {
 
         let filter = UniRestoreDataFilter::new();
 
+        // Should ignore chunks of key-data
         if meta.key_data.len() > 0 {
             filter.append_key_data_chunks(&meta.key_data);
-
-            let key_data_restore = KeyDataRestoreManager::new(
-                meta.key_data.clone(),
-                loader.clone(),
-                restorer.clone(),
-                self.status_manager.clone(),
-            );
-            key_data_restore.run().await?;
         }
 
+        // First store objects and chunks
         let chunk_fixer = ChunkTrackerFixer::new(&params.isolate)?;
 
         let uni_restore = UniRestoreManager::new(
@@ -108,6 +102,17 @@ impl UniRestoreTask {
             chunk_fixer,
         );
         uni_restore.run().await?;
+
+        // At last restore key-data, which includes {cyfs}/etc/desc
+        if meta.key_data.len() > 0 {
+            let key_data_restore = KeyDataRestoreManager::new(
+                meta.key_data.clone(),
+                loader.clone(),
+                restorer.clone(),
+                self.status_manager.clone(),
+            );
+            key_data_restore.run().await?;
+        }
 
         let result = RestoreResult {
             index: loader.index().await,
