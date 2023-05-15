@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 pub enum RestoreTaskPhase {
     Init,
     LoadAndVerify,
-    RestoreKeyData,
     RestoreObject,
     RestoreChunk,
+    RestoreKeyData,
     Complete,
 }
 

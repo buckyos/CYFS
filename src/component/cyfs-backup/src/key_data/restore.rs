@@ -32,7 +32,8 @@ impl KeyDataRestoreManager {
     }
 
     pub async fn run(&self) -> BuckyResult<()> {
-        for item in &self.list {
+        // The recovery operation is performed in reverse order to ensure that {cyfs}/etc/desc is restored at the end
+        for item in self.list.iter().rev() {
             info!("will restore key data: {:?}", item);
 
             self.restore_data(item).await?;
