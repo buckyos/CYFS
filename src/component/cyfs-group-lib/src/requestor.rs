@@ -42,12 +42,7 @@ impl GroupRequestor {
         Arc::new(Box::new(self.clone()))
     }
 
-    fn encode_common_headers(
-        &self,
-        action: NONAction,
-        com_req: &NONOutputRequestCommon,
-        http_req: &mut Request,
-    ) {
+    fn encode_common_headers(&self, com_req: &NONOutputRequestCommon, http_req: &mut Request) {
         let dec_id = com_req.dec_id.as_ref().unwrap_or(&self.dec_id);
         http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
 
@@ -56,8 +51,6 @@ impl GroupRequestor {
             cyfs_base::CYFS_REQ_PATH,
             com_req.req_path.as_deref(),
         );
-
-        http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
         http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
 
@@ -99,7 +92,7 @@ impl GroupRequestor {
             rpath: rpath.to_string(),
         };
 
-        self.encode_common_headers(NONAction::PutObject, &req_common, &mut http_req);
+        self.encode_common_headers(&req_common, &mut http_req);
         let body = req.encode_string();
         http_req.set_body(body);
 
@@ -157,7 +150,7 @@ impl GroupRequestor {
         let url = self.service_url.join("proposal").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
-        self.encode_common_headers(NONAction::PutObject, &req_common, &mut http_req);
+        self.encode_common_headers(&req_common, &mut http_req);
 
         NONRequestorHelper::encode_object_info(
             &mut http_req,
