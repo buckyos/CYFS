@@ -2,7 +2,8 @@ use crate::group::{GroupInputProcessor, GroupInputProcessorRef};
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupPushProposalInputResponse, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
+    GroupStartServiceInputResponse,
 };
 use cyfs_lib::*;
 
@@ -43,7 +44,7 @@ impl GroupAclInnerInputProcessor {
 impl GroupInputProcessor for GroupAclInnerInputProcessor {
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
         self.check_local_zone_permit("group.service", &req_common.source)?;
@@ -52,7 +53,7 @@ impl GroupInputProcessor for GroupAclInnerInputProcessor {
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
         self.check_local_zone_permit("group.proposal", &req_common.source)?;

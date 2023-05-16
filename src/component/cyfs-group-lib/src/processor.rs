@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use cyfs_base::BuckyResult;
 use cyfs_core::GroupProposal;
-use cyfs_lib::NONOutputRequestCommon;
 
 use crate::{
-    GroupPushProposalOutputResponse, GroupStartServiceOutputRequest,
+    GroupOutputRequestCommon, GroupPushProposalOutputResponse, GroupStartServiceOutputRequest,
     GroupStartServiceOutputResponse,
 };
 
@@ -13,12 +12,12 @@ use crate::{
 pub trait GroupOutputProcessor: Send + Sync {
     async fn start_service(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse>;
     async fn push_proposal(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalOutputResponse>;
 }

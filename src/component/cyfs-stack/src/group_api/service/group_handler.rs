@@ -1,9 +1,10 @@
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupPushProposalInputResponse, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
+    GroupStartServiceInputResponse,
 };
-use cyfs_lib::{NONInputRequestCommon, NONRequestorHelper, RequestorHelper};
+use cyfs_lib::{NONRequestorHelper, RequestorHelper};
 
 use crate::{group::GroupInputProcessorRef, non::NONInputHttpRequest};
 
@@ -20,30 +21,9 @@ impl GroupRequestHandler {
     // 解析通用header字段
     fn decode_common_headers<State>(
         req: &NONInputHttpRequest<State>,
-    ) -> BuckyResult<NONInputRequestCommon> {
-        // req_path
-        let req_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
-            &req.request,
-            cyfs_base::CYFS_REQ_PATH,
-        )?;
-
-        // 尝试提取flags
-        let flags: Option<u32> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
-
-        // 尝试提取default_action字段
-        let level =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_API_LEVEL)?;
-
-        // 尝试提取target字段
-        let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
-
-        let ret = NONInputRequestCommon {
-            req_path,
+    ) -> BuckyResult<GroupInputRequestCommon> {
+        let ret = GroupInputRequestCommon {
             source: req.source.clone(),
-            level: level.unwrap_or_default(),
-            target,
-            flags: flags.unwrap_or(0),
         };
 
         Ok(ret)

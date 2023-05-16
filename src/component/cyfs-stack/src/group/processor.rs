@@ -1,9 +1,9 @@
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupPushProposalInputResponse, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
+    GroupStartServiceInputResponse,
 };
-use cyfs_lib::*;
 
 use std::sync::Arc;
 
@@ -11,13 +11,13 @@ use std::sync::Arc;
 pub(crate) trait GroupInputProcessor: Sync + Send {
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse>;
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse>;
 }

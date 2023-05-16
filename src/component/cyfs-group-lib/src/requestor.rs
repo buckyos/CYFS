@@ -2,19 +2,15 @@ use std::sync::Arc;
 
 use cyfs_base::{
     BuckyError, BuckyResult, JsonCodec, NamedObject, ObjectDesc, ObjectId, RawConvertTo,
-    CYFS_API_LEVEL,
 };
 use cyfs_core::{GroupProposal, GroupProposalObject};
-use cyfs_lib::{
-    HttpRequestorRef, NONAction, NONObjectInfo, NONOutputRequestCommon, NONRequestorHelper,
-    RequestorHelper,
-};
+use cyfs_lib::{HttpRequestorRef, NONObjectInfo, NONRequestorHelper, RequestorHelper};
 use http_types::{Method, Request, Url};
 
 use crate::{
     output_request::GroupStartServiceOutputRequest,
     processor::{GroupOutputProcessor, GroupOutputProcessorRef},
-    GroupPushProposalOutputResponse, GroupStartServiceOutputResponse,
+    GroupOutputRequestCommon, GroupPushProposalOutputResponse, GroupStartServiceOutputResponse,
 };
 
 #[derive(Clone)]
@@ -42,43 +38,20 @@ impl GroupRequestor {
         Arc::new(Box::new(self.clone()))
     }
 
-    fn encode_common_headers(&self, com_req: &NONOutputRequestCommon, http_req: &mut Request) {
+    fn encode_common_headers(&self, com_req: &GroupOutputRequestCommon, http_req: &mut Request) {
         let dec_id = com_req.dec_id.as_ref().unwrap_or(&self.dec_id);
         http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
-
-        RequestorHelper::encode_opt_header_with_encoding(
-            http_req,
-            cyfs_base::CYFS_REQ_PATH,
-            com_req.req_path.as_deref(),
-        );
-
-        http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
-
-        if let Some(target) = &com_req.target {
-            http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
-        }
-
-        if let Some(source) = &com_req.source {
-            http_req.insert_header(cyfs_base::CYFS_SOURCE, source.to_string());
-        }
-
-        http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
     }
 
-    pub(crate) fn make_default_common(dec_id: ObjectId) -> NONOutputRequestCommon {
-        NONOutputRequestCommon {
-            req_path: None,
-            source: None,
+    pub(crate) fn make_default_common(dec_id: ObjectId) -> GroupOutputRequestCommon {
+        GroupOutputRequestCommon {
             dec_id: Some(dec_id),
-            level: cyfs_lib::NONAPILevel::NOC,
-            target: None,
-            flags: 0,
         }
     }
 
     pub async fn start_service(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         group_id: &ObjectId,
         rpath: &str,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
@@ -137,7 +110,7 @@ impl GroupRequestor {
 
     pub async fn push_proposal(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         proposal: &GroupProposal,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
         let proposal_id = proposal.desc().object_id();
@@ -190,7 +163,7 @@ impl GroupRequestor {
 impl GroupOutputProcessor for GroupRequestor {
     async fn start_service(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
         GroupRequestor::start_service(self, req_common, &req.group_id, req.rpath.as_str()).await
@@ -198,7 +171,7 @@ impl GroupOutputProcessor for GroupRequestor {
 
     async fn push_proposal(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
         GroupRequestor::push_proposal(self, req_common, &req).await

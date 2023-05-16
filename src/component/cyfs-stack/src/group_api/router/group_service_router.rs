@@ -3,10 +3,9 @@ use std::sync::Arc;
 use cyfs_base::{BuckyResult, DeviceId, ObjectId};
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupPushProposalInputResponse, GroupRequestor, GroupStartServiceInputRequest,
-    GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupRequestor,
+    GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
-use cyfs_lib::NONInputRequestCommon;
 
 use crate::{
     forward::ForwardProcessorManager,
@@ -86,23 +85,19 @@ impl GroupServiceRouter {
 
     pub async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
-        let processor = self
-            .get_processor(req_common.source.dec, req_common.target.as_ref())
-            .await?;
+        let processor = self.get_processor(req_common.source.dec, None).await?;
         processor.start_service(req_common, req).await
     }
 
     pub async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
-        let processor = self
-            .get_processor(req_common.source.dec, req_common.target.as_ref())
-            .await?;
+        let processor = self.get_processor(req_common.source.dec, None).await?;
         processor.push_proposal(req_common, req).await
     }
 }
@@ -111,23 +106,19 @@ impl GroupServiceRouter {
 impl GroupInputProcessor for GroupServiceRouter {
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
-        let processor = self
-            .get_processor(req_common.source.dec, req_common.target.as_ref())
-            .await?;
+        let processor = self.get_processor(req_common.source.dec, None).await?;
         processor.start_service(req_common, req).await
     }
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
-        let processor = self
-            .get_processor(req_common.source.dec, req_common.target.as_ref())
-            .await?;
+        let processor = self.get_processor(req_common.source.dec, None).await?;
         processor.push_proposal(req_common, req).await
     }
 }

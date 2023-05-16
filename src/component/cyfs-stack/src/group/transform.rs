@@ -1,9 +1,10 @@
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupOutputProcessor, GroupOutputProcessorRef, GroupPushProposalInputResponse,
-    GroupPushProposalOutputResponse, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
-    GroupStartServiceOutputRequest, GroupStartServiceOutputResponse,
+    GroupInputRequestCommon, GroupOutputProcessor, GroupOutputProcessorRef,
+    GroupOutputRequestCommon, GroupPushProposalInputResponse, GroupPushProposalOutputResponse,
+    GroupStartServiceInputRequest, GroupStartServiceInputResponse, GroupStartServiceOutputRequest,
+    GroupStartServiceOutputResponse,
 };
 use cyfs_lib::*;
 
@@ -22,29 +23,15 @@ impl GroupInputTransformer {
         Arc::new(ret)
     }
 
-    fn convert_common(common: NONInputRequestCommon) -> NONOutputRequestCommon {
-        NONOutputRequestCommon {
-            // 请求路径，可为空
-            req_path: common.req_path,
-
-            // 来源DEC
+    fn convert_common(common: GroupInputRequestCommon) -> GroupOutputRequestCommon {
+        GroupOutputRequestCommon {
             dec_id: common.source.get_opt_dec().cloned(),
-
-            // 默认行为
-            level: common.level,
-
-            // 用以处理默认行为
-            target: common.target,
-
-            flags: common.flags,
-
-            source: common.source.zone.device,
         }
     }
 
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
         let out_req = GroupStartServiceOutputRequest {
@@ -64,7 +51,7 @@ impl GroupInputTransformer {
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
         let out_resp = self
@@ -84,7 +71,7 @@ impl GroupInputTransformer {
 impl GroupInputProcessor for GroupInputTransformer {
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
         GroupInputTransformer::start_service(self, req_common, req).await
@@ -92,7 +79,7 @@ impl GroupInputProcessor for GroupInputTransformer {
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
         GroupInputTransformer::push_proposal(self, req_common, req).await
@@ -106,24 +93,13 @@ pub(crate) struct GroupOutputTransformer {
 }
 
 impl GroupOutputTransformer {
-    fn convert_common(&self, common: NONOutputRequestCommon) -> NONInputRequestCommon {
+    fn convert_common(&self, common: GroupOutputRequestCommon) -> GroupInputRequestCommon {
         let mut source = self.source.clone();
         if let Some(dec_id) = common.dec_id {
             source.set_dec(dec_id);
         }
 
-        NONInputRequestCommon {
-            // 请求路径，可为空
-            req_path: common.req_path,
-
-            // 默认行为
-            level: common.level,
-
-            // 用以处理默认行为
-            target: common.target,
-
-            flags: common.flags,
-
+        GroupInputRequestCommon {
             source,
         }
     }
@@ -138,7 +114,7 @@ impl GroupOutputTransformer {
 
     async fn push_proposal(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
         let in_resp = self
@@ -155,7 +131,7 @@ impl GroupOutputTransformer {
 
     async fn start_service(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
         let in_req = GroupStartServiceInputRequest {
@@ -178,7 +154,7 @@ impl GroupOutputTransformer {
 impl GroupOutputProcessor for GroupOutputTransformer {
     async fn start_service(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
         GroupOutputTransformer::start_service(self, req_common, req).await
@@ -186,7 +162,7 @@ impl GroupOutputProcessor for GroupOutputTransformer {
 
     async fn push_proposal(
         &self,
-        req_common: NONOutputRequestCommon,
+        req_common: GroupOutputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
         GroupOutputTransformer::push_proposal(self, req_common, req).await

@@ -4,9 +4,9 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc
 use cyfs_core::{GroupProposal, GroupProposalObject};
 use cyfs_group::GroupManager;
 use cyfs_group_lib::{
-    GroupPushProposalInputResponse, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
+    GroupStartServiceInputResponse,
 };
-use cyfs_lib::NONInputRequestCommon;
 
 use crate::group::{GroupInputProcessor, GroupInputProcessorRef};
 
@@ -29,7 +29,7 @@ impl LocalGroupService {
 impl GroupInputProcessor for LocalGroupService {
     async fn start_service(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
         self.group_manager
@@ -55,7 +55,7 @@ impl GroupInputProcessor for LocalGroupService {
 
     async fn push_proposal(
         &self,
-        req_common: NONInputRequestCommon,
+        req_common: GroupInputRequestCommon,
         req: GroupProposal,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
         let proposal_id = req.desc().object_id();
