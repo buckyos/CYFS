@@ -14,7 +14,7 @@ const OBJECT_CACHE_TIMEOUT_IN_SECS: u64 = 60 * 15;
 const NAME_CACHE_TIMEOUT_IN_SECS: u64 = 60 * 15;
 
 #[derive(Clone)]
-pub(crate) struct RawMetaCache {
+pub struct RawMetaCache {
     noc: NamedObjectCacheRef,
     meta_client: Arc<MetaClient>,
     device_id: DeviceId,

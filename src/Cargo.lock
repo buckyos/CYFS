@@ -654,11 +654,18 @@ dependencies = [
  "async-std",
  "clap 2.34.0",
  "cyfs-base",
+ "cyfs-base-meta",
  "cyfs-bdt",
  "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-meta-lib",
+ "cyfs-noc",
+ "cyfs-stack",
+ "cyfs-stack-loader",
  "cyfs-util",
  "log 0.4.17",
  "md5",
+ "rand 0.7.3",
 ]
 
 [[package]]
