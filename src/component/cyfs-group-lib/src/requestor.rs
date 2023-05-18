@@ -10,7 +10,8 @@ use http_types::{Method, Request, Url};
 use crate::{
     output_request::GroupStartServiceOutputRequest,
     processor::{GroupOutputProcessor, GroupOutputProcessorRef},
-    GroupOutputRequestCommon, GroupPushProposalOutputResponse, GroupStartServiceOutputResponse,
+    GroupOutputRequestCommon, GroupPushProposalOutputRequest, GroupPushProposalOutputResponse,
+    GroupStartServiceOutputResponse,
 };
 
 #[derive(Clone)]
@@ -51,21 +52,20 @@ impl GroupRequestor {
 
     pub async fn start_service(
         &self,
-        req_common: GroupOutputRequestCommon,
-        group_id: &ObjectId,
-        rpath: &str,
+        req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
-        log::info!("will start group service: {:?}", rpath);
+        log::info!("will start group service: {:?}", req.rpath);
 
         let url = self.service_url.join("service").unwrap();
         let mut http_req = Request::new(Method::Put, url);
+        self.encode_common_headers(&req.common, &mut http_req);
 
         let req = GroupStartServiceOutputRequest {
-            group_id: group_id.clone(),
-            rpath: rpath.to_string(),
+            group_id: req.group_id.clone(),
+            rpath: req.rpath.to_string(),
+            common: req.common,
         };
 
-        self.encode_common_headers(&req_common, &mut http_req);
         let body = req.encode_string();
         http_req.set_body(body);
 
@@ -99,7 +99,7 @@ impl GroupRequestor {
                 let e = RequestorHelper::error_from_resp(&mut resp).await;
                 log::error!(
                     "group start service failed: rpath={:?}, status={}, {}",
-                    rpath,
+                    req.rpath,
                     code,
                     e
                 );
@@ -110,24 +110,23 @@ impl GroupRequestor {
 
     pub async fn push_proposal(
         &self,
-        req_common: GroupOutputRequestCommon,
-        proposal: &GroupProposal,
+        req: GroupPushProposalOutputRequest,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
-        let proposal_id = proposal.desc().object_id();
+        let proposal_id = req.proposal.desc().object_id();
         log::info!(
             "will push proposal: {:?}, {}",
-            proposal.rpath(),
+            req.proposal.rpath(),
             proposal_id
         );
 
         let url = self.service_url.join("proposal").unwrap();
         let mut http_req = Request::new(Method::Put, url);
 
-        self.encode_common_headers(&req_common, &mut http_req);
+        self.encode_common_headers(&req.common, &mut http_req);
 
         NONRequestorHelper::encode_object_info(
             &mut http_req,
-            NONObjectInfo::new(proposal_id, proposal.to_vec()?, None),
+            NONObjectInfo::new(proposal_id, req.proposal.to_vec()?, None),
         );
 
         let mut resp = self.requestor.request(http_req).await?;
@@ -163,17 +162,15 @@ impl GroupRequestor {
 impl GroupOutputProcessor for GroupRequestor {
     async fn start_service(
         &self,
-        req_common: GroupOutputRequestCommon,
         req: GroupStartServiceOutputRequest,
     ) -> BuckyResult<GroupStartServiceOutputResponse> {
-        GroupRequestor::start_service(self, req_common, &req.group_id, req.rpath.as_str()).await
+        GroupRequestor::start_service(self, req).await
     }
 
     async fn push_proposal(
         &self,
-        req_common: GroupOutputRequestCommon,
-        req: GroupProposal,
+        req: GroupPushProposalOutputRequest,
     ) -> BuckyResult<GroupPushProposalOutputResponse> {
-        GroupRequestor::push_proposal(self, req_common, &req).await
+        GroupRequestor::push_proposal(self, req).await
     }
 }

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use cyfs_base::ObjectId;
+use cyfs_core::GroupProposal;
 use cyfs_lib::{NONObjectInfo, RequestSourceInfo};
 
 #[derive(Clone, Debug)]
@@ -18,11 +19,17 @@ impl fmt::Display for GroupInputRequestCommon {
 }
 
 pub struct GroupStartServiceInputRequest {
+    pub common: GroupInputRequestCommon,
     pub group_id: ObjectId,
     pub rpath: String,
 }
 
 pub struct GroupStartServiceInputResponse {}
+
+pub struct GroupPushProposalInputRequest {
+    pub common: GroupInputRequestCommon,
+    pub proposal: GroupProposal,
+}
 
 pub struct GroupPushProposalInputResponse {
     pub object: Option<NONObjectInfo>,

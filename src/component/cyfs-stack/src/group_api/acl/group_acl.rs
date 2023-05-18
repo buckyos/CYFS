@@ -2,8 +2,8 @@ use crate::group::{GroupInputProcessor, GroupInputProcessorRef};
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
-    GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 use cyfs_lib::*;
 
@@ -44,19 +44,17 @@ impl GroupAclInnerInputProcessor {
 impl GroupInputProcessor for GroupAclInnerInputProcessor {
     async fn start_service(
         &self,
-        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
-        self.check_local_zone_permit("group.service", &req_common.source)?;
-        self.next.start_service(req_common, req).await
+        self.check_local_zone_permit("group.service", &req.common.source)?;
+        self.next.start_service(req).await
     }
 
     async fn push_proposal(
         &self,
-        req_common: GroupInputRequestCommon,
-        req: GroupProposal,
+        req: GroupPushProposalInputRequest,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
-        self.check_local_zone_permit("group.proposal", &req_common.source)?;
-        self.next.push_proposal(req_common, req).await
+        self.check_local_zone_permit("group.proposal", &req.common.source)?;
+        self.next.push_proposal(req).await
     }
 }

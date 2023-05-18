@@ -4,8 +4,8 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc
 use cyfs_core::{GroupProposal, GroupProposalObject};
 use cyfs_group::GroupManager;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
-    GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 
 use crate::group::{GroupInputProcessor, GroupInputProcessorRef};
@@ -29,13 +29,12 @@ impl LocalGroupService {
 impl GroupInputProcessor for LocalGroupService {
     async fn start_service(
         &self,
-        req_common: GroupInputRequestCommon,
         req: GroupStartServiceInputRequest,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
         self.group_manager
             .find_rpath_service(
                 &req.group_id,
-                &req_common.source.dec,
+                &req.common.source.dec,
                 req.rpath.as_str(),
                 true,
             )
@@ -45,7 +44,7 @@ impl GroupInputProcessor for LocalGroupService {
                 log::error!(
                     "group start service {}-{}-{} failed {:?}",
                     req.group_id,
-                    req_common.source.dec,
+                    req.common.source.dec,
                     req.rpath,
                     err
                 );
@@ -55,19 +54,18 @@ impl GroupInputProcessor for LocalGroupService {
 
     async fn push_proposal(
         &self,
-        req_common: GroupInputRequestCommon,
-        req: GroupProposal,
+        req: GroupPushProposalInputRequest,
     ) -> BuckyResult<GroupPushProposalInputResponse> {
-        let proposal_id = req.desc().object_id();
-        let rpath = req.rpath().clone();
-        if &req_common.source.dec != rpath.dec_id() {
+        let proposal_id = req.proposal.desc().object_id();
+        let rpath = req.proposal.rpath().clone();
+        if &req.common.source.dec != rpath.dec_id() {
             let msg = format!(
                 "group push proposal {}-{}-{} {} failed: the source dec({}) should be same as that in GroupProposal object",
                 rpath.group_id(),
                 rpath.dec_id(),
                 rpath.rpath(),
                 proposal_id,
-                req_common.source.dec
+                req.common.source.dec
             );
             log::error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
@@ -76,8 +74,8 @@ impl GroupInputProcessor for LocalGroupService {
         let service = self
             .group_manager
             .find_rpath_service(
-                req.rpath().group_id(),
-                &req_common.source.dec,
+                rpath.group_id(),
+                &req.common.source.dec,
                 rpath.rpath(),
                 true,
             )
@@ -95,7 +93,7 @@ impl GroupInputProcessor for LocalGroupService {
             })?;
 
         service
-            .push_proposal(req)
+            .push_proposal(req.proposal)
             .await
             .map(|object| GroupPushProposalInputResponse { object })
             .map_err(|err| {

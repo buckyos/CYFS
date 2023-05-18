@@ -1,6 +1,7 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 
-use cyfs_base::{DeviceId, ObjectId};
+use cyfs_base::{NamedObject, ObjectDesc, ObjectId};
+use cyfs_core::GroupProposal;
 use cyfs_lib::NONObjectInfo;
 
 #[derive(Clone, Debug)]
@@ -27,11 +28,26 @@ impl fmt::Display for GroupOutputRequestCommon {
 
 #[derive(Debug)]
 pub struct GroupStartServiceOutputRequest {
+    pub common: GroupOutputRequestCommon,
     pub group_id: ObjectId,
     pub rpath: String,
 }
 
 pub struct GroupStartServiceOutputResponse {}
+
+pub struct GroupPushProposalOutputRequest {
+    pub common: GroupOutputRequestCommon,
+    pub proposal: GroupProposal,
+}
+
+impl Debug for GroupPushProposalOutputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GroupPushProposalOutputRequest")
+            .field("common", &self.common)
+            .field("proposal", &self.proposal.desc().object_id())
+            .finish()
+    }
+}
 
 pub struct GroupPushProposalOutputResponse {
     pub object: Option<NONObjectInfo>,

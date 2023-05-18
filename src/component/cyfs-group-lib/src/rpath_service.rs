@@ -7,7 +7,10 @@ use cyfs_lib::{
     SingleOpEnvStub,
 };
 
-use crate::{ExecuteResult, GroupObjectMapProcessor, GroupRequestor, RPathDelegate};
+use crate::{
+    ExecuteResult, GroupObjectMapProcessor, GroupPushProposalOutputRequest, GroupRequestor,
+    GroupStartServiceOutputRequest, RPathDelegate,
+};
 
 struct RPathServiceRaw {
     rpath: GroupRPath,
@@ -31,10 +34,10 @@ impl RPathService {
         // post http
         self.0
             .requestor
-            .push_proposal(
-                GroupRequestor::make_default_common(proposal.rpath().dec_id().clone()),
-                proposal,
-            )
+            .push_proposal(GroupPushProposalOutputRequest {
+                common: GroupRequestor::make_default_common(proposal.rpath().dec_id().clone()),
+                proposal: proposal.clone(),
+            })
             .await
             .map(|resp| resp.object)
     }
@@ -57,11 +60,11 @@ impl RPathService {
         // post create command
         self.0
             .requestor
-            .start_service(
-                GroupRequestor::make_default_common(self.0.rpath.dec_id().clone()),
-                self.rpath().group_id(),
-                self.rpath().rpath(),
-            )
+            .start_service(GroupStartServiceOutputRequest {
+                common: GroupRequestor::make_default_common(self.0.rpath.dec_id().clone()),
+                group_id: self.rpath().group_id().clone(),
+                rpath: self.rpath().rpath().to_string(),
+            })
             .await
             .map(|_| {})
     }

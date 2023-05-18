@@ -1,8 +1,8 @@
 use cyfs_base::*;
 use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputResponse, GroupStartServiceInputRequest,
-    GroupStartServiceInputResponse,
+    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 use cyfs_lib::{NONRequestorHelper, RequestorHelper};
 
@@ -59,7 +59,7 @@ impl GroupRequestHandler {
 
         let req = GroupStartServiceInputRequest::decode_json(&body)?;
 
-        self.processor.start_service(common, req).await
+        self.processor.start_service(req).await
     }
 
     pub async fn process_push_proposal<State: Send>(
@@ -106,6 +106,8 @@ impl GroupRequestHandler {
 
         info!("recv push proposal: {}", object.object_id);
 
-        self.processor.push_proposal(common, proposal).await
+        self.processor
+            .push_proposal(GroupPushProposalInputRequest { common, proposal })
+            .await
     }
 }
