@@ -29,6 +29,8 @@ mod config;
 mod front;
 mod rmeta_api;
 mod rmeta;
+mod group;
+mod group_api;
 
 pub use stack::*;
 pub use storage::*;

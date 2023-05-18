@@ -28,6 +28,10 @@ impl ObjectSearcherFlags {
     pub fn local_and_meta() -> u32 {
         OBJECT_SEARCH_FLAG_META | OBJECT_SEARCH_FLAG_NOC
     }
+
+    pub fn meta_only() -> u32 {
+        OBJECT_SEARCH_FLAG_META
+    }
 }
 
 #[async_trait]

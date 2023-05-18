@@ -1,0 +1,60 @@
+
+syntax = "proto3";
+
+message HotstuffBlockQCVote {
+    bytes block_id = 1;
+    optional bytes prev_block_id = 2;
+    uint64 round = 3;
+    bytes voter = 4;
+    bytes signature = 5;
+}
+
+message HotstuffTimeoutVote {
+    optional bytes high_qc = 1; // encode(core:HotstuffBlockQc)
+    uint64 round = 2;
+    bytes voter = 3;
+    bytes signature = 4;
+    bytes group_shell_id = 5;
+}
+
+message GroupRPathStatus {
+    bytes block_desc = 1; // GroupConsensusBlockDescContent
+    bytes certificate = 2; // HotstuffBlockQC for block
+    repeated bytes status_list = 4; // Array<NONObjectInfo<MAP|Other>>
+}
+
+// GroupCommand
+
+message GroupCommandDescContent {
+
+}
+
+message GroupCommandNewRPath {
+    bytes group_id = 1;
+    string rpath = 2;
+    optional bytes with_block = 3; // Block.to_vec()
+}
+
+message GroupCommandExecute {
+    bytes proposal = 1; // Proposal.to_vec()
+    optional bytes prev_state_id = 2; // ObjectId
+}
+
+message GroupCommandExecuteResult {
+    optional bytes result_state_id = 1; // ObjectId
+    optional bytes receipt = 2; // NONObjectInfo.to_vec()
+    optional bytes context = 3; // Vec<u8>
+}
+
+message GroupCommandVerify {
+    bytes proposal = 1; // Proposal.to_vec()
+    optional bytes prev_state_id = 2; // ObjectId
+    optional bytes result_state_id = 3; // ObjectId
+    optional bytes receipt = 4; // NONObjectInfo.to_vec()
+    optional bytes context = 5; // Vec<u8>
+}
+
+message GroupCommandCommited {
+    optional bytes prev_state_id = 1; // ObjectId
+    bytes block = 2; // Block.to_vec()
+}

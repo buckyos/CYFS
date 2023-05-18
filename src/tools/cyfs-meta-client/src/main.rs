@@ -12,7 +12,12 @@ use cyfs_meta_lib::{MetaMinerTarget, MetaClient};
 use std::str::FromStr;
 
 #[async_std::main]
-async fn main() ->BuckyResult<()> {
+async fn main() {
+    let runner_fut = Box::pin(main_run());
+    let _ = runner_fut.await;
+}
+
+async fn main_run() ->BuckyResult<()> {
     simple_logger::SimpleLogger::new().with_level(LevelFilter::Debug).init().unwrap();
 
     let default_target = MetaMinerTarget::default().to_string();

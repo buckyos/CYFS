@@ -25,11 +25,11 @@ fn calc_nonce(peer_desc_file: &str, _bits: u32) {
                     // p.const_info.calc_pow(bits, &mut nonce)
                     Ok(())
                 },
-                StandardObject::SimpleGroup(_p) => {
-                    // TODO: 加calc pow
-                    // p.const_info.calc_pow(bits, &mut nonce)
-                    Ok(())
-                },
+                // StandardObject::SimpleGroup(_p) => {
+                //     // TODO: 加calc pow
+                //     // p.const_info.calc_pow(bits, &mut nonce)
+                //     Ok(())
+                // },
                 _ => {
                     error!("not support object type");
                     Err(BuckyError::new(BuckyErrorCode::NotSupport, ""))

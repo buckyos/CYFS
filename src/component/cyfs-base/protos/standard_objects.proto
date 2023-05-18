@@ -52,24 +52,6 @@ message FileBodyContent {
     ChunkList chunk_list = 1;
 }
 
-// org
-message Director {
-    bytes id = 1;
-    uint32 right = 2;
-}
-
-message OrgMember {
-    bytes id = 1;
-    uint32 right = 2;
-    uint64 shares = 3;
-}
-
-message OrgBodyContent {
-    repeated OrgMember members = 1;
-    repeated Director directors = 2;
-    uint64 total_equity = 3;
-}
-
 // people
 message PeopleBodyContent {
     repeated bytes ood_list = 1;
@@ -78,12 +60,44 @@ message PeopleBodyContent {
     optional string ood_work_mode = 4;
 }
 
+message GroupMember {
+    bytes id = 1;
+    string title = 2;
+}
+
+message CommonGroupBodyContent {
+    optional string name = 1;
+    optional string icon = 2;
+    optional string description = 3;
+
+    repeated GroupMember members = 4; // sort by id deduplicated ascending order
+
+    repeated bytes ood_list = 5; // sort by id deduplicated ascending order
+    
+    optional bytes prev_shell_id = 6;
+    uint64 version = 7;
+}
 
 // simple_group
+message SimpleGroupDescContent {
+    bytes unique_id = 1;
+    optional bytes founder_id = 2;
+    repeated GroupMember admins = 3; // sort by id deduplicated ascending order
+}
+
 message SimpleGroupBodyContent {
-    repeated bytes members = 1;
-    repeated bytes ood_list = 2;
-    optional string ood_work_mode = 3;
+    CommonGroupBodyContent common = 1;
+}
+
+// org
+message OrgDescContent {
+    bytes unique_id = 1;
+    optional bytes founder_id = 2;
+}
+
+message OrgBodyContent {
+    repeated GroupMember admins = 1; // sort by id deduplicated ascending order
+    CommonGroupBodyContent common = 2;
 }
 
 // tx

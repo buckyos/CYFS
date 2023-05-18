@@ -170,6 +170,11 @@ impl ForwardRequestorContainer {
     }
 
     fn cacl_next_timeout_on_error(&self, error_count: u32) -> u64 {
+        log::debug!(
+            "cacl_next_timeout_on_error: min-interval {}, count {}.",
+            self.error_cache_min_interval,
+            error_count
+        );
         let mut ret = self.error_cache_min_interval.pow(error_count + 1);
         if ret > self.error_cache_max_interval {
             ret = self.error_cache_max_interval;

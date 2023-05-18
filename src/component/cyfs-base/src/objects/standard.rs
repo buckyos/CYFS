@@ -4,8 +4,6 @@ use crate::*;
 pub enum StandardObject {
     Device(Device),
     People(People),
-    SimpleGroup(SimpleGroup),
-    Org(Org),
     AppGroup(AppGroup),
     UnionAccount(UnionAccount),
     ChunkId(ChunkId),
@@ -17,6 +15,7 @@ pub enum StandardObject {
     Action(Action),
     ObjectMap(ObjectMap),
     Contract(Contract),
+    Group(Group),
 }
 
 #[macro_export]
@@ -25,8 +24,7 @@ macro_rules! match_standard_obj {
         match $on {
             StandardObject::Device($o) => $body,
             StandardObject::People($o) => $body,
-            StandardObject::SimpleGroup($o) => $body,
-            StandardObject::Org($o) => $body,
+            StandardObject::Group($o) => $body,
             StandardObject::AppGroup($o) => $body,
             StandardObject::UnionAccount($o) => $body,
             StandardObject::ChunkId($chunk_id) => $chunk_body,
@@ -64,7 +62,7 @@ macro_rules! match_standard_pubkey_obj {
         match $on {
             StandardObject::Device($o) => $body,
             StandardObject::People($o) => $body,
-            StandardObject::SimpleGroup($o) => $body,
+            // StandardObject::Group($o) => $body,
             _ => $other_body,
         }
     };
@@ -83,7 +81,16 @@ macro_rules! match_standard_author_obj {
 macro_rules! match_standard_ood_list_obj {
     ($on:ident, $o:ident, $body:tt, $other_body:tt) => {
         match $on {
-            StandardObject::SimpleGroup($o) => $body,
+            StandardObject::Group($o) => $body,
+            StandardObject::People($o) => $body,
+            _ => $other_body,
+        }
+    };
+}
+
+macro_rules! match_standard_ood_work_mode_obj {
+    ($on:ident, $o:ident, $body:tt, $other_body:tt) => {
+        match $on {
             StandardObject::People($o) => $body,
             _ => $other_body,
         }
@@ -152,7 +159,7 @@ impl StandardObject {
     }
 
     pub fn ood_work_mode(&self) -> BuckyResult<OODWorkMode> {
-        match_standard_ood_list_obj!(
+        match_standard_ood_work_mode_obj!(
             self,
             o,
             {
@@ -187,14 +194,8 @@ impl StandardObject {
                 }
                 _ => unreachable!(),
             },
-            Self::SimpleGroup(o) => match other {
-                Self::SimpleGroup(other) => {
-                    *o.body_mut() = other.body().clone();
-                }
-                _ => unreachable!(),
-            },
-            Self::Org(o) => match other {
-                Self::Org(other) => {
+            Self::Group(o) => match other {
+                Self::Group(other) => {
                     *o.body_mut() = other.body().clone();
                 }
                 _ => unreachable!(),
@@ -271,8 +272,7 @@ impl RawEncode for StandardObject {
         match self {
             StandardObject::Device(o) => o.raw_measure(purpose),
             StandardObject::People(o) => o.raw_measure(purpose),
-            StandardObject::SimpleGroup(o) => o.raw_measure(purpose),
-            StandardObject::Org(o) => o.raw_measure(purpose),
+            StandardObject::Group(o) => o.raw_measure(purpose),
             StandardObject::AppGroup(o) => o.raw_measure(purpose),
             StandardObject::UnionAccount(o) => o.raw_measure(purpose),
             StandardObject::ChunkId(o) => o.raw_measure(purpose),
@@ -295,8 +295,7 @@ impl RawEncode for StandardObject {
         match self {
             StandardObject::Device(o) => o.raw_encode(buf, purpose),
             StandardObject::People(o) => o.raw_encode(buf, purpose),
-            StandardObject::SimpleGroup(o) => o.raw_encode(buf, purpose),
-            StandardObject::Org(o) => o.raw_encode(buf, purpose),
+            StandardObject::Group(o) => o.raw_encode(buf, purpose),
             StandardObject::AppGroup(o) => o.raw_encode(buf, purpose),
             StandardObject::UnionAccount(o) => o.raw_encode(buf, purpose),
             StandardObject::ChunkId(o) => o.raw_encode(buf, purpose),
@@ -327,10 +326,8 @@ impl<'de> RawDecode<'de> for StandardObject {
             ObjectTypeCode::People => {
                 People::raw_decode(buf).map(|(obj, buf)| (StandardObject::People(obj), buf))
             }
-            ObjectTypeCode::SimpleGroup => SimpleGroup::raw_decode(buf)
-                .map(|(obj, buf)| (StandardObject::SimpleGroup(obj), buf)),
-            ObjectTypeCode::Org => {
-                Org::raw_decode(buf).map(|(obj, buf)| (StandardObject::Org(obj), buf))
+            ObjectTypeCode::Group => {
+                Group::raw_decode(buf).map(|(obj, buf)| (StandardObject::Group(obj), buf))
             }
             ObjectTypeCode::AppGroup => {
                 AppGroup::raw_decode(buf).map(|(obj, buf)| (StandardObject::AppGroup(obj), buf))

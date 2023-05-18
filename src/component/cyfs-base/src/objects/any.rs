@@ -14,8 +14,7 @@ macro_rules! match_any_obj {
             AnyNamedObject::Standard(o) => match o {
                 StandardObject::Device($o) => $body,
                 StandardObject::People($o) => $body,
-                StandardObject::SimpleGroup($o) => $body,
-                StandardObject::Org($o) => $body,
+                StandardObject::Group($o) => $body,
                 StandardObject::AppGroup($o) => $body,
                 StandardObject::UnionAccount($o) => $body,
                 StandardObject::ChunkId($chunk_id) => $chunk_body,
@@ -378,23 +377,15 @@ impl AnyNamedObject {
         ))
     }
 
-    fn raw_decode_simple_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
-        let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
-            log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
+    fn raw_decode_group<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (simple_group, buf) = Group::raw_decode(buf).map_err(|e| {
+            log::error!("AnyNamedObject::raw_decode/group error:{}", e);
             e
         })?;
         return Ok((
-            AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
+            AnyNamedObject::Standard(StandardObject::Group(simple_group)),
             buf,
         ));
-    }
-
-    fn raw_decode_org<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
-        let (org, buf) = Org::raw_decode(buf).map_err(|e| {
-            log::error!("AnyNamedObject::raw_decode/org error:{}", e);
-            e
-        })?;
-        return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
     }
 
     fn raw_decode_union_account<'de>(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
@@ -550,8 +541,7 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
             ObjectTypeCode::Custom => {
                 Self::raw_decode_custom(buf, obj_type_info.is_decapp_object())
             }
-            ObjectTypeCode::SimpleGroup => Self::raw_decode_simple_group(buf),
-            ObjectTypeCode::Org => Self::raw_decode_org(buf),
+            ObjectTypeCode::Group => Self::raw_decode_group(buf),
         }
     }
 }
@@ -698,5 +688,5 @@ any_for_standard_target!(as_file, into_file, File);
 any_for_standard_target!(as_dir, into_dir, Dir);
 any_for_standard_target!(as_people, into_people, People);
 any_for_standard_target!(as_device, into_device, Device);
-any_for_standard_target!(as_simple_group, into_simple_group, SimpleGroup);
+any_for_standard_target!(as_group, into_group, Group);
 any_for_standard_target!(as_object_map, into_object_map, ObjectMap);

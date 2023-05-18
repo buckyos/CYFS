@@ -15,6 +15,9 @@ pub enum CoreObjectType {
     // 文本对象
     Text = 41,
 
+    // A shell of an mutable `Object`, we can use it to storage `Object` with different `Body` and same `Desc` in `NOC`.
+    ObjectShell = 42,
+
     // 通讯录
     // FriendList = 130,
     FriendOption = 131,
@@ -59,6 +62,14 @@ pub enum CoreObjectType {
 
     // Perf
     PerfOperation = 600,
+
+    // Group
+    GroupProposal = 700,
+    GroupUpdateGroup = 701,
+    GroupConsensusBlock = 702,
+    GroupAction = 704,
+    GroupQuorumCertificate = 705,
+    GroupCommand = 706,
 
     // IM通用对象
     AddFriend = 1001,

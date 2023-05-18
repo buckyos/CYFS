@@ -2,8 +2,8 @@
 use crate::SharedMemChunk;
 use crate::{MMapChunk, MemChunk};
 use cyfs_base::*;
-use cyfs_util::AsyncReadWithSeek;
 use cyfs_debug::Mutex;
+use cyfs_util::AsyncReadWithSeek;
 
 use std::future::Future;
 use std::io::SeekFrom;
@@ -134,7 +134,7 @@ impl async_std::io::Seek for ChunkRead {
     }
 }
 
-use async_std::io::{Seek, Read};
+use async_std::io::{Read, Seek};
 use std::ops::Range;
 
 impl AsyncReadWithSeek for ChunkRead {}

@@ -19,3 +19,4 @@ hex = "0.4"
 log = "0.4"
 simple_logger = "2.1"
 chrono = "0.4"
+itertools = '0.10'

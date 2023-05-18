@@ -92,7 +92,7 @@ impl DeviceInfoManagerImpl {
         self.list.read().unwrap().get(device_id).map(|d| d.clone())
     }
 
-    async fn verfiy_own_signs(
+    async fn verfiy_single_own_signs(
         &self,
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
@@ -125,6 +125,40 @@ impl DeviceInfoManagerImpl {
                 Err(e)
             }
         }
+    }
+
+    async fn verfiy_group(
+        &self,
+        object_id: &ObjectId,
+        object: &Arc<AnyNamedObject>,
+    ) -> BuckyResult<()> {
+        // TODO: use object from `MetaChain` temporarily
+        let group = self
+            .obj_searcher
+            .search_ex(None, object_id, ObjectSearcherFlags::meta_only())
+            .await?;
+
+        let (group, _) = Group::raw_decode(group.object_raw.as_slice())?;
+        let group_id_meta = group.desc().object_id();
+        if &group_id_meta != object_id {
+            let msg = format!(
+                "group({}) from MetaChain is unmatch with needed({}).",
+                group_id_meta, object_id
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        }
+        let body_hash_meta = group.body().as_ref().unwrap().raw_hash_value()?;
+        let body_hash = object.body_hash()?;
+        if Some(body_hash_meta) != body_hash {
+            let msg = format!(
+                "group({}) body-hash({}) from MetaChain is unmatch with needed({:?}).",
+                object_id, body_hash_meta, body_hash
+            );
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        }
+        Ok(())
     }
 
     async fn verfiy_owner(&self, device_id: &DeviceId, device: Option<&Device>) -> BuckyResult<()> {
@@ -437,7 +471,11 @@ impl DeviceCache for DeviceInfoManager {
         object_id: &ObjectId,
         object: &Arc<AnyNamedObject>,
     ) -> BuckyResult<()> {
-        self.0.verfiy_own_signs(object_id, object).await
+        if ObjectTypeCode::Group == object_id.obj_type_code() {
+            self.0.verfiy_group(object_id, object).await
+        } else {
+            self.0.verfiy_single_own_signs(object_id, object).await
+        }
     }
 
     fn clone_cache(&self) -> Box<dyn DeviceCache> {

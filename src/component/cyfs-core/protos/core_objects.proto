@@ -10,6 +10,49 @@ message StorageBodyContent {
     bytes value = 1;
 }
 
+// ObjectShellObject
+message ObjectShellDescContent {
+    // true: storage `ObjectId` in `desc` only, without `ObjectDesc`;
+    // false: encode the `ObjectDesc` in `desc`.
+    bool is_object_id_only = 1;
+
+    // true: calculate the `fix_content_hash` include `desc_sign`;
+    // false: calculate the `fix_content_hash` without `desc_sign`.
+    bool is_desc_sign_fix = 2;
+
+    // true: calculate the `fix_content_hash` include `body_sign`;
+    // false: calculate the `fix_content_hash` without `body_sign`.
+    bool is_body_sign_fix = 3;
+
+    // true: calculate the `fix_content_hash` include `nonce`;
+    // false: calculate the `fix_content_hash` without `nonce`.
+    bool is_nonce_fix = 4;
+
+    // hash of fixed fields in `ObjectShellBodyContent`.
+    // hash_buf = desc + body + [desc_signatures] + [body_signatures] + [nonce]
+    // * any field with a value of `None` should be occupied with 1 byte with a value of 0.
+    // fix_content_hash = sha256(hash_buf)
+    bytes fix_content_hash = 5;
+}
+
+message ObjectShellBodyContent {
+    // if is_object_id_only is true, `desc` is the encoded buffer of `ObjectId` of the original object.
+    // otherwise, `desc` is the encoded buffer of the full `Desc` of the original object.
+    bytes desc = 1;
+
+    // `body` is the encoded buffer of the `Body` of the original object.
+    optional bytes body = 2;
+
+    // `desc_signatures` is the encoded buffer of the `Object.signs().desc_signs()` of the original object.
+    optional bytes desc_signatures = 3;
+
+    // `body_signatures` is the encoded buffer of the `Object.signs().body_signs()` of the original object.
+    optional bytes body_signatures = 4;
+
+    // `nonce` is the encoded buffer of the `nonce` of the original object.
+    optional bytes nonce = 5;
+}
+
 // TextObject
 message TextDescContent {
     string id = 1;
@@ -329,3 +372,122 @@ message SyncResponseObjectMetaInfo {
     optional string last_access_rpath = 4;
     optional uint32 access_string = 5;
 }
+
+message GroupRPath {
+    bytes group_id = 1;
+    bytes dec_id = 2;
+    string rpath = 3;
+}
+
+message GroupProposalDescContent {
+    // target
+    GroupRPath rpath = 1;
+
+    // for app
+    string method = 2;
+    optional bytes params = 3; // blob, app define, it canbe: blob/hash/ObjectId/any other
+
+    // time
+    optional bytes meta_block_id = 4;
+    optional uint64 effective_begining = 5;
+    optional uint64 effective_ending = 6;
+}
+
+message GroupProposalBodyContent {
+    optional bytes payload = 1;
+/*
+    message Signature {
+        bytes signature = 1; // sign(hash(ProposalId, proponent_id, decide))
+        bytes proponent_id = 2;
+        bytes decide = 3;
+    }
+
+    repeated Signature decide_signatures = 2;
+*/
+}
+
+/*
+message GroupUpdateGroupPropsalParam {
+    repeated bytes target_dec_id = 1; // the proccesor decs
+    optional bytes from_chunk_id = 2; // Chunk(Encode(Group))
+    bytes to_chunk_id = 3; // Chunk(Encode(Group))
+}
+
+message GroupPropsalDecideParam {
+    bytes signature = 1; // sign(hash(ProposalId, owner, decide))
+    bytes proposal_id = 2;
+    bytes decide = 3;
+}
+*/
+
+message HotstuffBlockQc {
+    bytes block_id = 1;
+    optional bytes prev_block_id = 2; //
+    uint64 round = 3;
+
+    message VoteSignature {
+        bytes voter = 1;
+        bytes signature = 2;
+    }
+
+    repeated VoteSignature votes = 4;
+}
+
+message HotstuffTimeout {
+    uint64 round = 1;
+
+    message VoteSignature {
+        bytes voter = 1;
+        uint64 high_qc_round = 2;
+        bytes signature = 3;
+    }
+
+    repeated VoteSignature votes = 2;
+    optional bytes group_shell_id = 3; // None if it's same as the block
+}
+
+message GroupConsensusBlockDescContent {
+    // target
+    GroupRPath rpath = 1;
+
+    // input
+    bytes body_hash = 2; // hash(Encode(proposals, proposal_result_states, proposal_receiptes))
+
+    // result
+    optional bytes result_state_id = 3;
+    uint64 height = 4;
+
+    // time
+    bytes meta_block_id = 5;
+
+    uint64 round = 7;
+    bytes group_shell_id = 8;
+}
+
+message GroupConsensusBlockBodyContent {
+    message Proposal {
+        bytes proposal_id = 1;
+        optional bytes proposal_result_state = 2;
+        optional bytes proposal_receipt = 3;
+        optional bytes context = 4;
+    }
+
+    repeated Proposal proposals = 1;
+
+    optional HotstuffBlockQc qc = 2;
+    optional HotstuffTimeout tc = 3;
+}
+
+/*
+message GroupActionDescContent {
+    // target
+    GroupRPath rpath = 1;
+
+    // for app
+    string method = 2;
+    optional bytes params = 3; // blob, app define, it canbe: blob/hash/ObjectId/any other
+
+    optional uint64 value = 4;
+    optional bytes conclusion = 5;
+}
+*/
