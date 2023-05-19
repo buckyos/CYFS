@@ -37,3 +37,4 @@ percent-encoding = '2.1'
 http-range = '0.1.5'
 protobuf = { version = '2', features = ['with-bytes'] }
 surf = { version = '2.3', default-features = false, features = ['h1-client-rustls'] }
+serde_with = "3.0"

@@ -8,19 +8,19 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct NDNOutputRequestCommon {
-    // 请求路径，可为空
+    // The request path of method, always used for ACL
     pub req_path: Option<String>,
 
-    // 来源DEC
+    // The caller's source id
     pub dec_id: Option<ObjectId>,
 
-    // api级别
+    // The API level of NDN apis
     pub level: NDNAPILevel,
 
-    // 用以处理默认行为
+    // The request's target device/zone
     pub target: Option<ObjectId>,
 
-    // 需要处理数据的关联对象，主要用以chunk/file等
+    // Associated objects that need to handle data, mainly for chunk/file, etc.
     pub referer_object: Vec<NDNDataRefererObject>,
 
     pub flags: u32,
@@ -63,11 +63,12 @@ impl fmt::Display for NDNOutputRequestCommon {
 }
 
 serde_with_json_codec!(NDNOutputRequestCommon);
+
 // put requests
-// 目前支持ChunkId
 pub struct NDNPutDataOutputRequest {
     pub common: NDNOutputRequestCommon,
 
+    // Currently only ChunkId is supported
     pub object_id: ObjectId,
 
     pub length: u64,
@@ -211,21 +212,21 @@ impl fmt::Display for NDNPutDataOutputResponse {
 // get requests
 
 /*
-支持三种形式:
-chunk_id
-file_id
-dir_id|object_map + inner_path
+The following three forms are currently supported
++ chunk_id
++ file_id
++ dir_id|object_map with inner_path
 */
 #[derive(Clone)]
 pub struct NDNGetDataOutputRequest {
     pub common: NDNOutputRequestCommon,
 
-    // 目前只支持ChunkId/FileId/DirId
+    // Now only support ChunkId/FileId/DirId
     pub object_id: ObjectId,
 
     pub range: Option<NDNDataRequestRange>,
 
-    // 对dir_id有效
+    // Is valid for dir or object_map
     pub inner_path: Option<String>,
 
     // get data from context instead of common.target
@@ -315,7 +316,7 @@ pub struct NDNGetDataOutputResponse {
     // file's owner
     pub owner_id: Option<ObjectId>,
 
-    // 所属file的attr
+    // The owner file's related attr
     pub attr: Option<Attributes>,
 
     // resp ranges
@@ -359,7 +360,7 @@ pub struct NDNDeleteDataOutputRequest {
 
     pub object_id: ObjectId,
 
-    // 对dir_id有效
+    // Is valid for dir or object_map
     pub inner_path: Option<String>,
 }
 

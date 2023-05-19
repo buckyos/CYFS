@@ -4,6 +4,7 @@ use cyfs_base::*;
 use cyfs_bdt::{NdnTaskControlState, NdnTaskState};
 use cyfs_core::TransContext;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -193,24 +194,26 @@ pub struct TransQueryTasksOutputResponse {
 // publish file
 #[derive(Debug)]
 pub struct TransPublishFileOutputRequest {
-    // 用以处理acl
+    // Same of NDN, now used for ACL process mainly
     pub common: NDNOutputRequestCommon,
-    // 文件所属者
+
+    // The owner of the file or dir
     pub owner: ObjectId,
 
-    // 文件的本地路径
+    // The local file full path of the file or dir
     pub local_path: PathBuf,
-    // chunk大小
+
+    // The chunk size of file and dir split, must be an integer multiple of 64
     pub chunk_size: u32,
 
     pub chunk_method: TransPublishChunkMethod, 
 
     pub access: Option<AccessString>,
     
-    // 需要发布的文件对象ID，如果设置，内部不再计算文件对象
+    // The object_id of the file object to be published, if set, the file object is no longer calc internally and will direct load from NOC
     pub file_id: Option<ObjectId>,
 
-    // 关联的dirs
+    // The related objects
     pub dirs: Option<Vec<FileDirRef>>,
 }
 
@@ -219,20 +222,25 @@ pub struct TransPublishFileOutputResponse {
     pub file_id: ObjectId,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub enum TransTaskGroupType {
     Download, 
     Upload
 }
 
-
-impl ToString for TransTaskGroupType {
-    fn to_string(&self) -> String {
+impl TransTaskGroupType {
+    pub fn as_str(&self) -> &str {
         match self {
-            Self::Download => "download".to_owned(), 
-            Self::Upload => "upload".to_owned()
+            Self::Download => "download", 
+            Self::Upload => "upload",
         }
-        
+    }
+}
+
+impl Display for TransTaskGroupType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -295,4 +303,39 @@ pub struct TransControlTaskGroupOutputRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransControlTaskGroupOutputResponse {
     pub control_state: NdnTaskControlState,
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_codec() {
+        let gt = TransTaskGroupType::Download;
+        let s = serde_json::to_string(&gt).unwrap();
+        println!("{}", s);
+        let s = s.trim_end_matches('"').trim_start_matches('"'); 
+        assert_eq!(s, gt.as_str());
+
+        let rs = TransTaskGroupType::from_str(&s).unwrap();
+        assert_eq!(rs, gt);
+
+        let req = TransGetTaskGroupStateOutputRequest {
+            common: NDNOutputRequestCommon {
+                req_path: None,
+                dec_id: None,
+                level: NDNAPILevel::Router,
+                target: None,
+                referer_object: vec![],
+                flags: 0,
+            },
+            group_type: TransTaskGroupType::Download,
+            group: "test".to_owned(),
+            speed_when: None,
+        };
+
+        let s = serde_json::to_string(&req).unwrap();`
+        println!("{}", s);
+    }
 }
