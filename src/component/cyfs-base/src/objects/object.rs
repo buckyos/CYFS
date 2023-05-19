@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 pub trait ObjectDesc {
     fn obj_type(&self) -> u16;
 
-    // 默认实现，从obj_type 转 obj_type_code
+    // Default implementation, from obj_type to obj_type_code
     fn obj_type_code(&self) -> ObjectTypeCode {
         let t = self.obj_type();
         t.into()
@@ -32,90 +32,90 @@ pub trait ObjectDesc {
     fn object_id(&self) -> ObjectId {
         self.calculate_id()
     }
-    // 计算 id
+    // calculate object_id with desc
     fn calculate_id(&self) -> ObjectId;
 
-    // 获取所属 DECApp 的 id
+    // Get the dec-id(object-id) of the DECApp to which it belongs
     fn dec_id(&self) -> &Option<ObjectId>;
 
-    // 链接对象列表
+    // List of linked objects
     fn ref_objs(&self) -> &Option<Vec<ObjectLink>>;
 
-    // 前一个版本号
+    // Previous version number
     fn prev(&self) -> &Option<ObjectId>;
 
-    // 创建时的 BTC Hash
+    // The associated hash at the time of creation, e.g. BTC Transaction hash
     fn create_timestamp(&self) -> &Option<HashValue>;
 
-    // 创建时间戳，如果不存在，则返回0
+    // Created timestamp, or return 0 if it does not exist
     fn create_time(&self) -> u64;
     fn option_create_time(&self) -> Option<u64>;
-    
-    // 过期时间戳
+
+    // Expiration timestamp
     fn expired_time(&self) -> Option<u64>;
 }
 
-/// 有权对象，可能是PublicKey::Single 或 PublicKey::MN
+/// Authorized-Object, maybe oneof PublicKey::Single or PublicKey::MN
 pub trait PublicKeyObjectDesc {
     fn public_key_ref(&self) -> Option<PublicKeyRef>;
 }
 
-/// 单公钥有权对象，明确用了PublicKey::Single类型
-/// 实现了该Trait的对象一定同时实现了PublicKeyObjectDesc
+/// Single public key Authorized object, explicitly using the PublicKey::Single type
+/// The object that implements the Trait must also implement the PublicKeyObjectDesc
 pub trait SingleKeyObjectDesc: PublicKeyObjectDesc {
     fn public_key(&self) -> &PublicKey;
 }
 
-/// 多公钥有权对象，明确用了PublicKey::MN类型
-/// 实现了该Trait的对象一定同时实现了PublicKeyObjectDesc
+/// Multi public key Authorized object, explicitly using the PublicKey::MN type
+/// The object that implements the Trait must also implement the PublicKeyObjectDesc
 pub trait MNKeyObjectDesc: PublicKeyObjectDesc {
     fn mn_public_key(&self) -> &MNPublicKey;
 }
 
-/// 有主对象
+/// Owned-Object
 pub trait OwnerObjectDesc {
     fn owner(&self) -> &Option<ObjectId>;
 }
 
-/// 有作者对象
+/// Object with author
 pub trait AuthorObjectDesc {
     fn author(&self) -> &Option<ObjectId>;
 }
 
-/// 有区域对象
+/// Object with area
 pub trait AreaObjectDesc {
     fn area(&self) -> &Option<Area>;
 }
 
 // obj_flags: u16
 // ========
-// * 前5个bits是用来指示编码状态，不计入hash计算。（计算时永远填0）
-// * 剩下的11bits用来标识desc header
+// * The first 5 bits are used to indicate the codec status and are not counted in the hash calculation. (Always fill in 0 when calculating)
+// * The remaining 11bits are used to identify the desc header
 //
-// 段编码标志位
+// Object segment codec flags
 // --------
-// 0:  是否加密 crypto（现在未定义加密结构，一定填0)
-// 1:  是否包含 mut_body
-// 2:  是否包含 desc_signs
-// 3:  是否包含 body_signs
-// 4:  是否包含 nonce
+// 0:  If encrypted crypto (now the encryption structure is not defined, must fill in 0)
+// 1:  If contains mut_body
+// 2:  If contains desc_signs
+// 3:  If contains body_signs
+// 4:  If contains nonce
 //
-// ObjectDesc编码标志位
+// ObjectDesc codec flags
 // --------
-// 5:  是否包含 dec_id
-// 6:  是否包含 ref_objecs
-// 7:  是否包含 prev
-// 8:  是否包含 create_timestamp
-// 9:  是否包含 create_time
-// 10: 是否包含 expired_time
+// 5:  If contains dec_id
+// 6:  If contains ref_objecs
+// 7:  If contains prev
+// 8:  If contains create_timestamp
+// 9:  If contains create_time
+// 10: If contains expired_time
 //
 // OwnerObjectDesc/AreaObjectDesc/AuthorObjectDesc/PublicKeyObjectDesc 标志位
 // ---------
-// 11: 是否包含 owner
-// 12: 是否包含 area
-// 13: 是否包含 author
-// 14: 是否包含 public_key
-// 15: 是否包含扩展字段
+// 11: If contains owner
+// 12: If contains area
+// 13: If contains author
+// 14: If contains public_key
+// 15: If contains ext
 pub const OBJECT_FLAG_CTYPTO: u16 = 0x01;
 pub const OBJECT_FLAG_MUT_BODY: u16 = 0x01 << 1;
 pub const OBJECT_FLAG_DESC_SIGNS: u16 = 0x01 << 2;
@@ -134,10 +134,10 @@ pub const OBJECT_FLAG_AREA: u16 = 0x01 << 12;
 pub const OBJECT_FLAG_AUTHOR: u16 = 0x01 << 13;
 pub const OBJECT_FLAG_PUBLIC_KEY: u16 = 0x01 << 14;
 
-// 是否包含扩展字段，预留的非DescContent部分的扩展，包括一个u16长度+对应的content
+// If contains the ext field, reserved for the non-DescContent part of the extension, including a u16 length + the corresponding content
 pub const OBJECT_FLAG_EXT: u16 = 0x01 << 15;
 
-// 左闭右闭 区间定义
+// Object type interval definition, [start, end)
 pub const OBJECT_TYPE_ANY: u16 = 0;
 pub const OBJECT_TYPE_STANDARD_START: u16 = 1;
 pub const OBJECT_TYPE_STANDARD_END: u16 = 16;
@@ -152,7 +152,8 @@ pub const OBJECT_PUBLIC_KEY_MN: u8 = 0x02;
 
 pub const OBJECT_BODY_FLAG_PREV: u8 = 0x01;
 pub const OBJECT_BODY_FLAG_USER_DATA: u8 = 0x01 << 1;
-// 是否包含扩展字段，格式和desc一致
+
+// Whether include extended fields, in the same format as desc
 pub const OBJECT_BODY_FLAG_EXT: u8 = 0x01 << 2;
 
 #[derive(Clone, Debug)]
@@ -377,7 +378,7 @@ impl NamedObjectContext {
         self.has_flag(OBJECT_FLAG_EXT)
     }
 
-    // desc_content的缓存大小
+    // desc_content's cache size during codec
     pub fn cache_desc_content_size(&mut self, size: u16) -> &mut Self {
         assert!(self.desc_content_cached_size.is_none());
         self.desc_content_cached_size = Some(size);
@@ -443,16 +444,67 @@ impl<'de> RawDecode<'de> for NamedObjectContext {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ObjectBodyExt {
+    // The object_id of the associated desc
+    object_id: Option<ObjectId>,
+}
+
+impl Default for ObjectBodyExt {
+    fn default() -> Self {
+        Self { object_id: None }
+    }
+}
+
+impl ObjectBodyExt {
+    pub fn is_empty(&self) -> bool {
+        self.object_id.is_none()
+    }
+}
+
+// object body ext should use protobuf for codec
+impl TryFrom<protos::ObjectBodyExt> for ObjectBodyExt {
+    type Error = BuckyError;
+
+    fn try_from(value: protos::ObjectBodyExt) -> BuckyResult<Self> {
+        let mut ret = Self { object_id: None };
+
+        if value.has_object_id() {
+            ret.object_id = Some(ObjectId::clone_from_slice(value.get_object_id())?);
+        }
+
+        Ok(ret)
+    }
+}
+
+impl TryFrom<&ObjectBodyExt> for protos::ObjectBodyExt {
+    type Error = BuckyError;
+
+    fn try_from(value: &ObjectBodyExt) -> BuckyResult<Self> {
+        let mut ret = Self::new();
+
+        if let Some(object_id) = &value.object_id {
+            ret.set_object_id(object_id.to_vec()?);
+        }
+
+        Ok(ret)
+    }
+}
+
+crate::inner_impl_default_protobuf_raw_codec!(ObjectBodyExt);
+
+
 #[derive(Clone)]
 pub struct ObjectMutBody<B, O>
 where
     O: ObjectType,
     B: BodyContent,
 {
-    prev_version: Option<HashValue>, // 上个版本的MutBody Hash
-    update_time: u64,                // 时间戳
-    content: B,                      // 根据不同的类型，可以有不同的MutBody
-    user_data: Option<Vec<u8>>,      // 可以嵌入任意数据。（比如json?)
+    prev_version: Option<HashValue>, // Perv versions's ObjectMutBody Hash
+    update_time: u64, // Record the timestamp of the last update of body, in bucky time format
+    content: B,       // Depending on the type, there can be different MutBody
+    user_data: Option<Vec<u8>>, // Any data can be embedded. (e.g. json?)
+    ext: Option<ObjectBodyExt>,
     obj_type: Option<PhantomData<O>>,
 }
 
@@ -464,8 +516,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ObjectMutBody:{{ prev_version:{:?}, update_time:{}, version={}, format={}, content:{:?}, user_data: ... }}",
-            self.prev_version, self.update_time, self.content.version(), self.content.format(), self.content,
+            "ObjectMutBody:{{ prev_version={:?}, update_time={}, version={}, format={}, content={:?}, ext={:?} user_data: ... }}",
+            self.prev_version, self.update_time, self.content.version(), self.content.format(), self.content, self.ext,
         )
     }
 }
@@ -480,6 +532,7 @@ where
     update_time: u64,
     content: B,
     user_data: Option<Vec<u8>>,
+    ext: ObjectBodyExt,
     obj_type: Option<PhantomData<O>>,
 }
 
@@ -494,6 +547,7 @@ where
             update_time: bucky_time_now(),
             content,
             user_data: None,
+            ext: ObjectBodyExt::default(),
             obj_type: None,
         }
     }
@@ -531,6 +585,16 @@ where
         self
     }
 
+    pub fn object_id(mut self, value: ObjectId) -> Self {
+        self.ext.object_id = Some(value);
+        self
+    }
+
+    pub fn option_object_id(mut self, value: Option<ObjectId>) -> Self {
+        self.ext.object_id = value;
+        self
+    }
+
     pub fn build(self) -> ObjectMutBody<B, O> {
         ObjectMutBody::<B, O> {
             prev_version: self.prev_version,
@@ -538,6 +602,11 @@ where
             content: self.content,
             user_data: self.user_data,
             obj_type: self.obj_type,
+            ext: if self.ext.is_empty() {
+                None
+            } else {
+                Some(self.ext)
+            },
         }
     }
 }
@@ -551,7 +620,7 @@ where
     //    ObjectMutBodyBuilder::<B, O>::new(content)
     //}
 
-    // 只读接口
+    // real only methods
 
     pub fn prev_version(&self) -> &Option<HashValue> {
         &self.prev_version
@@ -573,13 +642,35 @@ where
         &self.user_data
     }
 
-    // 编辑接口
+    pub fn object_id(&self) -> &Option<ObjectId> {
+        match &self.ext {
+            Some(ext) => &ext.object_id,
+            None => &None,
+        }
+    }
+
+    pub fn verify_object_id(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        match &self.object_id() {
+            Some(bind_object_id) => {
+                if object_id != bind_object_id {
+                    let msg = format!("object_id and object_id of body binding do not match! body object_id={}, object_id={}", bind_object_id, object_id);
+                    warn!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::Unmatch, msg))
+                } else {
+                    Ok(())
+                }
+            }
+            None => Ok(()),
+        }
+    }
+
+    // Modify relate methods
 
     pub fn set_update_time(&mut self, value: u64) {
         self.update_time = value;
     }
 
-    // 更新时间，并且确保大于旧时间
+    // Update the last modify time, and make sure it is greater than the old time
     pub fn increase_update_time(&mut self, mut value: u64) {
         if value < self.update_time {
             warn!(
@@ -602,7 +693,15 @@ where
         self.increase_update_time(bucky_time_now());
     }
 
-    /// 拆解Body，Move出内部数据
+    pub fn set_object_id(&mut self, object_id: Option<ObjectId>) {
+        if self.ext.is_none() {
+            self.ext = Some(ObjectBodyExt::default());
+        }
+
+        self.ext.as_mut().unwrap().object_id = object_id;
+    }
+
+    /// Split the Body，Move everything inside
     /// ===
     /// * content: O::ContentType,
     /// * update_time: u64,
@@ -647,6 +746,7 @@ where
             content: B::default(),
             user_data: None,
             obj_type: None,
+            ext: None,
         }
     }
 }
@@ -679,6 +779,18 @@ where
 
         // update_time
         size += u64::raw_bytes().unwrap();
+
+        // ext
+        if let Some(ext) = &self.ext {
+            if !ext.is_empty() {
+                size = size
+                    + u16::raw_bytes().unwrap()
+                    + ext.raw_measure(purpose).map_err(|e| {
+                        log::error!("ObjectMutBody<B, O>::raw_measure/ext error:{}", e);
+                        e
+                    })?;
+            }
+        }
 
         // verison+format
         size += u16::raw_bytes().unwrap();
@@ -727,6 +839,7 @@ where
 
         // body_flags
         let mut body_flags = 0u8;
+
         if self.prev_version().is_some() {
             body_flags |= OBJECT_BODY_FLAG_PREV;
         }
@@ -734,7 +847,15 @@ where
             body_flags |= OBJECT_BODY_FLAG_USER_DATA;
         }
 
-        // 默认都添加版本信息，不再占用flags字段
+        let mut encode_ext = false;
+        if let Some(ext) = &self.ext {
+            if !ext.is_empty() {
+                body_flags |= OBJECT_BODY_FLAG_EXT;
+                encode_ext = true;
+            }
+        }
+
+        // Version information is added by default and no longer occupies the flags field
         let buf = body_flags.raw_encode(buf, purpose).map_err(|e| {
             log::error!("ObjectMutBody<B, O>::raw_encode/body_flags error:{}", e);
             e
@@ -761,6 +882,24 @@ where
             e
         })?;
 
+        // ext
+        let buf = if encode_ext {
+            let ext = self.ext.as_ref().unwrap();
+            let size = ext.raw_measure(purpose)? as u16;
+            let buf = size.raw_encode(buf, purpose).map_err(|e| {
+                log::error!("ObjectMutBody<B, O>::raw_encode/ext error:{}", e);
+                e
+            })?;
+
+            let buf = ext.raw_encode(buf, purpose).map_err(|e| {
+                log::error!("ObjectMutBody<B, O>::raw_encode/ext error:{}", e);
+                e
+            })?;
+            buf
+        } else {
+            buf
+        };
+
         // version+format
         let buf = self
             .content
@@ -779,7 +918,7 @@ where
                 e
             })?;
 
-        // content,包含usize+content
+        // content, include usize+content
         let buf = {
             let body_size = ctx.get_body_content_cached_size();
 
@@ -861,7 +1000,8 @@ where
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
-        // 这里尝试读取是否存在ext扩展字段，如果存在那么为了向前兼容要跳过
+        // Here we try to read if there is an ext extension field, if it exists then we have to skip it for forward compatibility
+        let mut ext = None;
         let buf = if (body_flags & OBJECT_BODY_FLAG_EXT) == OBJECT_BODY_FLAG_EXT {
             let (len, buf) = u16::raw_decode(buf).map_err(|e| {
                 let msg = format!(
@@ -884,7 +1024,23 @@ where
                 return Err(BuckyError::new(BuckyErrorCode::OutOfLimit, msg));
             }
 
-            // 跳过指定的长度
+            if len > 0 {
+                // Decode using exact size buffer
+                let ext_buf = &buf[..len as usize];
+                let (ret, _) = ObjectBodyExt::raw_decode(ext_buf).map_err(|e| {
+                    let msg = format!(
+                        "ObjectMutBody<B, O>::raw_decode/ext error:{}, body={}",
+                        e,
+                        B::debug_info()
+                    );
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidData, msg)
+                })?;
+
+                ext = Some(ret);
+            }
+            
+            // Skip the specified length
             &buf[len as usize..]
         } else {
             buf
@@ -904,7 +1060,7 @@ where
             BuckyError::new(BuckyErrorCode::InvalidData, msg)
         })?;
 
-        // 对于BodyContent，使用带option的解码，用以兼容老版本的解码
+        // For BodyContent,we  use the decoding with option to be compatible with older versions of decoding
         let opt = RawDecodeOption { version, format };
 
         // body content
@@ -931,7 +1087,7 @@ where
                 return Err(BuckyError::new(BuckyErrorCode::OutOfLimit, msg));
             }
 
-            // 使用精确大小的buffer解码
+            // Decode using exact size buffer
             let body_buf = &buf[..body_size];
             let (content, left_buf) = B::raw_decode_with_option(&body_buf, &opt).map_err(|e| {
                 let msg = format!(
@@ -990,6 +1146,7 @@ where
                 content,
                 user_data,
                 obj_type: None,
+                ext,
             },
             buf,
         ))
@@ -1081,21 +1238,21 @@ where
 
     fn nonce(&self) -> &Option<u128>;
 
-    // 获取body和sign部分的最新的修改时间
+    // Get the latest modification time of the body and sign sections, in bucky time
     fn latest_update_time(&self) -> u64 {
         let update_time = match self.body() {
             Some(body) => body.update_time(),
             None => 0_u64,
         };
 
-        // 如果签名时间比较新，那么取签名时间
+        // If the signature time is relatively new, then take the signature time
         let latest_sign_time = self.signs().latest_sign_time();
 
         std::cmp::max(update_time, latest_sign_time)
     }
 }
 
-// TODO concat_idents!目前是unstable功能
+// TODO concat_idents! currently is an unstable util
 #[macro_export]
 macro_rules! declare_object {
     ($name:ident) => {

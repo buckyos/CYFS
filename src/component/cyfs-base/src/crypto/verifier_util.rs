@@ -137,12 +137,17 @@ where
     V: Verifier,
     N: NamedObject<D>,
 {
-    let ret = if obj.body().is_some() {
-        let hash_value = obj.body().as_ref().unwrap().raw_hash_value()?;
+    let ret = if let Some(body) = obj.body() {
+        // Need to check whether body.object_id matches with desc.object_id in the place where check body signature
+        if body.object_id().is_some() {
+            body.verify_object_id(&obj.desc().object_id())?;
+        }
+
+        let hash_value = body.raw_hash_value()?;
 
         verifier.verify(hash_value.as_slice(), sign).await
     } else {
-        // FIXME 对于没有body的对象校验签名，应该如何处理?
+        // FIXME What should we do with object verify signatures that do not have a body?
         false
     };
 
@@ -174,17 +179,20 @@ impl AnyNamedObjectVerifyHelper {
     ) -> BuckyResult<bool>
     where
         V: Verifier,
-    {
-        match obj.body_hash()? {
-            Some(hash_value) => {
-                let ret = verifier.verify(hash_value.as_slice(), sign).await;
+    {   
+        match obj.has_body()? {
+            true => {
+                if obj.body_object_id().is_some() {
+                    obj.verify_body_object_id(&obj.object_id())?;
+                }
 
+                let body_hash = obj.body_hash()?.unwrap();
+                let ret = verifier.verify(body_hash.as_slice(), sign).await;
+        
                 Ok(ret)
             }
-            None => {
-                let msg = format!("object has no body: {}", obj.calculate_id());
-                error!("{}", msg);
-                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
+            false => {
+                Ok(false)
             }
         }
     }
