@@ -2583,6 +2583,7 @@ dependencies = [
  "libc",
  "log 0.4.17",
  "log-panics",
+ "mac_address",
  "named-lock",
  "nix 0.24.3",
  "once_cell",

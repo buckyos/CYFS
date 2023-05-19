@@ -7,12 +7,18 @@ use sysinfo::{CpuExt, DiskExt, DiskType, NetworkExt, RefreshKind, System, System
 pub struct SystemInfo {
     pub name: String,
 
+    // Device Serial Number
+    pub device_sn: Option<String>,
+
     // How long the system has been running since it was last booted, in microseconds
     pub uptime: u64,
 
     // The time the system was last booted, in bucky time
     pub boot_time: u64,
 
+    pub mac_address: Option<String>,
+
+    pub cpu_brand: String,
     pub cpu_usage: f32,
 
     // memory size in bytes
@@ -41,11 +47,14 @@ impl Default for SystemInfo {
         let sys = System::new();
         let uptime = sys.uptime() * 1000 * 1000;
         let boot_time = cyfs_base::unix_time_to_bucky_time(sys.boot_time() * 1000 * 1000);
-        
+
         Self {
             name: "".to_owned(),
+            device_sn: None,
             uptime,
             boot_time,
+            mac_address: None,
+            cpu_brand: "".to_owned(),
             cpu_usage: 0.0,
             total_memory: 0,
             used_memory: 0,
@@ -122,10 +131,29 @@ impl SystemInfoManagerInner {
 
     pub fn refresh(&mut self) {
         self.handler.refresh_all();
+        self.udpate_sn();
         self.update_memory();
         self.update_cpu();
+        self.update_mac();
         self.update_network();
         self.update_disks();
+    }
+
+    fn udpate_sn(&mut self) {
+        let sn_path = std::path::Path::new("/etc/sn");
+        let device_sn = if sn_path.exists() {
+            match std::fs::read_to_string(sn_path) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("load sn file error! file={}, {}", sn_path.display(), e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        self.info_inner.device_sn = device_sn;
     }
 
     fn update_memory(&mut self) {
@@ -163,7 +191,30 @@ impl SystemInfoManagerInner {
     }
 
     fn update_cpu(&mut self) {
-        self.info_inner.cpu_usage = self.handler.global_cpu_info().cpu_usage();
+        let info = self.handler.global_cpu_info();
+        self.info_inner.cpu_usage = info.cpu_usage();
+        self.info_inner.cpu_brand = info.brand().to_owned();
+    }
+
+    fn update_mac(&mut self) {
+        // Get the first NIC address
+        #[cfg(all(not(target_os = "android"), not(target_os = "ios")))]
+        let mac_address = match mac_address::get_mac_address() {
+            Ok(Some(v)) => Some(v.to_string()),
+            Ok(None) => {
+                error!("get mac address but not found!");
+                None
+            }
+            Err(e) => {
+                error!("get mac address error! {}", e);
+                None
+            }
+        };
+
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let mac_address = None;
+
+        self.info_inner.mac_address = mac_address;
     }
 
     fn update_network(&mut self) {
@@ -172,7 +223,6 @@ impl SystemInfoManagerInner {
         let mut transmitted_bytes = 0;
         let mut total_received_bytes = 0;
         let mut total_transmitted_bytes = 0;
-
 
         for (interface_name, network) in networks {
             if interface_name
@@ -189,11 +239,14 @@ impl SystemInfoManagerInner {
             }
 
             if network.mac_address().is_unspecified() {
-                warn!("will ignore unspecified addr network interface: {}", interface_name);
+                warn!(
+                    "will ignore unspecified addr network interface: {}",
+                    interface_name
+                );
                 continue;
             }
 
-            // info!("in: {}, total_received_bytes={}, total_transmitted_bytes={}, addr={:?}", 
+            // info!("in: {}, total_received_bytes={}, total_transmitted_bytes={}, addr={:?}",
             //    interface_name, network.total_received(), network.total_transmitted(), network.mac_address());
 
             received_bytes += network.received();
