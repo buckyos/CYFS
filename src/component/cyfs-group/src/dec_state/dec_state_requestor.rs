@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_core::{GroupRPath};
+use cyfs_base::{BuckyResult, ObjectId};
+use cyfs_core::GroupRPath;
 use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
@@ -66,7 +66,8 @@ impl DecStateRequestor {
     }
 
     pub async fn on_query_state(&self, sub_path: String, remote: ObjectId) {
-        self.0
+        let _ = self
+            .0
             .tx_dec_state_req_message
             .send((DecStateRequestorMessage::QueryState(sub_path), remote))
             .await;
@@ -78,7 +79,8 @@ impl DecStateRequestor {
         result: BuckyResult<GroupRPathStatus>,
         remote: ObjectId,
     ) {
-        self.0
+        let _ = self
+            .0
             .tx_dec_state_req_message
             .send((
                 DecStateRequestorMessage::VerifiableState(sub_path, result),
@@ -188,7 +190,7 @@ impl DecStateRequestorRunner {
                 message = self.rx_dec_state_req_message.recv().fuse() => match message {
                     Ok((DecStateRequestorMessage::QueryState(sub_path), remote)) => self.handle_query_state(sub_path, remote).await,
                     Ok((DecStateRequestorMessage::VerifiableState(sub_path, result), remote)) => self.handle_verifiable_state(sub_path, result, remote).await,
-                    Err(e) => {
+                    Err(_e) => {
                         log::warn!("[dec-state-sync] rx closed.")
                     },
                 },

@@ -64,7 +64,7 @@ async fn main() -> BuckyResult<()> {
             if matches.is_present("report") {
                 println!("reporting...");
                 if let Some(config) = config.email {
-                    let subject = format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::today().format("%F"));
+                    let subject = format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::now().format("%F"));
                     let _ = send_mail(config, subject, output).await.map_err(|e| {
                         error!("send mail err {}", e);
                         e

@@ -1,3 +1,3 @@
 mod hotstuff;
 
-pub use hotstuff::*;
+pub(crate) use hotstuff::*;

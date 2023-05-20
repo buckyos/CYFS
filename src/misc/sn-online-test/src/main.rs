@@ -1,7 +1,7 @@
 use clap::{App, Arg};
 use cyfs_base::{
     Area, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceCategory, Endpoint, FileDecoder,
-    FileEncoder, NamedObject, ObjectDesc, ObjectId, PrivateKey, Protocol, UniqueId,
+    FileEncoder, NamedObject, ObjectDesc, PrivateKey, Protocol, UniqueId,
 };
 use log::*;
 use std::time::Duration;

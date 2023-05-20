@@ -437,7 +437,7 @@ impl GroupManager {
                     }
                 };
 
-                new_service.start().await;
+                let _ = new_service.start().await;
                 Ok(new_service.clone())
             }
             None => Err(BuckyError::new(BuckyErrorCode::Reject, "is not service")),

@@ -95,7 +95,7 @@ impl<K: std::hash::Hash + std::cmp::Eq, T: Clone> CallReplyNotifier<K, T> {
         }
 
         for sender in senders {
-            sender.send(value.clone()).await;
+            let _ = sender.send(value.clone()).await;
         }
     }
 }

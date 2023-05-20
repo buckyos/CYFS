@@ -338,19 +338,19 @@ impl AppManager {
                 let fix_status = match status_code {
                     AppLocalStatusCode::Stopping => {
                         info!("find app {} status {} on startup, try stop again", app_id, status_code);
-                        self.push_front_cmd(&vec![(AppCmd::stop(self.owner.clone(), app_id.clone()), 0)]).await;
+                        let _ = self.push_front_cmd(&vec![(AppCmd::stop(self.owner.clone(), app_id.clone()), 0)]).await;
                         None
                     },
                     AppLocalStatusCode::Starting => {
                         info!("find app {} status {} on startup, try start again", app_id, status_code);
-                        self.push_front_cmd(&vec![(AppCmd::start(self.owner.clone(), app_id.clone()), 0)]).await;
+                        let _ = self.push_front_cmd(&vec![(AppCmd::start(self.owner.clone(), app_id.clone()), 0)]).await;
                         None
                     },
                     AppLocalStatusCode::Installing => {
                         info!("find app {} status {} on startup, try install again", app_id, status_code);
                         let version = status_a.lock().unwrap().version().map(|s|s.to_owned());
                         if let Some(version) = version {
-                            self.push_front_cmd(&vec![(AppCmd::install(self.owner.clone(), app_id.clone(), &version, true), 0)]).await;
+                            let _ = self.push_front_cmd(&vec![(AppCmd::install(self.owner.clone(), app_id.clone(), &version, true), 0)]).await;
                             None
                         } else {
                             Some(AppLocalStatusCode::InstallFailed)
@@ -358,7 +358,7 @@ impl AppManager {
                     },
                     AppLocalStatusCode::Uninstalling => {
                         info!("find app {} status {} on startup, try uninstall again", app_id, status_code);
-                        self.push_front_cmd(&vec![(AppCmd::uninstall(self.owner.clone(), app_id.clone()), 0)]).await;
+                        let _ = self.push_front_cmd(&vec![(AppCmd::uninstall(self.owner.clone(), app_id.clone()), 0)]).await;
                         None
                     },
                     _ => None,

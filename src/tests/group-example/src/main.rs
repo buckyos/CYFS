@@ -1,6 +1,5 @@
-use std::{clone, collections::HashSet, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use async_std::sync::Mutex;
 use cyfs_base::{
     AccessString, AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawDecode,
     RawFrom, TypelessCoreObject,
@@ -10,65 +9,57 @@ use cyfs_core::{
 };
 use cyfs_group_lib::GroupManager;
 use cyfs_lib::{
-    CyfsStackRequestorType, DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo,
-    NONOutputRequestCommon, NONPutObjectOutputRequest, NamedObjectCachePutObjectRequest,
-    NamedObjectStorageCategory, RequestProtocol, RequestSourceInfo, SharedCyfsStack,
+    CyfsStackRequestorType, NONObjectInfo, NONOutputRequestCommon, NONPutObjectOutputRequest,
+    SharedCyfsStack,
 };
 use cyfs_stack::CyfsStack;
-use Common::{create_stack, EXAMPLE_RPATH};
-use GroupDecService::DecService;
+use group_dec_common::{create_stack, EXAMPLE_RPATH};
+use group_dec_service::DecService;
 
-use crate::{
-    Common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME, EXAMPLE_VALUE_PATH},
-    GroupDecService::MyRPathDelegate,
-};
+use crate::group_dec_common::{init_admins, init_group, init_members, EXAMPLE_APP_NAME};
 
-/**
- * Build the group for test
- * .\desc-tool create people --savepath=test-group/admins --idfile=test-group/admins/people-1.id
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-1.sec -t=test-group/admins/people-1.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-2.sec -t=test-group/admins/people-2.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-3.sec -t=test-group/admins/people-3.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-4.sec -t=test-group/admins/people-4.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-1.sec -t=test-group/members/people-1.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-2.sec -t=test-group/members/people-2.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-3.sec -t=test-group/members/people-3.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-4.sec -t=test-group/members/people-4.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-5.sec -t=test-group/members/people-5.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-6.sec -t=test-group/members/people-6.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-7.sec -t=test-group/members/people-7.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-8.sec -t=test-group/members/people-8.desc -dba
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-9.sec -t=test-group/members/people-9.desc -dba
- *
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-5 -d=test-group/admins/people-5.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-6 -d=test-group/admins/people-6.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-7 -d=test-group/admins/people-7.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-8 -d=test-group/admins/people-8.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-10 -d=test-group/members/people-10.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-11 -d=test-group/members/people-11.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-12 -d=test-group/members/people-12.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-13 -d=test-group/members/people-13.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-14 -d=test-group/members/people-14.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-15 -d=test-group/members/people-15.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-16 -d=test-group/members/people-16.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-17 -d=test-group/members/people-17.desc 1 0
- * .\cyfs-meta-client.exe putdesc -c=test-group/members/people-18 -d=test-group/members/people-18.desc 1 0
- *
- * .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 0 0
- *
- * .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
- *
- * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_admin=5r4MYfFBsQqy4r2LTccK1yyipRTtAjqvhX3GLU2qX3Lo --add_member=5r4MYfFapPzrXhfxWJNZJf4pk5Ncfrx5ax2yumWKZrZj
- * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_ood=5aSixgNLsF6r3qjDKP3XkBwnDRSr5G5hrGRM2v2LnLoA
- * .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_shell=9cfBkPt2RPa3MofMmsAXpq8xHYn8A2xvVPuQiBT4XTp9 -v=3
- * .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=
- *
-*/
+// Build the group for test
+// .\desc-tool create people --savepath=test-group/admins --idfile=test-group/admins/people-1.id
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-1.sec -t=test-group/admins/people-1.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-2.sec -t=test-group/admins/people-2.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-3.sec -t=test-group/admins/people-3.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/admins/people-4.sec -t=test-group/admins/people-4.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-1.sec -t=test-group/members/people-1.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-2.sec -t=test-group/members/people-2.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-3.sec -t=test-group/members/people-3.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-4.sec -t=test-group/members/people-4.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-5.sec -t=test-group/members/people-5.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-6.sec -t=test-group/members/people-6.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-7.sec -t=test-group/members/people-7.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-8.sec -t=test-group/members/people-8.desc -dba
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=test-group/members/people-9.sec -t=test-group/members/people-9.desc -dba
+//
+// .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-5 -d=test-group/admins/people-5.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-6 -d=test-group/admins/people-6.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-7 -d=test-group/admins/people-7.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-8 -d=test-group/admins/people-8.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-10 -d=test-group/members/people-10.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-11 -d=test-group/members/people-11.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-12 -d=test-group/members/people-12.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-13 -d=test-group/members/people-13.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-14 -d=test-group/members/people-14.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-15 -d=test-group/members/people-15.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-16 -d=test-group/members/people-16.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-17 -d=test-group/members/people-17.desc 1 0
+// .\cyfs-meta-client.exe putdesc -c=test-group/members/people-18 -d=test-group/members/people-18.desc 1 0
+//
+// .\cyfs-meta-client.exe putdesc -c=test-group/admins/people-1.desc -d=67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc 0 0
+//
+// .\desc-tool show -a 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc
+//
+// .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_admin=5r4MYfFBsQqy4r2LTccK1yyipRTtAjqvhX3GLU2qX3Lo --add_member=5r4MYfFapPzrXhfxWJNZJf4pk5Ncfrx5ax2yumWKZrZj
+// .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --add_ood=5aSixgNLsF6r3qjDKP3XkBwnDRSr5G5hrGRM2v2LnLoA
+// .\desc-tool modify 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc --prev_shell=9cfBkPt2RPa3MofMmsAXpq8xHYn8A2xvVPuQiBT4XTp9 -v=3
+// .\desc-tool sign 67fz8e9wt6Yqb9ex61tr2C1PwCqavBLFe153wfiVAhqQ.desc -s=
+//
 
-mod Common {
-    use std::{
-        fmt::format, io::ErrorKind, net::SocketAddrV4, sync::Arc, thread::sleep, time::Duration,
-    };
+mod group_dec_common {
+    use std::{io::ErrorKind, net::SocketAddrV4, sync::Arc, time::Duration};
 
     use async_std::fs;
     use cyfs_base::{
@@ -79,8 +70,7 @@ mod Common {
         NON_STACK_SYNC_BDT_VPORT, SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
     use cyfs_bdt_ext::{BdtStackParams, SNMode};
-    use cyfs_chunk_lib::ChunkMeta;
-    use cyfs_core::{DecApp, DecAppId, ToGroupShell};
+    use cyfs_core::{DecApp, ToGroupShell};
     use cyfs_lib::{BrowserSanboxMode, NONObjectInfo, SharedCyfsStack};
     use cyfs_meta_lib::MetaMinerTarget;
     use cyfs_stack::{
@@ -89,12 +79,10 @@ mod Common {
         CyfsStackNOCParams, CyfsStackParams,
     };
 
-    /**
-     * |--root
-     *      |--folder1
-     *          |--folder2
-     *              |--value-->u64
-     */
+    // |--root
+    //      |--folder1
+    //          |--folder2
+    //              |--value-->u64
 
     lazy_static::lazy_static! {
         pub static ref EXAMPLE_APP_NAME: String = "group-example".to_string();
@@ -428,7 +416,7 @@ mod Common {
     }
 
     fn init_stack_params(
-        people: &People,
+        _people: &People,
         private_key: &PrivateKey,
         device: &Device,
         admins: Vec<(People, Device)>,
@@ -440,8 +428,8 @@ mod Common {
     ) -> Box<(BdtStackParams, CyfsStackParams, CyfsStackKnownObjects)> {
         log::info!("init_stack_params");
 
-        let mut admin_device: Vec<Device> = admins.iter().map(|m| m.1.clone()).collect();
-        let mut member_device: Vec<Device> = members.iter().map(|m| m.1.clone()).collect();
+        let admin_device: Vec<Device> = admins.iter().map(|m| m.1.clone()).collect();
+        let member_device: Vec<Device> = members.iter().map(|m| m.1.clone()).collect();
         let known_device = vec![admin_device, member_device].concat();
 
         let bdt_param = BdtStackParams {
@@ -602,7 +590,7 @@ mod Common {
     }
 }
 
-mod Client {
+mod group_dec_client {
     // use cyfs_base::ObjectId;
     // use cyfs_core::GroupProposal;
     // use cyfs_group_lib::RPathClient;
@@ -626,8 +614,8 @@ mod Client {
     // }
 }
 
-mod GroupDecService {
-    use std::{collections::HashSet, fmt::format, sync::Arc};
+mod group_dec_service {
+    use std::{collections::HashSet, sync::Arc};
 
     use async_std::sync::Mutex;
     use cyfs_base::*;
@@ -640,16 +628,15 @@ mod GroupDecService {
         RPathService,
     };
     use cyfs_lib::{
-        CreateObjectMapOption, GlobalStatePathAccessItem, NONAPILevel, NONGetObjectInputRequest,
-        NONGetObjectOutputRequest, NONInputRequestCommon, NONObjectInfo, NONOutputRequestCommon,
-        NONPostObjectInputRequest, NONPostObjectInputResponse, RequestGlobalStatePath,
-        RequestSourceInfo, RootStateOpEnvAccess, RouterHandlerAction, RouterHandlerChain,
+        CreateObjectMapOption, GlobalStatePathAccessItem, NONAPILevel, NONGetObjectOutputRequest,
+        NONObjectInfo, NONOutputRequestCommon, NONPostObjectInputResponse, RequestGlobalStatePath,
+        RootStateOpEnvAccess, RouterHandlerAction, RouterHandlerChain,
         RouterHandlerManagerProcessor, RouterHandlerPostObjectRequest,
         RouterHandlerPostObjectResult, SharedCyfsStack,
     };
     use cyfs_util::EventListenerAsyncRoutine;
 
-    use crate::Common::{EXAMPLE_VALUE_PATH, STATE_PATH_SEPARATOR};
+    use crate::group_dec_common::EXAMPLE_VALUE_PATH;
 
     pub struct DecService {}
 
@@ -767,11 +754,11 @@ mod GroupDecService {
     impl GroupRPathDelegateFactory {
         pub fn is_accept(
             &self,
-            group_id: &ObjectId,
-            rpath: &str,
-            with_block: Option<&GroupConsensusBlock>,
+            _group_id: &ObjectId,
+            _rpath: &str,
+            _with_block: Option<&GroupConsensusBlock>,
         ) -> bool {
-            // 由应用定义是否接收该rpath，并启动共识过程，参与该rpath的信息维护
+            // Define whether to receive the RPath by the application, initiate the consensus process, and participate in the information maintenance of the RPath
             true
         }
     }
@@ -783,10 +770,10 @@ mod GroupDecService {
             group_id: &ObjectId,
             rpath: &str,
             with_block: Option<&GroupConsensusBlock>,
-            is_new: bool,
+            _is_new: bool,
         ) -> BuckyResult<Box<dyn RPathDelegate>> {
             if self.is_accept(group_id, rpath, with_block) {
-                // 如果接受，就提供该rpath的处理响应对象
+                // If accepted, provide the processing response object for the rpath
                 Ok(Box::new(MyRPathDelegate::new(
                     self.local_name.clone(),
                     self.stack.clone(),
@@ -857,9 +844,6 @@ mod GroupDecService {
             };
 
             let (result_value, result_value_u64) = {
-                /**
-                 * prev_state_id是一个MAP的操作对象，形式待定，可能就是一个SingleOpEnv，但最好支持多级路径操作
-                 */
                 let prev_value = prev_value.map_or(0, |prev_value| {
                     let buf = prev_value.data();
                     let mut prev_value = [0u8; 8];
@@ -920,9 +904,6 @@ mod GroupDecService {
             };
 
             let receipt = {
-                /**
-                 * 返回给Client的对象，相当于这个请求的结果或者叫回执？
-                 */
                 let text = Text::build("value", "header", format!("{}", result_value_u64))
                     .no_create_time()
                     .build();
@@ -933,16 +914,10 @@ mod GroupDecService {
                 ))
             };
 
-            let context = {
-                /**
-                 * 执行请求的上下文，运算过程中可能有验证节点无法得到的上下文信息（比如时间戳，随机数）
-                 */
-                Some(Vec::from(result_value_u64.to_le_bytes()))
-            };
+            let context = { Some(Vec::from(result_value_u64.to_le_bytes())) };
 
-            /**
-             * (result_state_id, return_object) = prev_value + proposal + context
-             */
+            // (result_state_id, return_object) = prev_value + proposal + context
+
             Ok(ExecuteResult {
                 context,
                 result_state_id: Some(result_state_id),
@@ -957,10 +932,8 @@ mod GroupDecService {
             object_map_processor: &dyn GroupObjectMapProcessor,
             execute_result: &ExecuteResult,
         ) -> BuckyResult<()> {
-            /**
-             * let is_same = (execute_result.result_state_id, execute_result.return_object)
-             *  == prev_state_id + proposal + execute_result.context
-             */
+            // let is_same = (execute_result.result_state_id, execute_result.return_object)
+            //  == prev_state_id + proposal + execute_result.context
 
             log::info!(
                 "verify({}) enter, expect: prev-state: {:?}, {:?}/{:?}/{:?}",
@@ -1311,7 +1284,7 @@ async fn main_run() {
 
     for i in 0..member_stacks.len() {
         let (_, shared_stack) = member_stacks.get(i).unwrap();
-        let ((member, _), _) = members.get(i).unwrap();
+        let ((_member, _), _) = members.get(i).unwrap();
         let group_mgr = GroupManager::open_as_client(
             shared_stack.as_ref().clone(),
             &CyfsStackRequestorType::WebSocket,
@@ -1330,10 +1303,10 @@ async fn main_run() {
 
     log::info!("proposals will be prepared.");
 
-    let PROPOSAL_COUNT = 20000usize;
+    const PROPOSAL_COUNT: usize = 20000usize;
     for i in 1..PROPOSAL_COUNT {
         let (_, stack) = member_stacks.get(i % member_stacks.len()).unwrap();
-        let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
+        let _group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
         let owner = &members.get(i % members.len()).unwrap().0 .0;
         let proposal = create_proposal(
             i as u64,
@@ -1361,11 +1334,11 @@ async fn main_run() {
             object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
             access: Some(AccessString::full()),
         };
-        noc.put_object(req).await;
+        noc.put_object(req).await.expect("put proposal failed.");
         proposals.push(proposal);
 
         let proposal = proposals.get(i - 1).unwrap().clone();
-        let stack = member_stacks.get(i % member_stacks.len()).unwrap();
+        let _stack = member_stacks.get(i % member_stacks.len()).unwrap();
         let group_mgr = member_group_mgrs.get(i % member_group_mgrs.len()).unwrap();
         let ((member, _), _) = members.get(i % members.len()).unwrap();
         let local_name = member.name().map(|n| n.to_string());

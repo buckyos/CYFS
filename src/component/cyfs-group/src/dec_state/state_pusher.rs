@@ -55,7 +55,7 @@ impl StatePusher {
     }
 
     pub async fn notify_proposal_err(&self, proposal: GroupProposal, err: BuckyError) {
-        self.tx_notifier
+        let _ = self.tx_notifier
             .send(StatePushMessage::ProposalResult(proposal, err))
             .await;
     }
@@ -83,13 +83,13 @@ impl StatePusher {
             return;
         }
 
-        self.tx_notifier
+        let _ = self.tx_notifier
             .send(StatePushMessage::BlockCommit(block, qc_block))
             .await;
     }
 
     pub async fn request_last_state(&self, remote: ObjectId) {
-        self.tx_notifier
+        let _ = self.tx_notifier
             .send(StatePushMessage::LastStateRequest(remote))
             .await;
     }
@@ -347,7 +347,7 @@ impl StateChanggeRunner {
 
     async fn delay_notify(&mut self, is_force: bool) {
         if is_force || self.delay_notify_times == 0 {
-            self.tx_notifier
+            let _ = self.tx_notifier
                 .send(StatePushMessage::DelayBroadcast)
                 .await;
             self.delay_notify_times += 1;
@@ -364,12 +364,12 @@ impl StateChanggeRunner {
                         self.update_commit_block(block, qc_block).await;
                     },
                     Ok(StatePushMessage::LastStateRequest(remote)) => {
-                        self.request_last_state(remote);
+                        let _ = self.request_last_state(remote);
                     },
                     Ok(StatePushMessage::DelayBroadcast) => {
-                        self.try_notify_block_commit();
+                        let _ = self.try_notify_block_commit();
                     },
-                    Err(e) => {
+                    Err(_e) => {
                         log::warn!("[change-notifier] rx_notifier closed.")
                     },
                 },

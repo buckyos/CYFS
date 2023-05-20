@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use cyfs_base::{BuckyResult, DeviceId, ObjectId};
-use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupPushProposalInputRequest, GroupPushProposalInputResponse,
     GroupRequestor, GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 

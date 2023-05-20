@@ -91,7 +91,7 @@ impl Sender {
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
         ));
 
-        self.datagram
+        let _ = self.datagram
             .send_to(buf.as_slice(), &mut options, &remote, self.vport);
     }
 

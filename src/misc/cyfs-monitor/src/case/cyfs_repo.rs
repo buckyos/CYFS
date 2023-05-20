@@ -55,7 +55,7 @@ impl MonitorRunner for CyfsRepoMonitor {
                 config.conn_strategy = cyfs_client::ConnStrategy::TcpOnly;
                 let mut client = NamedCacheClient::new(config);
                 client.init().await?;
-                self.cyfs_client.set(client);
+                let _ = self.cyfs_client.set(client);
             }
 
             let client = self.cyfs_client.get().unwrap();

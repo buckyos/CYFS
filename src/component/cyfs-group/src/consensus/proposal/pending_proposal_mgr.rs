@@ -126,7 +126,7 @@ impl PendingProposalMgrRunner {
                     if let Ok(proposal) = proposal {
                         self.buffer.insert(proposal.desc().object_id(), proposal);
                         if let Some(waker) = self.tx_proposal_waker.take() {
-                            waker.send(()).await;
+                            let _ = waker.send(()).await;
                         }
                     }
                 },
@@ -135,7 +135,7 @@ impl PendingProposalMgrRunner {
                        match message {
                             ProposalConsumeMessage::Query(sender) => {
                                 let proposals = self.handle_query_proposals().await;
-                                sender.send(proposals).await;
+                                let _ = sender.send(proposals).await;
                             },
                             ProposalConsumeMessage::Remove(proposal_ids) => {
                                 for id in &proposal_ids {
@@ -144,7 +144,7 @@ impl PendingProposalMgrRunner {
                             },
                             ProposalConsumeMessage::Wait(tx_waker) => {
                                 if self.buffer.len() > 0 {
-                                    tx_waker.send(()).await;
+                                    let _ = tx_waker.send(()).await;
                                 } else {
                                     self.tx_proposal_waker = Some(tx_waker)
                                 }

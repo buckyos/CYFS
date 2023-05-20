@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectId};
+use cyfs_base::{BuckyResult, Group, NamedObject, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
@@ -79,7 +79,8 @@ impl DecStateSynchronizer {
         result: BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
         remote: ObjectId,
     ) {
-        self.0
+        let _ = self
+            .0
             .tx_dec_state_sync_message
             .send((
                 DecStateSynchronizerMessage::ProposalResult(proposal_id, result),
@@ -94,7 +95,8 @@ impl DecStateSynchronizer {
         qc: HotstuffBlockQC,
         remote: ObjectId,
     ) {
-        self.0
+        let _ = self
+            .0
             .tx_dec_state_sync_message
             .send((
                 DecStateSynchronizerMessage::StateChange(header_block, qc),
@@ -197,7 +199,8 @@ impl DecStateSynchronizerRunner {
                     return;
                 }
 
-                self.tx_dec_state_sync_message
+                let _ = self
+                    .tx_dec_state_sync_message
                     .send((
                         DecStateSynchronizerMessage::DelaySync(Some((proposal_id, result))),
                         remote,
@@ -224,7 +227,8 @@ impl DecStateSynchronizerRunner {
             .await
             .is_ok()
         {
-            self.tx_dec_state_sync_message
+            let _ = self
+                .tx_dec_state_sync_message
                 .send((DecStateSynchronizerMessage::DelaySync(None), remote))
                 .await;
         }
@@ -233,7 +237,7 @@ impl DecStateSynchronizerRunner {
     async fn sync_state(
         &mut self,
         proposal_result: Option<(ObjectId, Option<NONObjectInfo>)>,
-        remote: ObjectId,
+        _remote: ObjectId,
     ) {
         let result = match self.update_notifies.as_ref() {
             Some(notify_info) => {
@@ -352,7 +356,7 @@ impl DecStateSynchronizerRunner {
                     Ok((DecStateSynchronizerMessage::ProposalResult(proposal, result), remote)) => self.handle_proposal_complete(proposal, result, remote).await,
                     Ok((DecStateSynchronizerMessage::StateChange(block, qc_block), remote)) => self.handle_state_change(block, qc_block, remote).await,
                     Ok((DecStateSynchronizerMessage::DelaySync(proposal_result), remote)) => self.sync_state(proposal_result, remote).await,
-                    Err(e) => {
+                    Err(_e) => {
                         log::warn!("[dec-state-sync] rx closed.")
                     },
                 },

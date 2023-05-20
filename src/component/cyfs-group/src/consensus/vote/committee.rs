@@ -1,9 +1,5 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::HashSet;
 
-use async_std::sync::RwLock;
 use cyfs_base::{
     verify_object_desc_sign, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
     ObjectDesc, ObjectId, OwnerObjectDesc, RsaCPUObjectVerifier, SignatureSource,
@@ -11,7 +7,7 @@ use cyfs_base::{
 };
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockDesc, GroupConsensusBlockDescContent,
-    GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout, ToGroupShell,
+    GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout,
 };
 use cyfs_group_lib::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
@@ -125,7 +121,7 @@ impl Committee {
             block_id
         );
 
-        let prev_block = if let Some(qc) = block.qc() {
+        let _prev_block = if let Some(qc) = block.qc() {
             let prev_block = self
                 .non_driver
                 .get_block(&qc.block_id, Some(&from))

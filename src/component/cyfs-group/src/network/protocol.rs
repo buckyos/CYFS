@@ -23,14 +23,14 @@ impl SyncBound {
     pub fn height(&self) -> u64 {
         match self {
             Self::Height(h) => *h,
-            Self::Round(r) => panic!("should be height"),
+            Self::Round(_r) => panic!("should be height"),
         }
     }
 
     pub fn round(&self) -> u64 {
         match self {
             Self::Round(r) => *r,
-            Self::Height(h) => panic!("should be round"),
+            Self::Height(_h) => panic!("should be round"),
         }
     }
 
@@ -368,7 +368,7 @@ fn decode_with_length<'de, O: RawDecode<'de>>(
     len_buf_4[..length_size].copy_from_slice(len_buf);
     let len = u32::from_le_bytes(len_buf_4) as usize;
 
-    let before_len = buf.len();
+    let _before_len = buf.len();
     let (obj, remain) = O::raw_decode(&buf[..len])?;
     assert_eq!(remain.len(), 0);
 

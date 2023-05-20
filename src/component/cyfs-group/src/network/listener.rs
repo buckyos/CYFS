@@ -40,7 +40,7 @@ impl Listener {
                                     Instant::now().elapsed().as_millis() as u64 - datagram.options.create_time.unwrap()
                                 );
                                 assert_eq!(remain.len(), 0);
-                                processor.on_message(pkg, remote).await;
+                                let _ = processor.on_message(pkg, remote).await;
                             }
                             Err(err) => {
                                 log::debug!(

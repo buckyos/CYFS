@@ -11,7 +11,7 @@ use cyfs_core::{DecApp, DecAppObj, GroupShell, ToGroupShell};
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 use cyfs_meta_lib::MetaClient;
 
-use crate::{GroupShellStatePath, MetaClientTimeout, NONDriverHelper};
+use crate::{GroupShellStatePath, NONDriverHelper};
 
 const ACCESS: Option<OpEnvPathAccess> = None;
 
@@ -38,7 +38,7 @@ impl GroupShellManager {
         group_id: &ObjectId,
         non_driver: NONDriverHelper,
         meta_client: Arc<MetaClient>,
-        local_device_id: ObjectId,
+        _local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
         remote: Option<&ObjectId>,
     ) -> BuckyResult<GroupShellManager> {
@@ -97,7 +97,7 @@ impl GroupShellManager {
         group_id: &ObjectId,
         non_driver: NONDriverHelper,
         meta_client: Arc<MetaClient>,
-        local_device_id: ObjectId,
+        _local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupShellManager> {
         let shell_dec_id = Self::shell_dec_id(group_id);
@@ -330,8 +330,8 @@ impl GroupShellManager {
                     group_shell.try_into_object(None)?
                 };
 
-                let body_hash = group.body().as_ref().unwrap().calculate_hash()?;
-                // TODO: 用`body_hash`从链上验证其合法性
+                let _body_hash = group.body().as_ref().unwrap().calculate_hash()?;
+                // TODO: verify it from on-chain with `body_hash`
                 let group_id_from_shell = group.desc().object_id();
                 if &group_id_from_shell == group_id {
                     Ok((group, group_shell_id.clone()))

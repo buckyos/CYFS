@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cyfs_base::{BuckyResult, ObjectId, ObjectMapSingleOpEnvRef};
+use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::{GroupConsensusBlock, HotstuffBlockQC, HotstuffTimeout};
 
 pub struct FinishProposalMgr {

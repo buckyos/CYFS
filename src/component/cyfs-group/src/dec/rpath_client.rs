@@ -108,7 +108,7 @@ impl RPathClient {
                 .post_object(non_proposal.clone(), Some(ood))
                 .await
             {
-                Ok(r) => post_result = Some(Ok(())),
+                Ok(_r) => post_result = Some(Ok(())),
                 Err(e) => {
                     if post_result.is_none() {
                         post_result = Some(Err(e));
@@ -217,17 +217,17 @@ impl RPathClient {
         Err(err)
     }
 
-    pub async fn get_block(&self, height: Option<u64>) -> BuckyResult<GroupConsensusBlock> {
+    pub async fn get_block(&self, _height: Option<u64>) -> BuckyResult<GroupConsensusBlock> {
         unimplemented!()
     }
 
     pub(crate) async fn on_message(&self, msg: HotstuffMessage, remote: ObjectId) {
         match msg {
-            HotstuffMessage::Block(block) => unreachable!(),
-            HotstuffMessage::BlockVote(vote) => unreachable!(),
-            HotstuffMessage::TimeoutVote(vote) => unreachable!(),
-            HotstuffMessage::Timeout(tc) => unreachable!(),
-            HotstuffMessage::SyncRequest(min_bound, max_bound) => unreachable!(),
+            HotstuffMessage::Block(_block) => unreachable!(),
+            HotstuffMessage::BlockVote(_vote) => unreachable!(),
+            HotstuffMessage::TimeoutVote(_vote) => unreachable!(),
+            HotstuffMessage::Timeout(_tc) => unreachable!(),
+            HotstuffMessage::SyncRequest(_min_bound, _max_bound) => unreachable!(),
             HotstuffMessage::LastStateRequest => unreachable!(),
             HotstuffMessage::StateChangeNotify(header_block, qc) => {
                 self.0

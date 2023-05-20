@@ -169,7 +169,7 @@ impl GroupManager {
         }
     }
 
-    pub async fn set_sync_path(&self, dec_id: &str, path: String) -> BuckyResult<()> {
+    pub async fn set_sync_path(&self, _dec_id: &str, _path: String) -> BuckyResult<()> {
         unimplemented!()
     }
 
@@ -181,7 +181,7 @@ impl GroupManager {
     // return <DecId, RPath>
     pub async fn enum_rpath_service(
         &self,
-        group_id: &ObjectId,
+        _group_id: &ObjectId,
     ) -> BuckyResult<Vec<(DecAppId, String)>> {
         unimplemented!()
     }
@@ -354,7 +354,7 @@ impl GroupManager {
                     .on_message(HotstuffMessage::LastStateRequest, remote)
                     .await;
             }
-            HotstuffPackage::StateChangeNotify(header_block, qc_block) => {
+            HotstuffPackage::StateChangeNotify(_header_block, _qc_block) => {
                 // TODO: unimplemented
                 // let rpath = header_block.rpath();
                 // let client = self
@@ -367,7 +367,7 @@ impl GroupManager {
                 //     )
                 //     .await;
             }
-            HotstuffPackage::ProposalResult(proposal_id, result) => {
+            HotstuffPackage::ProposalResult(_proposal_id, _result) => {
                 // TODO: unimplemented
                 // let rpath = result.as_ref().map_or_else(
                 //     |(_, target)| target.check_rpath(),
@@ -405,7 +405,7 @@ impl GroupManager {
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
                             .await;
                     }
-                    Err(err) => {
+                    Err(_err) => {
                         log::debug!(
                             "new msg(QueryState) received, and find rpath service failed, will try query state from client, {:?}. local: {}",
                             rpath,

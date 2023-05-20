@@ -11,10 +11,6 @@ use lazy_static::lazy_static;
 use async_std::sync::Mutex;
 use async_std::sync::RwLock;
 
-use std::io::prelude::*;
-use crate::chunk_processor::set_chunk;
-
-
 #[derive(Debug)]
 pub struct ChunkLockManager {
     create_lock: RwLock<u32>,

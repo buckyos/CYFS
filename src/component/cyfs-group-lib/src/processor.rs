@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use cyfs_base::BuckyResult;
-use cyfs_core::GroupProposal;
 
 use crate::{
-    GroupOutputRequestCommon, GroupPushProposalOutputRequest, GroupPushProposalOutputResponse,
+    GroupPushProposalOutputRequest, GroupPushProposalOutputResponse,
     GroupStartServiceOutputRequest, GroupStartServiceOutputResponse,
 };
 

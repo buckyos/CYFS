@@ -1,8 +1,7 @@
 use crate::group::{GroupInputProcessor, GroupInputProcessorRef};
 use cyfs_base::*;
-use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupPushProposalInputRequest, GroupPushProposalInputResponse,
     GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 use cyfs_lib::*;
@@ -20,8 +19,8 @@ impl GroupAclInnerInputProcessor {
 
     fn check_local_zone_permit(
         &self,
-        service: &str,
-        source: &RequestSourceInfo,
+        _service: &str,
+        _source: &RequestSourceInfo,
     ) -> BuckyResult<()> {
         // TODO
         // if !source.is_current_zone() {
