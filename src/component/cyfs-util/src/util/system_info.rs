@@ -70,6 +70,119 @@ impl Default for SystemInfo {
     }
 }
 
+
+impl SystemInfo {
+    pub fn update(&mut self, updater: SystemInfoUpdater) {
+        if let Some(value) = updater.name {
+            self.name = value;
+        }
+
+        if let Some(value) = updater.device_sn {
+            self.device_sn = Some(value);
+        }
+
+        if let Some(value) = updater.uptime {
+            self.uptime = value;
+        }
+
+        if let Some(value) = updater.boot_time {
+            self.boot_time = value;
+        }
+
+        if let Some(value) = updater.mac_address {
+            self.mac_address = Some(value);
+        }
+
+        // cpu
+        if let Some(value) = updater.cpu_brand {
+            self.cpu_brand = value;
+        }
+
+        if let Some(value) = updater.cpu_usage {
+            self.cpu_usage = value;
+        }
+
+        // memory
+        if let Some(value) = updater.total_memory {
+            self.total_memory = value;
+        }
+
+        if let Some(value) = updater.used_memory {
+            self.used_memory = value;
+        }
+
+        // bytes trans
+        if let Some(value) = updater.received_bytes {
+            self.received_bytes = value;
+        }
+
+        if let Some(value) = updater.transmitted_bytes {
+            self.transmitted_bytes = value;
+        }
+
+        if let Some(value) = updater.total_received_bytes {
+            self.total_received_bytes = value;
+        }
+
+        if let Some(value) = updater.total_transmitted_bytes {
+            self.total_transmitted_bytes = value;
+        }
+
+        // disk
+        if let Some(value) = updater.ssd_disk_total {
+            self.ssd_disk_total = value;
+        }
+
+        if let Some(value) = updater.ssd_disk_avail {
+            self.ssd_disk_avail = value;
+        }
+
+        if let Some(value) = updater.hdd_disk_total {
+            self.hdd_disk_total = value;
+        }
+
+        if let Some(value) = updater.hdd_disk_avail {
+            self.hdd_disk_avail = value;
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SystemInfoUpdater {
+    pub name: Option<String>,
+
+    pub device_sn: Option<String>,
+
+    pub uptime: Option<u64>,
+
+    pub boot_time: Option<u64>,
+
+    pub mac_address: Option<String>,
+
+    pub cpu_brand: Option<String>,
+    pub cpu_usage: Option<f32>,
+
+    // memory size in bytes
+    pub total_memory: Option<u64>,
+    pub used_memory: Option<u64>,
+
+    // Bytes transferred between each refresh cycle
+    pub received_bytes: Option<u64>,
+    pub transmitted_bytes: Option<u64>,
+
+    // total bytes of all networks since last booted
+    pub total_received_bytes: Option<u64>,
+    pub total_transmitted_bytes: Option<u64>,
+
+    // SSD drive capacity and available capacity, including Unknown, in bytes
+    pub ssd_disk_total: Option<u64>,
+    pub ssd_disk_avail: Option<u64>,
+
+    // HDD capacity and available capacity, in bytes
+    pub hdd_disk_total: Option<u64>,
+    pub hdd_disk_avail: Option<u64>,
+}
+
 struct SystemInfoManagerInner {
     running: bool,
     last_access_time: Instant,
@@ -77,6 +190,8 @@ struct SystemInfoManagerInner {
 
     info_inner: SystemInfo,
     handler: System,
+
+    external_updater: Option<SystemInfoUpdater>,
 }
 
 impl SystemInfoManagerInner {
@@ -115,7 +230,17 @@ impl SystemInfoManagerInner {
 
             info_inner,
             handler,
+
+            external_updater: None,
         }
+    }
+
+    pub fn update_system_info(&mut self, updater: SystemInfoUpdater) {
+        info!("system update from external: {:?}", updater);
+
+        self.info_inner.update(updater.clone());
+
+        self.external_updater = Some(updater);
     }
 
     pub fn check_idle(&mut self) {
@@ -137,6 +262,10 @@ impl SystemInfoManagerInner {
         self.update_mac();
         self.update_network();
         self.update_disks();
+
+        if let Some(updater) = self.external_updater.clone() {
+            self.info_inner.update(updater);
+        }
     }
 
     fn udpate_sn(&mut self) {
@@ -329,6 +458,11 @@ impl SystemInfoManager {
         } else {
             info!("refresh system info stopped already!");
         }
+    }
+
+    pub fn update_system_info(&self, updater: SystemInfoUpdater) {
+        let mut item = self.0.lock().unwrap();
+        item.update_system_info(updater);
     }
 }
 
