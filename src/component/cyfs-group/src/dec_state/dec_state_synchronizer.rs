@@ -79,14 +79,17 @@ impl DecStateSynchronizer {
         result: BuckyResult<(Option<NONObjectInfo>, GroupConsensusBlock, HotstuffBlockQC)>,
         remote: ObjectId,
     ) {
-        let _ = self
+        if let Err(err) = self
             .0
             .tx_dec_state_sync_message
             .send((
-                DecStateSynchronizerMessage::ProposalResult(proposal_id, result),
-                remote,
+                DecStateSynchronizerMessage::ProposalResult(proposal_id.clone(), result),
+                remote.clone(),
             ))
-            .await;
+            .await
+        {
+            log::warn!("post proposal complete notification failed, proposal_id: {}, remote: {}, err: {:?}.", proposal_id, remote, err);
+        }
     }
 
     pub async fn on_state_change(
@@ -95,14 +98,18 @@ impl DecStateSynchronizer {
         qc: HotstuffBlockQC,
         remote: ObjectId,
     ) {
-        let _ = self
+        let new_header_id = header_block.block_id().clone();
+        if let Err(err) = self
             .0
             .tx_dec_state_sync_message
             .send((
                 DecStateSynchronizerMessage::StateChange(header_block, qc),
                 remote,
             ))
-            .await;
+            .await
+        {
+            log::warn!("post block state change notification failed, new-header: {}, remote: {}, err: {:?}.", new_header_id, remote, err);
+        }
     }
 }
 
@@ -199,13 +206,16 @@ impl DecStateSynchronizerRunner {
                     return;
                 }
 
-                let _ = self
+                if let Err(err) = self
                     .tx_dec_state_sync_message
                     .send((
                         DecStateSynchronizerMessage::DelaySync(Some((proposal_id, result))),
                         remote,
                     ))
-                    .await;
+                    .await
+                {
+                    log::warn!("post delay sync state message for new proposal complete failed, proposal: {} err: {:?}.", proposal_id, err);
+                }
             }
             Err(e) => {
                 // notify the app
@@ -222,15 +232,19 @@ impl DecStateSynchronizerRunner {
         qc: HotstuffBlockQC,
         remote: ObjectId,
     ) {
+        let header_id = header_block.block_id().clone();
         if self
             .push_update_notify(header_block, qc, remote)
             .await
             .is_ok()
         {
-            let _ = self
+            if let Err(err) = self
                 .tx_dec_state_sync_message
                 .send((DecStateSynchronizerMessage::DelaySync(None), remote))
-                .await;
+                .await
+            {
+                log::warn!("post delay sync state message for header changed failed, new-header: {} err: {:?}.", header_id, err);
+            }
         }
     }
 
@@ -356,8 +370,8 @@ impl DecStateSynchronizerRunner {
                     Ok((DecStateSynchronizerMessage::ProposalResult(proposal, result), remote)) => self.handle_proposal_complete(proposal, result, remote).await,
                     Ok((DecStateSynchronizerMessage::StateChange(block, qc_block), remote)) => self.handle_state_change(block, qc_block, remote).await,
                     Ok((DecStateSynchronizerMessage::DelaySync(proposal_result), remote)) => self.sync_state(proposal_result, remote).await,
-                    Err(_e) => {
-                        log::warn!("[dec-state-sync] rx closed.")
+                    Err(e) => {
+                        log::warn!("[dec-state-sync] rx closed, err: {:?}.", e);
                     },
                 },
                 // () = self.timer.wait_next().fuse() => {self.sync_state().await;},

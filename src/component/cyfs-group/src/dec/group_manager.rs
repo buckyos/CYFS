@@ -405,11 +405,12 @@ impl GroupManager {
                             .on_message(HotstuffMessage::QueryState(sub_path), remote)
                             .await;
                     }
-                    Err(_err) => {
+                    Err(err) => {
                         log::debug!(
-                            "new msg(QueryState) received, and find rpath service failed, will try query state from client, {:?}. local: {}",
+                            "new msg(QueryState) received, and find rpath service failed, will try query state from client, {:?}. local: {}, err: {:?}",
                             rpath,
-                            self.local_info().bdt_stack.local_device_id()
+                            self.local_info().bdt_stack.local_device_id(),
+                            err
                         );
 
                         let client = self

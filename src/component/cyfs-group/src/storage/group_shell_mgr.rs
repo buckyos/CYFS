@@ -28,6 +28,7 @@ struct GroupShellManagerRaw {
     state_path: GroupShellStatePath,
     meta_client: Arc<MetaClient>,
     non_driver: NONDriverHelper,
+    local_device_id: ObjectId,
 }
 
 #[derive(Clone)]
@@ -38,7 +39,7 @@ impl GroupShellManager {
         group_id: &ObjectId,
         non_driver: NONDriverHelper,
         meta_client: Arc<MetaClient>,
-        _local_device_id: ObjectId,
+        local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
         remote: Option<&ObjectId>,
     ) -> BuckyResult<GroupShellManager> {
@@ -77,6 +78,7 @@ impl GroupShellManager {
             non_driver,
             state_path: GroupShellStatePath::new(),
             group_desc: group.desc().clone(),
+            local_device_id,
         };
 
         let ret = Self(Arc::new(raw));
@@ -97,7 +99,7 @@ impl GroupShellManager {
         group_id: &ObjectId,
         non_driver: NONDriverHelper,
         meta_client: Arc<MetaClient>,
-        _local_device_id: ObjectId,
+        local_device_id: ObjectId,
         root_state_mgr: &GlobalStateManagerRawProcessorRef,
     ) -> BuckyResult<GroupShellManager> {
         let shell_dec_id = Self::shell_dec_id(group_id);
@@ -184,6 +186,7 @@ impl GroupShellManager {
             non_driver,
             state_path: GroupShellStatePath::new(),
             group_desc: group.desc().clone(),
+            local_device_id,
         };
 
         let ret = Self(Arc::new(raw));
@@ -331,7 +334,7 @@ impl GroupShellManager {
                 };
 
                 let _body_hash = group.body().as_ref().unwrap().calculate_hash()?;
-                // TODO: verify it from on-chain with `body_hash`
+                // TODO: verify it from on-chain with `body_hash`, wait for the interface in `MetaChain`
                 let group_id_from_shell = group.desc().object_id();
                 if &group_id_from_shell == group_id {
                     Ok((group, group_shell_id.clone()))

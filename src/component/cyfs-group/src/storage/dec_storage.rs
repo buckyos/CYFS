@@ -59,7 +59,6 @@ impl DecStorage {
         verifiable_status: &'a GroupRPathStatus,
     ) -> BuckyResult<Option<&'a NONObjectInfo>> {
         let block_desc = &verifiable_status.block_desc;
-        let _qc = &verifiable_status.certificate;
 
         let mut parent_state_id = match block_desc.content().result_state_id() {
             Some(state_id) => state_id.clone(),

@@ -368,7 +368,6 @@ fn decode_with_length<'de, O: RawDecode<'de>>(
     len_buf_4[..length_size].copy_from_slice(len_buf);
     let len = u32::from_le_bytes(len_buf_4) as usize;
 
-    let _before_len = buf.len();
     let (obj, remain) = O::raw_decode(&buf[..len])?;
     assert_eq!(remain.len(), 0);
 

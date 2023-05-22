@@ -437,7 +437,9 @@ impl GroupManager {
                     }
                 };
 
-                let _ = new_service.start().await;
+                if let Err(err) = new_service.start().await {
+                    log::error!("try start service(rpath={}, dec={}, group={}) failed, will try again automatically when it's used. err: {:?}", rpath, dec_id, group_id, err);
+                }
                 Ok(new_service.clone())
             }
             None => Err(BuckyError::new(BuckyErrorCode::Reject, "is not service")),

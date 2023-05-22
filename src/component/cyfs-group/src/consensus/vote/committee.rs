@@ -121,7 +121,7 @@ impl Committee {
             block_id
         );
 
-        let _prev_block = if let Some(qc) = block.qc() {
+        if let Some(qc) = block.qc() {
             let prev_block = self
                 .non_driver
                 .get_block(&qc.block_id, Some(&from))
@@ -136,10 +136,7 @@ impl Committee {
                     err
                 })?;
             self.verify_qc(qc, &prev_block).await?;
-            Some(prev_block)
-        } else {
-            None
-        };
+        }
 
         log::debug!(
             "[group committee] {} verify block {} step3",

@@ -47,9 +47,9 @@ impl GroupRequestHandler {
         &self,
         mut req: NONInputHttpRequest<State>,
     ) -> BuckyResult<GroupStartServiceInputResponse> {
-        let _common = Self::decode_common_headers(&req)?;
+        // let _common = Self::decode_common_headers(&req)?;
 
-        // 提取body里面的object对象，如果有的话
+        // all request parameters are in the body
         let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("group start service failed, read body bytes error! {}", e);
             error!("{}", msg);

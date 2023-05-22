@@ -674,8 +674,8 @@ impl SynchronizerRunner {
                     Ok(SynchronizerMessage::Sync(min_height, max_bound, remote)) => self.handle_sync(min_height, max_bound, remote).await,
                     Ok(SynchronizerMessage::PushBlock(min_height, block, remote)) => self.handle_push_block(min_height, block, remote).await,
                     Ok(SynchronizerMessage::PopBlock(new_height, new_round, block_id)) => self.handle_pop_block(new_height, new_round, block_id).await,
-                    Err(_e) => {
-                        log::warn!("[synchronizer] rx_message closed.")
+                    Err(e) => {
+                        log::warn!("[synchronizer] rx_message closed, err: {:?}.", e);
                     },
                 },
                 () = self.timer.wait_next().fuse() => self.handle_timeout().await,
