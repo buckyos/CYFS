@@ -4,6 +4,7 @@ use cyfs_base::*;
 use cyfs_core::ZoneId;
 use cyfs_core::*;
 use cyfs_bdt::SnStatus;
+use cyfs_util::SystemInfoUpdater;
 use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
@@ -472,6 +473,32 @@ impl Display for UtilGetSystemInfoOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "info: {:?}", self.info)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct UtilUpdateSystemInfoOutputRequest {
+    pub common: UtilOutputRequestCommon,
+
+    pub info: SystemInfoUpdater,
+}
+
+impl Display for UtilUpdateSystemInfoOutputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}, info: {:?}", self.common, self.info)
+    }
+}
+
+impl UtilUpdateSystemInfoOutputRequest {
+    pub fn new(info: SystemInfoUpdater) -> Self {
+        Self {
+            common: UtilOutputRequestCommon::default(),
+            info,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UtilUpdateSystemInfoOutputResponse {
 }
 
 #[derive(Debug, Clone)]

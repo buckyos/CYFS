@@ -28,6 +28,9 @@ pub type UtilGetNetworkAccessInfoResponse = UtilGetNetworkAccessInfoOutputRespon
 pub type UtilGetSystemInfoRequest = UtilGetSystemInfoOutputRequest;
 pub type UtilGetSystemInfoResponse = UtilGetSystemInfoOutputResponse;
 
+pub type UtilUpdateSystemInfoRequest = UtilUpdateSystemInfoOutputRequest;
+pub type UtilUpdateSystemInfoResponse = UtilUpdateSystemInfoOutputResponse;
+
 pub type UtilGetVersionInfoRequest = UtilGetVersionInfoOutputRequest;
 pub type UtilGetVersionInfoResponse = UtilGetVersionInfoOutputResponse;
 

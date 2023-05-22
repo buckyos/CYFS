@@ -153,6 +153,14 @@ impl UtilRouter {
         processor.get_system_info(req).await
     }
 
+    async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoInputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.update_system_info(req).await
+    }
+
     async fn get_version_info(
         &self,
         req: UtilGetVersionInfoInputRequest,
@@ -226,6 +234,13 @@ impl UtilInputProcessor for UtilRouter {
         req: UtilGetSystemInfoInputRequest,
     ) -> BuckyResult<UtilGetSystemInfoInputResponse> {
         Self::get_system_info(&self, req).await
+    }
+
+    async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoInputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        Self::update_system_info(&self, req).await
     }
 
     async fn get_version_info(

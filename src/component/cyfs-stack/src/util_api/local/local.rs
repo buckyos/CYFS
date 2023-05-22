@@ -245,7 +245,14 @@ impl UtilLocalService {
             owner_id,
             cyfs_root,
 
-            sn_list: self.bdt_stack.sn_client().ping().sn_list().iter().map(|sn| sn.desc().device_id()).collect(),
+            sn_list: self
+                .bdt_stack
+                .sn_client()
+                .ping()
+                .sn_list()
+                .iter()
+                .map(|sn| sn.desc().device_id())
+                .collect(),
             known_sn_list: self.bdt_stack.sn_client().cache().known_list(),
         };
 
@@ -279,6 +286,15 @@ impl UtilLocalService {
         Ok(UtilGetSystemInfoInputResponse { info })
     }
 
+    pub async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoInputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        SYSTEM_INFO_MANAGER.update_system_info(req.info);
+
+        Ok(UtilUpdateSystemInfoInputResponse {})
+    }
+
     pub async fn get_version_info(
         &self,
         _req: UtilGetVersionInfoInputRequest,
@@ -301,8 +317,8 @@ impl UtilLocalService {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
-                chunk_size: req.chunk_size, 
-                chunk_method: req.chunk_method, 
+                chunk_size: req.chunk_size,
+                chunk_method: req.chunk_method,
                 access: req.access.map(|v| v.value()),
             };
             let task_id = self
@@ -337,9 +353,9 @@ impl UtilLocalService {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
-                chunk_size: req.chunk_size, 
-                chunk_method: req.chunk_method, 
-                access: req.access.map(|v|v.value()),
+                chunk_size: req.chunk_size,
+                chunk_method: req.chunk_method,
+                access: req.access.map(|v| v.value()),
                 device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };
             let task_id = self
@@ -399,76 +415,83 @@ impl UtilInputProcessor for UtilLocalService {
         &self,
         req: UtilGetDeviceInputRequest,
     ) -> BuckyResult<UtilGetDeviceInputResponse> {
-        UtilLocalService::get_device(&self, req).await
+        Self::get_device(&self, req).await
     }
 
     async fn get_zone(
         &self,
         req: UtilGetZoneInputRequest,
     ) -> BuckyResult<UtilGetZoneInputResponse> {
-        UtilLocalService::get_zone(&self, req).await
+        Self::get_zone(&self, req).await
     }
 
     async fn resolve_ood(
         &self,
         req: UtilResolveOODInputRequest,
     ) -> BuckyResult<UtilResolveOODInputResponse> {
-        UtilLocalService::resolve_ood(&self, req).await
+        Self::resolve_ood(&self, req).await
     }
 
     async fn get_ood_status(
         &self,
         req: UtilGetOODStatusInputRequest,
     ) -> BuckyResult<UtilGetOODStatusInputResponse> {
-        UtilLocalService::get_ood_status(&self, req).await
+        Self::get_ood_status(&self, req).await
     }
 
     async fn get_noc_info(
         &self,
         req: UtilGetNOCInfoInputRequest,
     ) -> BuckyResult<UtilGetNOCInfoInputResponse> {
-        UtilLocalService::get_noc_info(&self, req).await
+        Self::get_noc_info(&self, req).await
     }
 
     async fn get_network_access_info(
         &self,
         req: UtilGetNetworkAccessInfoInputRequest,
     ) -> BuckyResult<UtilGetNetworkAccessInfoInputResponse> {
-        UtilLocalService::get_network_access_info(&self, req).await
+        Self::get_network_access_info(&self, req).await
     }
 
     async fn get_device_static_info(
         &self,
         req: UtilGetDeviceStaticInfoInputRequest,
     ) -> BuckyResult<UtilGetDeviceStaticInfoInputResponse> {
-        UtilLocalService::get_device_static_info(&self, req).await
+        Self::get_device_static_info(&self, req).await
     }
 
     async fn get_system_info(
         &self,
         req: UtilGetSystemInfoInputRequest,
     ) -> BuckyResult<UtilGetSystemInfoInputResponse> {
-        UtilLocalService::get_system_info(&self, req).await
+        Self::get_system_info(&self, req).await
+    }
+
+    async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoInputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        Self::update_system_info(&self, req).await
     }
 
     async fn get_version_info(
         &self,
         req: UtilGetVersionInfoInputRequest,
     ) -> BuckyResult<UtilGetVersionInfoInputResponse> {
-        UtilLocalService::get_version_info(&self, req).await
+        Self::get_version_info(&self, req).await
     }
 
     async fn build_file_object(
         &self,
         req: UtilBuildFileInputRequest,
     ) -> BuckyResult<UtilBuildFileInputResponse> {
-        UtilLocalService::build_file_object(self, req).await
+        Self::build_file_object(self, req).await
     }
 
     async fn build_dir_from_object_map(
         &self,
         req: UtilBuildDirFromObjectMapInputRequest,
     ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
-        UtilLocalService::build_dir_from_object_map(self, req).await
+        Self::build_dir_from_object_map(self, req).await
     }
 }

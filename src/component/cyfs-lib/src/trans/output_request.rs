@@ -335,7 +335,7 @@ mod test {
             speed_when: None,
         };
 
-        let s = serde_json::to_string(&req).unwrap();`
+        let s = serde_json::to_string(&req).unwrap();
         println!("{}", s);
     }
 }
