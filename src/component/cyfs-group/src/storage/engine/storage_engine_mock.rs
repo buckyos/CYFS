@@ -74,7 +74,7 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     async fn insert_prepares(
         &mut self,
         block_id: &ObjectId,
-        result_state_id: &Option<ObjectId>,
+        _result_state_id: &Option<ObjectId>,
     ) -> BuckyResult<()> {
         if !self.engine.prepare_blocks.insert(block_id.clone()) {
             assert!(false);
@@ -89,7 +89,7 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     async fn insert_pre_commit(
         &mut self,
         block_id: &ObjectId,
-        result_state_id: &Option<ObjectId>,
+        _result_state_id: &Option<ObjectId>,
         is_instead: bool,
     ) -> BuckyResult<()> {
         if !self.engine.prepare_blocks.remove(block_id) {
@@ -197,11 +197,11 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
         Ok(())
     }
 
-    async fn save_last_qc(&mut self, qc_id: &ObjectId) -> BuckyResult<()> {
+    async fn save_last_qc(&mut self, _qc_id: &ObjectId) -> BuckyResult<()> {
         Ok(())
     }
 
-    async fn save_last_tc(&mut self, tc_id: &ObjectId) -> BuckyResult<()> {
+    async fn save_last_tc(&mut self, _tc_id: &ObjectId) -> BuckyResult<()> {
         Ok(())
     }
 

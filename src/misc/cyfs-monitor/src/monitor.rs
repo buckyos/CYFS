@@ -171,7 +171,7 @@ impl Monitor {
 
     pub async fn run(mut self, cases: Vec<&str>) ->BuckyResult<()> {
         info!("start monitor");
-        self.bug_reporter.report(&MonitorErrorInfo {
+        let _ = self.bug_reporter.report(&MonitorErrorInfo {
             service: self.name.clone(),
             case: "Monitor Start".to_owned(),
             error: BuckyError::new(BuckyErrorCode::Ok, "CYFS Monitor Start"),

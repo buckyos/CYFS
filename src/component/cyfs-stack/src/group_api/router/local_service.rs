@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc};
-use cyfs_core::{GroupProposal, GroupProposalObject};
+use cyfs_core::{GroupProposalObject};
 use cyfs_group::GroupManager;
 use cyfs_group_lib::{
-    GroupInputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
+    GroupPushProposalInputRequest, GroupPushProposalInputResponse,
     GroupStartServiceInputRequest, GroupStartServiceInputResponse,
 };
 

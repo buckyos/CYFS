@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
-use cyfs_core::{GroupRPath};
+use cyfs_base::{BuckyResult, ObjectId};
+use cyfs_core::GroupRPath;
 use cyfs_group_lib::GroupRPathStatus;
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
@@ -66,10 +66,17 @@ impl DecStateRequestor {
     }
 
     pub async fn on_query_state(&self, sub_path: String, remote: ObjectId) {
-        self.0
+        if let Err(err) = self
+            .0
             .tx_dec_state_req_message
-            .send((DecStateRequestorMessage::QueryState(sub_path), remote))
-            .await;
+            .send((
+                DecStateRequestorMessage::QueryState(sub_path.clone()),
+                remote.clone(),
+            ))
+            .await
+        {
+            log::warn!("post query state command to processor failed will ignore it, sub_path: {}, rmote: {}, err: {:?}", sub_path, remote, err);
+        }
     }
 
     pub async fn on_verifiable_state(
@@ -78,13 +85,17 @@ impl DecStateRequestor {
         result: BuckyResult<GroupRPathStatus>,
         remote: ObjectId,
     ) {
-        self.0
+        if let Err(err) = self
+            .0
             .tx_dec_state_req_message
             .send((
-                DecStateRequestorMessage::VerifiableState(sub_path, result),
+                DecStateRequestorMessage::VerifiableState(sub_path.clone(), result),
                 remote,
             ))
-            .await;
+            .await
+        {
+            log::warn!("post verifiable state command to processor failed will ignore it, sub_path: {}, rmote: {}, err: {:?}", sub_path, remote, err);
+        }
     }
 }
 
@@ -189,7 +200,7 @@ impl DecStateRequestorRunner {
                     Ok((DecStateRequestorMessage::QueryState(sub_path), remote)) => self.handle_query_state(sub_path, remote).await,
                     Ok((DecStateRequestorMessage::VerifiableState(sub_path, result), remote)) => self.handle_verifiable_state(sub_path, result, remote).await,
                     Err(e) => {
-                        log::warn!("[dec-state-sync] rx closed.")
+                        log::warn!("[dec-state-sync] rx closed, err: {:?}.", e);
                     },
                 },
                 // () = self.timer.wait_next().fuse() => {self.sync_state().await;},

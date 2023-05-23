@@ -1,4 +1,4 @@
-use std::time::{Instant};
+use std::time::Instant;
 
 use cyfs_base::{ObjectId, RawDecode};
 use cyfs_bdt::DatagramTunnelGuard;
@@ -39,8 +39,17 @@ impl Listener {
                                     datagram.data.len(),
                                     Instant::now().elapsed().as_millis() as u64 - datagram.options.create_time.unwrap()
                                 );
+
                                 assert_eq!(remain.len(), 0);
-                                processor.on_message(pkg, remote).await;
+
+                                if let Err(err) = processor.on_message(pkg, remote).await {
+                                    log::warn!(
+                                        "[group-listener] {} message from {:?} process failed, err: {:?}",
+                                        local_device_id,
+                                        remote,
+                                        err
+                                    );
+                                }
                             }
                             Err(err) => {
                                 log::debug!(

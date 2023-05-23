@@ -1,5 +1,4 @@
 use cyfs_base::*;
-use cyfs_core::GroupProposal;
 use cyfs_group_lib::{
     GroupInputRequestCommon, GroupOutputProcessor, GroupOutputProcessorRef,
     GroupOutputRequestCommon, GroupPushProposalInputRequest, GroupPushProposalInputResponse,
@@ -40,7 +39,7 @@ impl GroupInputTransformer {
             common: Self::convert_common(req.common),
         };
 
-        let out_resp = self.processor.start_service(out_req).await?;
+        let _out_resp = self.processor.start_service(out_req).await?;
 
         let resp = GroupStartServiceInputResponse {};
 
@@ -135,7 +134,7 @@ impl GroupOutputTransformer {
             common: self.convert_common(req.common),
         };
 
-        let in_resp = self.processor.start_service(in_req).await?;
+        let _in_resp = self.processor.start_service(in_req).await?;
 
         let resp = GroupStartServiceOutputResponse {};
 

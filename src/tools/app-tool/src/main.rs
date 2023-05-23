@@ -569,7 +569,7 @@ async fn main_run() -> BuckyResult<()> {
                                         app.remove_source(&pre_version);
                                         app.set_source(ver.to_owned(), id, desc);
 
-                                        target.save_obj(&app).await;
+                                        let _ = target.save_obj(&app).await;
                                     }
                                 }
                             }

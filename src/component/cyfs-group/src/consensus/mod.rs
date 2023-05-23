@@ -3,6 +3,6 @@ mod proposal;
 mod synchronizer;
 mod vote;
 
-pub use hotstuff::*;
-pub use proposal::*;
-pub use vote::*;
+pub(crate) use hotstuff::*;
+pub(crate) use proposal::*;
+pub(crate) use vote::*;

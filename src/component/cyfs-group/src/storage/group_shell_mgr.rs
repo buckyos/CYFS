@@ -11,7 +11,7 @@ use cyfs_core::{DecApp, DecAppObj, GroupShell, ToGroupShell};
 use cyfs_lib::{GlobalStateManagerRawProcessorRef, NONObjectInfo};
 use cyfs_meta_lib::MetaClient;
 
-use crate::{GroupShellStatePath, MetaClientTimeout, NONDriverHelper};
+use crate::{GroupShellStatePath, NONDriverHelper};
 
 const ACCESS: Option<OpEnvPathAccess> = None;
 
@@ -28,6 +28,7 @@ struct GroupShellManagerRaw {
     state_path: GroupShellStatePath,
     meta_client: Arc<MetaClient>,
     non_driver: NONDriverHelper,
+    local_device_id: ObjectId,
 }
 
 #[derive(Clone)]
@@ -77,6 +78,7 @@ impl GroupShellManager {
             non_driver,
             state_path: GroupShellStatePath::new(),
             group_desc: group.desc().clone(),
+            local_device_id,
         };
 
         let ret = Self(Arc::new(raw));
@@ -184,6 +186,7 @@ impl GroupShellManager {
             non_driver,
             state_path: GroupShellStatePath::new(),
             group_desc: group.desc().clone(),
+            local_device_id,
         };
 
         let ret = Self(Arc::new(raw));
@@ -330,8 +333,8 @@ impl GroupShellManager {
                     group_shell.try_into_object(None)?
                 };
 
-                let body_hash = group.body().as_ref().unwrap().calculate_hash()?;
-                // TODO: 用`body_hash`从链上验证其合法性
+                let _body_hash = group.body().as_ref().unwrap().calculate_hash()?;
+                // TODO: verify it from on-chain with `body_hash`, wait for the interface in `MetaChain`
                 let group_id_from_shell = group.desc().object_id();
                 if &group_id_from_shell == group_id {
                     Ok((group, group_shell_id.clone()))

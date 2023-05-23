@@ -65,7 +65,7 @@ impl GroupNONDriver {
             .await?;
 
         // TODO: only set the permissions
-        self.put_object_impl(dec_id, resp.object.clone()).await;
+        let _ = self.put_object_impl(dec_id, resp.object.clone()).await;
         Ok(resp.object)
     }
 

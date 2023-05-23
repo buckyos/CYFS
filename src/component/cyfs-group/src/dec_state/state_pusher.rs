@@ -55,9 +55,18 @@ impl StatePusher {
     }
 
     pub async fn notify_proposal_err(&self, proposal: GroupProposal, err: BuckyError) {
-        self.tx_notifier
+        let proposal_id = proposal.desc().object_id();
+        if let Err(err) = self
+            .tx_notifier
             .send(StatePushMessage::ProposalResult(proposal, err))
-            .await;
+            .await
+        {
+            log::warn!(
+                "post proposal failed-notification failed, proposal: {}, err: {:?}",
+                proposal_id,
+                err
+            );
+        }
     }
 
     pub async fn notify_block_commit(
@@ -65,7 +74,7 @@ impl StatePusher {
         block: GroupConsensusBlock,
         qc_block: GroupConsensusBlock,
     ) {
-        let block_id = block.block_id();
+        let block_id = block.block_id().clone();
         if qc_block.height() != block.height() + 1
             || qc_block.qc().as_ref().expect("qc should not empty").round != block.round()
             || qc_block.round() <= block.round()
@@ -83,15 +92,31 @@ impl StatePusher {
             return;
         }
 
-        self.tx_notifier
+        if let Err(err) = self
+            .tx_notifier
             .send(StatePushMessage::BlockCommit(block, qc_block))
-            .await;
+            .await
+        {
+            log::warn!(
+                "post new block commit failed, block: {}, err: {:?}",
+                block_id,
+                err
+            );
+        }
     }
 
     pub async fn request_last_state(&self, remote: ObjectId) {
-        self.tx_notifier
+        if let Err(err) = self
+            .tx_notifier
             .send(StatePushMessage::LastStateRequest(remote))
-            .await;
+            .await
+        {
+            log::warn!(
+                "post latest state query message failed, remote: {}, err: {:?}",
+                remote,
+                err
+            );
+        }
     }
 }
 
@@ -347,9 +372,13 @@ impl StateChanggeRunner {
 
     async fn delay_notify(&mut self, is_force: bool) {
         if is_force || self.delay_notify_times == 0 {
-            self.tx_notifier
+            if let Err(err) = self
+                .tx_notifier
                 .send(StatePushMessage::DelayBroadcast)
-                .await;
+                .await
+            {
+                log::warn!("post delay broadcast failed, err: {:?}", err);
+            }
             self.delay_notify_times += 1;
         }
     }
@@ -364,13 +393,13 @@ impl StateChanggeRunner {
                         self.update_commit_block(block, qc_block).await;
                     },
                     Ok(StatePushMessage::LastStateRequest(remote)) => {
-                        self.request_last_state(remote);
+                        self.request_last_state(remote).await;
                     },
                     Ok(StatePushMessage::DelayBroadcast) => {
-                        self.try_notify_block_commit();
+                        self.try_notify_block_commit().await;
                     },
                     Err(e) => {
-                        log::warn!("[change-notifier] rx_notifier closed.")
+                        log::warn!("[change-notifier] rx_notifier closed, err: {:?}.", e);
                     },
                 },
                 // () = self.timer.wait_next().fuse() => self.try_notify_block_commit().await,

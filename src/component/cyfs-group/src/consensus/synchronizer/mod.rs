@@ -1,3 +1,3 @@
 mod synchronizer;
 
-pub use synchronizer::*;
+pub(crate) use synchronizer::*;

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cyfs_base::{
     BuckyError, BuckyResult, JsonCodec, NamedObject, ObjectDesc, ObjectId, RawConvertTo,
 };
-use cyfs_core::{GroupProposal, GroupProposalObject};
+use cyfs_core::{GroupProposalObject};
 use cyfs_lib::{HttpRequestorRef, NONObjectInfo, NONRequestorHelper, RequestorHelper};
 use http_types::{Method, Request, Url};
 
@@ -73,7 +73,7 @@ impl GroupRequestor {
 
         match resp.status() {
             code if code.is_success() => {
-                let body = resp.body_string().await.map_err(|e| {
+                let _body = resp.body_string().await.map_err(|e| {
                     let msg = format!(
                         "group start service failed, read body string error! req={:?} {}",
                         req, e

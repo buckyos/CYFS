@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use async_std::sync::RwLock;
 use cyfs_base::{
@@ -42,14 +42,14 @@ impl DecStorage {
 
     pub async fn sync(
         &self,
-        header_block: &GroupConsensusBlock,
-        qc: &HotstuffBlockQC,
-        remote: ObjectId,
+        _header_block: &GroupConsensusBlock,
+        _qc: &HotstuffBlockQC,
+        _remote: ObjectId,
     ) -> BuckyResult<()> {
         unimplemented!()
     }
 
-    pub async fn get_by_path(&self, path: &str) -> BuckyResult<GroupRPathStatus> {
+    pub async fn get_by_path(&self, _path: &str) -> BuckyResult<GroupRPathStatus> {
         unimplemented!()
     }
 
@@ -59,7 +59,6 @@ impl DecStorage {
         verifiable_status: &'a GroupRPathStatus,
     ) -> BuckyResult<Option<&'a NONObjectInfo>> {
         let block_desc = &verifiable_status.block_desc;
-        let qc = &verifiable_status.certificate;
 
         let mut parent_state_id = match block_desc.content().result_state_id() {
             Some(state_id) => state_id.clone(),

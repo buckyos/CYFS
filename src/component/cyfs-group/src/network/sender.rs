@@ -91,8 +91,19 @@ impl Sender {
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
         ));
 
-        self.datagram
-            .send_to(buf.as_slice(), &mut options, &remote, self.vport);
+        if let Err(err) = self
+            .datagram
+            .send_to(buf.as_slice(), &mut options, &remote, self.vport)
+        {
+            log::warn!(
+                "[group-sender] {:?}-{} post group message to {:?} failed, the caller should retry, pkg: {:?}, len: {}",
+                pkg.rpath(),
+                self.local_device_id,
+                remote,
+                pkg,
+                buf.len()
+            );
+        }
     }
 
     pub(crate) async fn broadcast(&self, msg: HotstuffMessage, rpath: GroupRPath, to: &[ObjectId]) {

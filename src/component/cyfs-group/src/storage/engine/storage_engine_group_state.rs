@@ -506,7 +506,7 @@ impl StorageEngineGroupStateWriter {
             assert!(is_new);
         }
         let adding_set_id = add_single_op_env.commit().await?;
-        let prev_value = self
+        let _prev_value = self
             .op_env
             .set_with_path(self.state_path.adding(), &adding_set_id, &None, true)
             .await?;

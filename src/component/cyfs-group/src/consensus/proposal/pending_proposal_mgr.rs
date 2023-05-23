@@ -126,7 +126,9 @@ impl PendingProposalMgrRunner {
                     if let Ok(proposal) = proposal {
                         self.buffer.insert(proposal.desc().object_id(), proposal);
                         if let Some(waker) = self.tx_proposal_waker.take() {
-                            waker.send(()).await;
+                            if let Err(err) = waker.send(()).await {
+                                log::warn!("[pending_proposal_mgr] wake proposal waiter when new proposal received failed, err: {:?}", err);
+                            }
                         }
                     }
                 },
@@ -135,7 +137,9 @@ impl PendingProposalMgrRunner {
                        match message {
                             ProposalConsumeMessage::Query(sender) => {
                                 let proposals = self.handle_query_proposals().await;
-                                sender.send(proposals).await;
+                                if let Err(err) = sender.send(proposals).await {
+                                    log::warn!("[pending_proposal_mgr] return proposals failed, err: {:?}", err);
+                                }
                             },
                             ProposalConsumeMessage::Remove(proposal_ids) => {
                                 for id in &proposal_ids {
@@ -144,7 +148,9 @@ impl PendingProposalMgrRunner {
                             },
                             ProposalConsumeMessage::Wait(tx_waker) => {
                                 if self.buffer.len() > 0 {
-                                    tx_waker.send(()).await;
+                                    if let Err(err) = tx_waker.send(()).await {
+                                        log::warn!("[pending_proposal_mgr] wake proposal waiter failed, err: {:?}", err);
+                                    }
                                 } else {
                                     self.tx_proposal_waker = Some(tx_waker)
                                 }

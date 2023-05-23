@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_std::channel::{Receiver, Sender};
-use cyfs_base::{BuckyResult, NamedObject, ObjectId};
+use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
 use futures::FutureExt;
 
@@ -593,7 +593,7 @@ impl SynchronizerRunner {
         let mut remove_pos = None;
 
         for pos in 0..self.out_order_blocks.len() {
-            let (block, remote) = self.out_order_blocks.get(pos).unwrap();
+            let (block, _remote) = self.out_order_blocks.get(pos).unwrap();
 
             let block_id_out = block.block_id().object_id();
             if remove_block_ids.contains(block.prev_block_id().unwrap())
@@ -675,7 +675,7 @@ impl SynchronizerRunner {
                     Ok(SynchronizerMessage::PushBlock(min_height, block, remote)) => self.handle_push_block(min_height, block, remote).await,
                     Ok(SynchronizerMessage::PopBlock(new_height, new_round, block_id)) => self.handle_pop_block(new_height, new_round, block_id).await,
                     Err(e) => {
-                        log::warn!("[synchronizer] rx_message closed.")
+                        log::warn!("[synchronizer] rx_message closed, err: {:?}.", e);
                     },
                 },
                 () = self.timer.wait_next().fuse() => self.handle_timeout().await,

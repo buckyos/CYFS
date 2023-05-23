@@ -20,7 +20,6 @@ use crate::{
 use super::{
     engine::{
         GroupObjectMapProcessorGroupState, StorageCacheInfo, StorageEngineGroupState,
-        StorageEngineMock,
     },
     StorageEngine,
 };
@@ -271,14 +270,13 @@ impl GroupStorage {
             }
         }
 
-        /**
-         * 1. 把block存入prepares
-         * 2. 把block.qc.block从prepares存入pre-commits
-         * 3. 把block.qc.block.qc.block从pre-commits存入链上
-         * 4. 把其他分叉block清理掉
-         * 5. 追加去重proposal, 注意翻页清理过期proposal
-         * 6. 如果header有变更，返回新的header和被清理的分叉blocks
-         */
+        // 1. push block into `prepares`
+        // 2. push `block.qc.block从prepares` into `pre-commits`
+        // 3. push `block.qc.block.qc.block` into `chain` from `pre-commits`
+        // 4. clean other branchs
+        // 5. add proposals into `finish-proposals`, and update the `flip-time`
+        // 6. if the header changed, return the new header block, and the removed blocks on other branchs
+
         // storage
         let mut writer = self.storage_engine.create_writer().await?;
         writer

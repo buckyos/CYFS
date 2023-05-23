@@ -98,7 +98,7 @@ impl RPathService {
         )
     }
 
-    pub fn select_branch(&self, block_id: ObjectId, source: ObjectId) -> BuckyResult<()> {
+    pub fn select_branch(&self, _block_id: ObjectId, _source: ObjectId) -> BuckyResult<()> {
         unimplemented!()
     }
 

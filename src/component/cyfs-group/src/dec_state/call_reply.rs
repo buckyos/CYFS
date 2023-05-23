@@ -39,7 +39,7 @@ pub struct CallReplyNotifier<K: std::hash::Hash + std::cmp::Eq, T>(
     Arc<RwLock<CallReplyNotifierRaw<K, T>>>,
 );
 
-impl<K: std::hash::Hash + std::cmp::Eq, T: Clone> CallReplyNotifier<K, T> {
+impl<K: std::hash::Hash + std::cmp::Eq + std::fmt::Debug, T: Clone> CallReplyNotifier<K, T> {
     pub fn new() -> Self {
         Self(Arc::new(RwLock::new(CallReplyNotifierRaw {
             next_seq: 1,
@@ -95,7 +95,9 @@ impl<K: std::hash::Hash + std::cmp::Eq, T: Clone> CallReplyNotifier<K, T> {
         }
 
         for sender in senders {
-            sender.send(value.clone()).await;
+            if let Err(err) = sender.send(value.clone()).await {
+                log::warn!("reply to caller failed, key: {:?},  err: {:?}.", key, err);
+            }
         }
     }
 }
