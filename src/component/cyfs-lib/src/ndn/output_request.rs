@@ -11,7 +11,7 @@ pub struct NDNOutputRequestCommon {
     // The request path of method, always used for ACL
     pub req_path: Option<String>,
 
-    // The caller's source id
+    // The caller's source dec id
     pub dec_id: Option<ObjectId>,
 
     // The API level of NDN apis

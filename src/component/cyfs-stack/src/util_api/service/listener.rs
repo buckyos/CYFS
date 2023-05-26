@@ -185,7 +185,13 @@ impl UtilRequestHandlerEndpoint {
         server.at("/util/system_info").post(Self::new(
             zone_manager.clone(),
             protocol.to_owned(),
-            UtilRequestType::GetSystemInfo,
+            UtilRequestType::UpdateSystemInfo,
+            handler.clone(),
+        ));
+        server.at("/util/system_info/").post(Self::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            UtilRequestType::UpdateSystemInfo,
             handler.clone(),
         ));
 

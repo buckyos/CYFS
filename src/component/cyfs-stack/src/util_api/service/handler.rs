@@ -264,8 +264,8 @@ impl UtilRequestHandler {
     }
 
     // update_system_info
-    fn encode_update_system_info_response(resp: UtilUpdateSystemInfoInputResponse) -> Response {
-        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+    fn encode_update_system_info_response(_resp: UtilUpdateSystemInfoInputResponse) -> Response {
+        let http_resp = RequestorHelper::new_response(StatusCode::Ok);
         http_resp.into()
     }
 

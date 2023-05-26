@@ -183,6 +183,30 @@ pub struct SystemInfoUpdater {
     pub hdd_disk_avail: Option<u64>,
 }
 
+impl Default for SystemInfoUpdater {
+    fn default() -> Self {
+        Self {
+            name: None,
+            device_sn: None,
+            uptime: None,
+            boot_time: None,
+            mac_address: None,
+            cpu_brand: None,
+            cpu_usage: None,
+            total_memory: None,
+            used_memory: None,
+            received_bytes: None,
+            transmitted_bytes: None,
+            total_received_bytes: None,
+            total_transmitted_bytes: None,
+            ssd_disk_total: None,
+            ssd_disk_avail: None,
+            hdd_disk_total: None,
+            hdd_disk_avail: None,
+        }
+    }
+}
+
 struct SystemInfoManagerInner {
     running: bool,
     last_access_time: Instant,
