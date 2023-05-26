@@ -500,7 +500,7 @@ impl SharedCyfsStack {
     }
 
     pub async fn stop(&self) {
-        let requestor_holder = self.requestor_holder.read().unwrap();
+        let requestor_holder = self.requestor_holder.read().unwrap().clone();
         requestor_holder.stop().await;
 
         self.router_handlers.stop().await;

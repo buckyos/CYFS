@@ -13,6 +13,7 @@ enum UtilRequestType {
     GetOODstatus,
     GetDeviceStaticInfo,
     GetSystemInfo,
+    UpdateSystemInfo,
     GetNOCInfo,
     GetNetworkAccessInfo,
     GetVersionInfo,
@@ -58,9 +59,14 @@ impl UtilRequestHandlerEndpoint {
                     .process_get_device_static_info_request(req)
                     .await
             }
+            
             UtilRequestType::GetSystemInfo => {
                 self.handler.process_get_system_info_request(req).await
             }
+            UtilRequestType::UpdateSystemInfo => {
+                self.handler.process_update_system_info_request(req).await
+            }
+
             UtilRequestType::GetNOCInfo => self.handler.process_get_noc_info_request(req).await,
             UtilRequestType::GetNetworkAccessInfo => {
                 self.handler
@@ -176,10 +182,16 @@ impl UtilRequestHandlerEndpoint {
             UtilRequestType::GetSystemInfo,
             handler.clone(),
         ));
-        server.at("/util/system_info/*must").get(Self::new(
+        server.at("/util/system_info").post(Self::new(
             zone_manager.clone(),
             protocol.to_owned(),
-            UtilRequestType::GetSystemInfo,
+            UtilRequestType::UpdateSystemInfo,
+            handler.clone(),
+        ));
+        server.at("/util/system_info/").post(Self::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            UtilRequestType::UpdateSystemInfo,
             handler.clone(),
         ));
 

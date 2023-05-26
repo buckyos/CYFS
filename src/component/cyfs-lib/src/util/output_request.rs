@@ -4,6 +4,7 @@ use cyfs_base::*;
 use cyfs_core::ZoneId;
 use cyfs_core::*;
 use cyfs_bdt::SnStatus;
+use cyfs_util::SystemInfoUpdater;
 use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
@@ -13,13 +14,13 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct UtilOutputRequestCommon {
-    // 请求路径，可为空
+    // The request path of method, always used for ACL
     pub req_path: Option<String>,
 
-    // 来源DEC
+    // The caller's source dec id
     pub dec_id: Option<ObjectId>,
 
-    // 用以默认行为
+    // The request's target device/zone
     pub target: Option<ObjectId>,
 
     pub flags: u32,
@@ -202,7 +203,7 @@ pub struct OODStatus {
     pub ping_count: u32,
     pub ping_success_count: u64,
 
-    // 当前连续失败的次数，成功后重置
+    // Current number of consecutive failures, reset after success
     pub cont_fail_count: u64,
 
     pub ping_avg_during: u64,
@@ -287,11 +288,11 @@ impl Display for UtilGetNOCInfoOutputResponse {
 // 设备的一些静态信息
 #[derive(Debug, Clone)]
 pub struct DeviceStaticInfo {
-    // 当前设备id
+    // device_id of current cyfs-stack process(device)
     pub device_id: DeviceId,
     pub device: Device,
 
-    // 当前设备是不是ood
+    // Current cyfs-stack device is the OOD of current zone or not 
     pub is_ood_device: bool,
 
     pub ood_work_mode: OODWorkMode,
@@ -301,16 +302,16 @@ pub struct DeviceStaticInfo {
     pub root_state_access_mode: GlobalStateAccessMode,
     pub local_cache_access_mode: GlobalStateAccessMode,
     
-    // 当前zone的主ood id
+    // Main ood's device_id of current zone
     pub ood_device_id: DeviceId,
 
-    // 当前所属zone
+    // The zone of current cyfs-stack device 
     pub zone_id: ZoneId,
 
-    // 当前zone的owner
+    // The owner of current zone
     pub owner_id: Option<ObjectId>,
 
-    // 当前协议栈的cyfs根目录
+    // The {cyfs} root dir of current cyfs-stack process
     pub cyfs_root: String,
 
     // current sn list config
@@ -472,6 +473,32 @@ impl Display for UtilGetSystemInfoOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "info: {:?}", self.info)
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UtilUpdateSystemInfoOutputRequest {
+    pub common: UtilOutputRequestCommon,
+
+    pub info: SystemInfoUpdater,
+}
+
+impl Display for UtilUpdateSystemInfoOutputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}, info: {:?}", self.common, self.info)
+    }
+}
+
+impl UtilUpdateSystemInfoOutputRequest {
+    pub fn new(info: SystemInfoUpdater) -> Self {
+        Self {
+            common: UtilOutputRequestCommon::default(),
+            info,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UtilUpdateSystemInfoOutputResponse {
 }
 
 #[derive(Debug, Clone)]

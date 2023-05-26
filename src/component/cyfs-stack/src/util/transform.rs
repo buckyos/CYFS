@@ -173,6 +173,20 @@ impl UtilInputTransformer {
         Ok(resp)
     }
 
+    async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoInputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        let out_req = UtilUpdateSystemInfoOutputRequest {
+            common: Self::convert_common(req.common),
+            info: req.info,
+        };
+
+        let resp = self.processor.update_system_info(out_req).await?;
+
+        Ok(resp)
+    }
+
     async fn get_version_info(
         &self,
         req: UtilGetVersionInfoInputRequest,
@@ -198,8 +212,8 @@ impl UtilInputTransformer {
             common: Self::convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size, 
-            chunk_method: req.chunk_method, 
+            chunk_size: req.chunk_size,
+            chunk_method: req.chunk_method,
             access: req.access,
         };
 
@@ -228,77 +242,81 @@ impl UtilInputProcessor for UtilInputTransformer {
         &self,
         req: UtilGetDeviceInputRequest,
     ) -> BuckyResult<UtilGetDeviceInputResponse> {
-        UtilInputTransformer::get_device(&self, req).await
+        Self::get_device(&self, req).await
     }
 
     async fn get_zone(
         &self,
         req: UtilGetZoneInputRequest,
     ) -> BuckyResult<UtilGetZoneInputResponse> {
-        UtilInputTransformer::get_zone(&self, req).await
+        Self::get_zone(&self, req).await
     }
 
     async fn resolve_ood(
         &self,
         req: UtilResolveOODInputRequest,
     ) -> BuckyResult<UtilResolveOODInputResponse> {
-        UtilInputTransformer::resolve_ood(&self, req).await
+        Self::resolve_ood(&self, req).await
     }
 
     async fn get_ood_status(
         &self,
         req: UtilGetOODStatusInputRequest,
     ) -> BuckyResult<UtilGetOODStatusInputResponse> {
-        UtilInputTransformer::get_ood_status(&self, req).await
+        Self::get_ood_status(&self, req).await
     }
 
     async fn get_noc_info(
         &self,
         req: UtilGetNOCInfoInputRequest,
     ) -> BuckyResult<UtilGetNOCInfoInputResponse> {
-        UtilInputTransformer::get_noc_info(&self, req).await
+        Self::get_noc_info(&self, req).await
     }
 
     async fn get_network_access_info(
         &self,
         req: UtilGetNetworkAccessInfoInputRequest,
     ) -> BuckyResult<UtilGetNetworkAccessInfoInputResponse> {
-        UtilInputTransformer::get_network_access_info(&self, req).await
+        Self::get_network_access_info(&self, req).await
     }
 
     async fn get_device_static_info(
         &self,
         req: UtilGetDeviceStaticInfoInputRequest,
     ) -> BuckyResult<UtilGetDeviceStaticInfoInputResponse> {
-        UtilInputTransformer::get_device_static_info(&self, req).await
+        Self::get_device_static_info(&self, req).await
     }
 
     async fn get_system_info(
         &self,
         req: UtilGetSystemInfoInputRequest,
     ) -> BuckyResult<UtilGetSystemInfoInputResponse> {
-        UtilInputTransformer::get_system_info(&self, req).await
+        Self::get_system_info(&self, req).await
+    }
+    async fn update_system_info(&self, req: UtilUpdateSystemInfoInputRequest)
+    -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        Self::update_system_info(&self, req).await
     }
 
     async fn get_version_info(
         &self,
         req: UtilGetVersionInfoInputRequest,
     ) -> BuckyResult<UtilGetVersionInfoInputResponse> {
-        UtilInputTransformer::get_version_info(&self, req).await
+        Self::get_version_info(&self, req).await
     }
 
     async fn build_file_object(
         &self,
         req: UtilBuildFileInputRequest,
     ) -> BuckyResult<UtilBuildFileInputResponse> {
-        UtilInputTransformer::build_file_object(&self, req).await
+        Self::build_file_object(&self, req).await
     }
 
     async fn build_dir_from_object_map(
         &self,
         req: UtilBuildDirFromObjectMapInputRequest,
     ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
-        UtilInputTransformer::build_dir_from_object_map(&self, req).await
+        Self::build_dir_from_object_map(&self, req).await
     }
 }
 
@@ -446,6 +464,20 @@ impl UtilOutputProcessor for UtilOutputTransformer {
         Ok(resp)
     }
 
+    async fn update_system_info(
+        &self,
+        req: UtilUpdateSystemInfoOutputRequest,
+    ) -> BuckyResult<UtilUpdateSystemInfoOutputResponse> {
+        let in_req = UtilUpdateSystemInfoInputRequest {
+            common: self.convert_common(req.common),
+            info: req.info,
+        };
+
+        let resp = self.processor.update_system_info(in_req).await?;
+
+        Ok(resp)
+    }
+
     async fn get_version_info(
         &self,
         req: UtilGetVersionInfoOutputRequest,
@@ -467,8 +499,8 @@ impl UtilOutputProcessor for UtilOutputTransformer {
             common: self.convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size, 
-            chunk_method: req.chunk_method, 
+            chunk_size: req.chunk_size,
+            chunk_method: req.chunk_method,
             access: req.access,
         };
 

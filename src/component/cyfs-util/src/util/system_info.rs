@@ -7,12 +7,18 @@ use sysinfo::{CpuExt, DiskExt, DiskType, NetworkExt, RefreshKind, System, System
 pub struct SystemInfo {
     pub name: String,
 
+    // Device Serial Number
+    pub device_sn: Option<String>,
+
     // How long the system has been running since it was last booted, in microseconds
     pub uptime: u64,
 
     // The time the system was last booted, in bucky time
     pub boot_time: u64,
 
+    pub mac_address: Option<String>,
+
+    pub cpu_brand: String,
     pub cpu_usage: f32,
 
     // memory size in bytes
@@ -41,11 +47,14 @@ impl Default for SystemInfo {
         let sys = System::new();
         let uptime = sys.uptime() * 1000 * 1000;
         let boot_time = cyfs_base::unix_time_to_bucky_time(sys.boot_time() * 1000 * 1000);
-        
+
         Self {
             name: "".to_owned(),
+            device_sn: None,
             uptime,
             boot_time,
+            mac_address: None,
+            cpu_brand: "".to_owned(),
             cpu_usage: 0.0,
             total_memory: 0,
             used_memory: 0,
@@ -61,6 +70,143 @@ impl Default for SystemInfo {
     }
 }
 
+
+impl SystemInfo {
+    pub fn update(&mut self, updater: SystemInfoUpdater) {
+        if let Some(value) = updater.name {
+            self.name = value;
+        }
+
+        if let Some(value) = updater.device_sn {
+            self.device_sn = Some(value);
+        }
+
+        if let Some(value) = updater.uptime {
+            self.uptime = value;
+        }
+
+        if let Some(value) = updater.boot_time {
+            self.boot_time = value;
+        }
+
+        if let Some(value) = updater.mac_address {
+            self.mac_address = Some(value);
+        }
+
+        // cpu
+        if let Some(value) = updater.cpu_brand {
+            self.cpu_brand = value;
+        }
+
+        if let Some(value) = updater.cpu_usage {
+            self.cpu_usage = value;
+        }
+
+        // memory
+        if let Some(value) = updater.total_memory {
+            self.total_memory = value;
+        }
+
+        if let Some(value) = updater.used_memory {
+            self.used_memory = value;
+        }
+
+        // bytes trans
+        if let Some(value) = updater.received_bytes {
+            self.received_bytes = value;
+        }
+
+        if let Some(value) = updater.transmitted_bytes {
+            self.transmitted_bytes = value;
+        }
+
+        if let Some(value) = updater.total_received_bytes {
+            self.total_received_bytes = value;
+        }
+
+        if let Some(value) = updater.total_transmitted_bytes {
+            self.total_transmitted_bytes = value;
+        }
+
+        // disk
+        if let Some(value) = updater.ssd_disk_total {
+            self.ssd_disk_total = value;
+        }
+
+        if let Some(value) = updater.ssd_disk_avail {
+            self.ssd_disk_avail = value;
+        }
+
+        if let Some(value) = updater.hdd_disk_total {
+            self.hdd_disk_total = value;
+        }
+
+        if let Some(value) = updater.hdd_disk_avail {
+            self.hdd_disk_avail = value;
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SystemInfoUpdater {
+    pub name: Option<String>,
+
+    pub device_sn: Option<String>,
+
+    pub uptime: Option<u64>,
+
+    pub boot_time: Option<u64>,
+
+    pub mac_address: Option<String>,
+
+    pub cpu_brand: Option<String>,
+    pub cpu_usage: Option<f32>,
+
+    // memory size in bytes
+    pub total_memory: Option<u64>,
+    pub used_memory: Option<u64>,
+
+    // Bytes transferred between each refresh cycle
+    pub received_bytes: Option<u64>,
+    pub transmitted_bytes: Option<u64>,
+
+    // total bytes of all networks since last booted
+    pub total_received_bytes: Option<u64>,
+    pub total_transmitted_bytes: Option<u64>,
+
+    // SSD drive capacity and available capacity, including Unknown, in bytes
+    pub ssd_disk_total: Option<u64>,
+    pub ssd_disk_avail: Option<u64>,
+
+    // HDD capacity and available capacity, in bytes
+    pub hdd_disk_total: Option<u64>,
+    pub hdd_disk_avail: Option<u64>,
+}
+
+impl Default for SystemInfoUpdater {
+    fn default() -> Self {
+        Self {
+            name: None,
+            device_sn: None,
+            uptime: None,
+            boot_time: None,
+            mac_address: None,
+            cpu_brand: None,
+            cpu_usage: None,
+            total_memory: None,
+            used_memory: None,
+            received_bytes: None,
+            transmitted_bytes: None,
+            total_received_bytes: None,
+            total_transmitted_bytes: None,
+            ssd_disk_total: None,
+            ssd_disk_avail: None,
+            hdd_disk_total: None,
+            hdd_disk_avail: None,
+        }
+    }
+}
+
 struct SystemInfoManagerInner {
     running: bool,
     last_access_time: Instant,
@@ -68,6 +214,8 @@ struct SystemInfoManagerInner {
 
     info_inner: SystemInfo,
     handler: System,
+
+    external_updater: Option<SystemInfoUpdater>,
 }
 
 impl SystemInfoManagerInner {
@@ -106,7 +254,17 @@ impl SystemInfoManagerInner {
 
             info_inner,
             handler,
+
+            external_updater: None,
         }
+    }
+
+    pub fn update_system_info(&mut self, updater: SystemInfoUpdater) {
+        info!("system update from external: {:?}", updater);
+
+        self.info_inner.update(updater.clone());
+
+        self.external_updater = Some(updater);
     }
 
     pub fn check_idle(&mut self) {
@@ -122,10 +280,33 @@ impl SystemInfoManagerInner {
 
     pub fn refresh(&mut self) {
         self.handler.refresh_all();
+        self.udpate_sn();
         self.update_memory();
         self.update_cpu();
+        self.update_mac();
         self.update_network();
         self.update_disks();
+
+        if let Some(updater) = self.external_updater.clone() {
+            self.info_inner.update(updater);
+        }
+    }
+
+    fn udpate_sn(&mut self) {
+        let sn_path = std::path::Path::new("/etc/sn");
+        let device_sn = if sn_path.exists() {
+            match std::fs::read_to_string(sn_path) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("load sn file error! file={}, {}", sn_path.display(), e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        self.info_inner.device_sn = device_sn;
     }
 
     fn update_memory(&mut self) {
@@ -163,7 +344,30 @@ impl SystemInfoManagerInner {
     }
 
     fn update_cpu(&mut self) {
-        self.info_inner.cpu_usage = self.handler.global_cpu_info().cpu_usage();
+        let info = self.handler.global_cpu_info();
+        self.info_inner.cpu_usage = info.cpu_usage();
+        self.info_inner.cpu_brand = info.brand().to_owned();
+    }
+
+    fn update_mac(&mut self) {
+        // Get the first NIC address
+        #[cfg(all(not(target_os = "android"), not(target_os = "ios")))]
+        let mac_address = match mac_address::get_mac_address() {
+            Ok(Some(v)) => Some(v.to_string()),
+            Ok(None) => {
+                error!("get mac address but not found!");
+                None
+            }
+            Err(e) => {
+                error!("get mac address error! {}", e);
+                None
+            }
+        };
+
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let mac_address = None;
+
+        self.info_inner.mac_address = mac_address;
     }
 
     fn update_network(&mut self) {
@@ -172,7 +376,6 @@ impl SystemInfoManagerInner {
         let mut transmitted_bytes = 0;
         let mut total_received_bytes = 0;
         let mut total_transmitted_bytes = 0;
-
 
         for (interface_name, network) in networks {
             if interface_name
@@ -189,11 +392,14 @@ impl SystemInfoManagerInner {
             }
 
             if network.mac_address().is_unspecified() {
-                warn!("will ignore unspecified addr network interface: {}", interface_name);
+                warn!(
+                    "will ignore unspecified addr network interface: {}",
+                    interface_name
+                );
                 continue;
             }
 
-            // info!("in: {}, total_received_bytes={}, total_transmitted_bytes={}, addr={:?}", 
+            // info!("in: {}, total_received_bytes={}, total_transmitted_bytes={}, addr={:?}",
             //    interface_name, network.total_received(), network.total_transmitted(), network.mac_address());
 
             received_bytes += network.received();
@@ -276,6 +482,11 @@ impl SystemInfoManager {
         } else {
             info!("refresh system info stopped already!");
         }
+    }
+
+    pub fn update_system_info(&self, updater: SystemInfoUpdater) {
+        let mut item = self.0.lock().unwrap();
+        item.update_system_info(updater);
     }
 }
 

@@ -40,9 +40,10 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
-    acl_handler::test().await;
+    util::test().await;
     return;
-
+    
+    acl_handler::test().await;
     backup::test().await;
 
     async_std::task::spawn(async move {

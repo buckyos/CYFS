@@ -13,6 +13,8 @@ pub async fn test() {
     get_ood_status().await;
     test_zone().await;
     get_system_info().await;
+    update_system_info().await;
+
     build_file().await;
 
 
@@ -197,6 +199,26 @@ async fn test_zone() {
     assert_eq!(resp.device_id, ood_device_id1);
     assert_eq!(*resp.zone.ood(), ood_device_id1);
     assert_eq!(*resp1.zone.ood(), ood_device_id1);
+}
+
+async fn update_system_info() {
+    let user1_ood = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    // let user1_device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+
+    let mut req = UtilUpdateSystemInfoRequest::default();
+    req.common.dec_id = Some(cyfs_core::get_system_dec_app().clone());
+    req.info.name = Some("test update".to_owned());
+    req.info.total_memory = Some(1024 * 1024);
+    req.info.used_memory = Some(1024);
+    req.info.device_sn = Some("123456".to_owned());
+
+    info!("will update system info");
+    user1_ood.util().update_system_info(req).await.unwrap();
+    info!("update system info complete");
+
+    let req = UtilGetSystemInfoRequest::new();
+    let system_info = user1_ood.util().get_system_info(req).await.unwrap();
+    info!("{}", system_info);
 }
 
 async fn get_system_info() {

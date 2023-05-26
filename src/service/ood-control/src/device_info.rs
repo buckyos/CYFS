@@ -1,8 +1,5 @@
 use super::request::*;
 
-use std::path::Path;
-use sysinfo::{DiskExt, DiskType, SystemExt, CpuExt};
-
 pub(super) struct DeviceInfoGen;
 
 impl DeviceInfoGen {
@@ -22,57 +19,9 @@ impl DeviceInfoGen {
     }
 
     pub fn new() -> DeviceInfo {
-        // Get the first NIC address
-        #[cfg(all(not(target_os = "android"), not(target_os = "ios")))]
-        let mac_address = match mac_address::get_mac_address() {
-            Ok(Some(v)) => v.to_string(),
-            Ok(None) => {
-                error!("get mac address but not found!");
-                "".to_owned()
-            }
-            Err(e) => {
-                error!("get mac address error! {}", e);
-                "".to_owned()
-            }
-        };
-
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        let mac_address = "123".to_owned();
-
-        let system = sysinfo::System::new_all();
-        let processor = system.global_cpu_info();
-        let processor_brand = processor.brand();
-        let memory = system.total_memory();
-
-        let sn_path = Path::new("/etc/sn");
-        let mut sn = String::from("");
-        if sn_path.exists() {
-            match std::fs::read_to_string(sn_path) {
-                Ok(v) => sn = v,
-                Err(e) => {
-                    error!("load sn file error! file={}, {}", sn_path.display(), e);
-                }
-            }
-        }
-
-        let mut ssd_total_disk_space = 0 as u64;
-        let mut ssd_available_disk_space = 0 as u64;
-        let mut hdd_total_disk_space = 0 as u64;
-        let mut hdd_available_disk_space = 0 as u64;
-        let disk_list = system.disks();
-        for disk in disk_list {
-            match disk.type_() {
-                // Mobile devices and unknown devices are classified as hdd
-                DiskType::HDD | DiskType::Unknown(_) => {
-                    hdd_total_disk_space += disk.total_space();
-                    hdd_available_disk_space += disk.available_space();
-                }
-                DiskType::SSD => {
-                    ssd_total_disk_space += disk.total_space();
-                    ssd_available_disk_space += disk.available_space();
-                }
-            }
-        }
+        let system_info = async_std::task::block_on(async move {
+            cyfs_util::SYSTEM_INFO_MANAGER.get_system_info().await
+        });
 
         // Local intranet ip address
         let private_ip_address: Vec<String> = match cyfs_util::get_system_hosts() {
@@ -85,15 +34,15 @@ impl DeviceInfoGen {
         };
 
         DeviceInfo {
-            mac_address,
+            mac_address: system_info.mac_address.unwrap_or("[Unknown]".to_owned()),
             model: "Bucky OOD type storage".to_owned(),
-            device_sn: sn,
-            processor_brand: processor_brand.to_string(),
-            total_memory: memory,
-            ssd_total_disk_space,
-            ssd_available_disk_space,
-            hdd_total_disk_space,
-            hdd_available_disk_space,
+            device_sn: system_info.device_sn.unwrap_or("".to_owned()),
+            processor_brand: system_info.cpu_brand,
+            total_memory: system_info.total_memory,
+            ssd_total_disk_space: system_info.ssd_disk_total,
+            ssd_available_disk_space: system_info.ssd_disk_avail,
+            hdd_total_disk_space: system_info.hdd_disk_total,
+            hdd_available_disk_space: system_info.hdd_disk_avail,
             private_ip_address,
         }
     }

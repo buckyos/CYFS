@@ -32,6 +32,8 @@ pub trait UtilOutputProcessor: Sync + Send + 'static {
 
     async fn get_system_info(&self, req: UtilGetSystemInfoOutputRequest)
         -> BuckyResult<UtilGetSystemInfoOutputResponse>;
+    async fn update_system_info(&self, req: UtilUpdateSystemInfoOutputRequest)
+        -> BuckyResult<UtilUpdateSystemInfoOutputResponse>;
 
     async fn get_version_info(&self, req: UtilGetVersionInfoOutputRequest)
         -> BuckyResult<UtilGetVersionInfoOutputResponse>;

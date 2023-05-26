@@ -20,8 +20,10 @@ impl UtilRequestHandler {
         req: &NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilInputRequestCommon> {
         // req_path
-        let req_path =
-            RequestorHelper::decode_optional_header_with_utf8_decoding(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+        let req_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_REQ_PATH,
+        )?;
 
         // 尝试提取flags
         let flags: Option<u32> =
@@ -105,7 +107,8 @@ impl UtilRequestHandler {
             object_raw: None,
         };
 
-        let object_id: Option<ObjectId> = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        let object_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
         if let Some(object_id) = object_id {
             ret.object_id = Some(object_id);
 
@@ -153,7 +156,8 @@ impl UtilRequestHandler {
         let common = Self::decode_common_headers(&req)?;
 
         let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
-        let owner_id = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OWNER_ID)?;
+        let owner_id =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OWNER_ID)?;
 
         let req = UtilResolveOODInputRequest {
             common,
@@ -259,6 +263,40 @@ impl UtilRequestHandler {
         self.processor.get_system_info(req).await
     }
 
+    // update_system_info
+    fn encode_update_system_info_response(_resp: UtilUpdateSystemInfoInputResponse) -> Response {
+        let http_resp = RequestorHelper::new_response(StatusCode::Ok);
+        http_resp.into()
+    }
+
+    pub async fn process_update_system_info_request<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_update_system_info_request(req).await;
+        match ret {
+            Ok(resp) => Self::encode_update_system_info_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_update_system_info_request<State>(
+        &self,
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<UtilUpdateSystemInfoInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
+
+        let info = req.request.body_json().await.map_err(|e| {
+            let msg = format!("read update_system_info request body failed! {}", e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })?;
+
+        let req = UtilUpdateSystemInfoInputRequest { common, info };
+
+        self.processor.update_system_info(req).await
+    }
+
     // get_noc_info
     fn encode_get_noc_info_response(resp: UtilGetNOCInfoInputResponse) -> Response {
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
@@ -285,7 +323,7 @@ impl UtilRequestHandler {
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetNOCInfoInputResponse> {
         let common = Self::decode_common_headers(&req)?;
-    
+
         let req = UtilGetNOCInfoInputRequest { common };
 
         self.processor.get_noc_info(req).await
@@ -367,10 +405,8 @@ impl UtilRequestHandler {
                 http_resp.set_body(resp.encode_string());
 
                 http_resp.into()
-            },
-            Err(e) => {
-                RequestorHelper::trans_error(e)
             }
+            Err(e) => RequestorHelper::trans_error(e),
         }
     }
 
@@ -392,12 +428,12 @@ impl UtilRequestHandler {
                 req_path: out_req.common.req_path,
                 source: req.source,
                 target: out_req.common.target,
-                flags: out_req.common.flags
+                flags: out_req.common.flags,
             },
             local_path: out_req.local_path,
             owner: out_req.owner,
-            chunk_size: out_req.chunk_size, 
-            chunk_method: out_req.chunk_method, 
+            chunk_size: out_req.chunk_size,
+            chunk_method: out_req.chunk_method,
             access: out_req.access,
         };
         self.processor.build_file_object(in_req).await
@@ -415,10 +451,8 @@ impl UtilRequestHandler {
                 http_resp.set_body(resp.encode_string());
 
                 http_resp.into()
-            },
-            Err(e) => {
-                RequestorHelper::trans_error(e)
             }
+            Err(e) => RequestorHelper::trans_error(e),
         }
     }
 
@@ -440,7 +474,7 @@ impl UtilRequestHandler {
                 req_path: out_req.common.req_path,
                 source: req.source,
                 target: out_req.common.target,
-                flags: out_req.common.flags
+                flags: out_req.common.flags,
             },
 
             object_map_id: out_req.object_map_id,
