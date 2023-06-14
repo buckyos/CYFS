@@ -422,6 +422,7 @@ mod test {
     use std::convert::TryFrom;
     use std::str::FromStr;
     use generic_array::typenum::{marker_traits::Unsigned, U32};
+    use rand::RngCore;
 
     #[test]
     fn chunk() {
@@ -447,5 +448,16 @@ mod test {
         }
 
         assert_eq!(U32::to_usize(), 32);
+    }
+
+    #[test]
+    fn chunk2() {
+        let mut chunk_data = [0u8;1024*1024];
+        let chunk_len = chunk_data.len();
+        rand::thread_rng().fill_bytes(&mut chunk_data);
+        let chunk_hash = hash_data(&chunk_data);
+        println!("{:?}", chunk_hash);
+        let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
+        println!("{:?}", chunkid);
     }
 }
